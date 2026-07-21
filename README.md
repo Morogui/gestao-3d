@@ -4,7 +4,7 @@ Sistema de gestão para produção e venda de produtos impressos em 3D, com trê
 
 1. **Custo** — calculadora de custo de impressão (pronta, funcionando)
 2. **Vendas** — integração com Mercado Livre (pronta), Shopee e TikTok Shop (futuro)
-3. **Produção** — cruzamento de vendas x produtos cadastrados (placeholder)
+3. **Produção** — cruzamento de vendas x produtos cadastrados (MVP pronto)
 
 Repositório: https://github.com/Morogui/gestao-3d
 Produção: https://gestao-3d-ecru.vercel.app
@@ -54,9 +54,42 @@ pra um Route Handler ou Middleware.
 - **Métricas do negócio** (Leitura) — indicadores de vendas/estoque/operação, reservado pra futura aba de Faturamento (produto mais vendido, sem venda em 15 dias, menor venda).
 - **Faturamento de uma venda** (Leitura) — receitas, movimentações e saldos da conta, reservado pro mesmo painel futuro (valor vendido no dia, por plataforma e geral da conta).
 
-Os demais escopos (Comunicações pré/pós-venda, Publicação e sincronização,
-Publicidade de um produto, Promoções e cupons) continuam desligados —
-ativar só quando alguma funcionalidade específica precisar.
+Os demais escopos (Comunicações pré/pós-venda, Publicidade de um produto,
+Promoções e cupons) continuam desligados — ativar só quando alguma
+funcionalidade específica precisar.
+
+**Pendência conhecida — foto do produto não aparece na aba Vendas**: o
+endpoint que busca a foto (`/items` multiget) exige o escopo **Publicação
+e sincronização** (Leitura), que ainda não está habilitado no app da ML —
+por isso as chamadas retornam `403 PA_UNAUTHORIZED_RESULT_FROM_POLICIES`.
+Assim que o painel "Minhas aplicações" da ML (que está fora do ar) voltar,
+habilitar esse escopo e reconectar a conta na aba Vendas pra gerar um
+token novo com essa permissão.
+
+## Aba Produção
+
+Cruza os pedidos do dia (mesma fonte de dados da aba Vendas, via
+`GET /api/mercadolivre/orders?data=YYYY-MM-DD`) com os produtos
+cadastrados na aba Custo, e mostra:
+
+- quantas peças de cada produto cadastrado precisam ser impressas;
+- o custo estimado (unitário × quantidade), usando a fórmula da aba Custo;
+- os itens vendidos que não bateram com nenhum produto cadastrado, pra
+  você cadastrar.
+
+**Como funciona a casada produto ↔ item vendido**: como os produtos do
+Custo só existem no `localStorage` do navegador (não no servidor), o
+cruzamento roda no cliente (`lib/producao.ts`). A comparação é por nome:
+o "Nome/código" cadastrado no Custo precisa aparecer no título do anúncio
+da ML (ou ser igual ao SKU customizado do item, se você preencher esse
+campo na ML com o mesmo nome/código). Itens sem produto cadastrado
+aparecem separados, com a sugestão de cadastrá-los.
+
+**Limitação atual**: não existe controle de "já produzido" — a fila
+mostra tudo que foi vendido no dia selecionado, sem marcar o que já foi
+impresso. Pra isso (e pra deixar a casada produto↔item mais robusta),
+o próximo passo é migrar o cadastro de produtos do Custo pra um banco de
+dados compartilhado.
 
 ### Variáveis de ambiente necessárias
 
@@ -101,5 +134,6 @@ Pra subir mudanças sem git instalado: no GitHub, abra o repositório →
 
 - Aba Vendas: adicionar Shopee (API em aprovação) e depois TikTok Shop.
 - Aba Vendas: automatizar a renovação do access_token via refresh_token.
-- Aba Produção: cruzar pedidos (Vendas) com produtos cadastrados (Custo) pra mostrar o que precisa ser impresso.
+- Aba Vendas: habilitar o escopo "Publicação e sincronização" no app da ML pra corrigir a foto do produto (ver pendência acima).
+- Aba Produção: marcar itens como "já produzido" (precisa de banco de dados compartilhado, já que o Custo hoje só existe em localStorage).
 - Futura aba de Faturamento/Métricas: valor vendido no dia (por plataforma e geral da conta), produtos mais vendidos, produtos sem venda nos últimos 15 dias, produtos com menor venda — usando os escopos "Métricas do negócio" e "Faturamento de uma venda" já habilitados na ML.

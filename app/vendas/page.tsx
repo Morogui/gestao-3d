@@ -1,15 +1,10 @@
 import { getOrders } from "@/lib/ml-orders";
 import { formatBRL } from "@/lib/custo";
 import { labelOrderStatus } from "@/lib/mercadolivre";
+import { todaySP, formatDiaBR } from "@/lib/date";
 import ItemThumbnail from "@/components/ItemThumbnail";
 
 export const dynamic = "force-dynamic";
-
-// Data de hoje no fuso de São Paulo (UTC-3), no formato aceito pelo
-// <input type="date"> (YYYY-MM-DD). Usado como padrão do filtro.
-function todaySP(): string {
-  return new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
 
 function ConnectCard({ erro }: { erro?: string }) {
   return (
@@ -77,9 +72,7 @@ export default async function VendasPage({
     );
   }
 
-  const dataFormatada = new Date(`${selectedDay}T12:00:00-03:00`).toLocaleDateString(
-    "pt-BR"
-  );
+  const dataFormatada = formatDiaBR(selectedDay);
 
   if (result.orders.length === 0) {
     return (
@@ -111,7 +104,16 @@ export default async function VendasPage({
         </div>
       </div>
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table className="min-w-full divide-y divide-gray-200 text-sm">
+        <table className="w-full table-fixed divide-y divide-gray-200 text-sm">
+          <colgroup>
+            <col className="w-[7%]" />
+            <col className="w-[8%]" />
+            <col className="w-[13%]" />
+            <col className="w-[34%]" />
+            <col className="w-[10%]" />
+            <col className="w-[11%]" />
+            <col className="w-[12%]" />
+          </colgroup>
           <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
             <tr>
               <th className="px-4 py-3">Pedido</th>
@@ -132,9 +134,9 @@ export default async function VendasPage({
                 <td className="px-4 py-3 text-gray-500">
                   {new Date(order.dateCreated).toLocaleDateString("pt-BR")}
                 </td>
-                <td className="px-4 py-3">{order.buyerNickname}</td>
+                <td className="truncate px-4 py-3">{order.buyerNickname}</td>
                 <td className="px-4 py-3 text-gray-500">
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-1.5">
                     {order.items.map((item, idx) => (
                       <div key={`${item.itemId}-${idx}`} className="flex items-center gap-2">
                         <ItemThumbnail src={item.thumbnail} alt={item.title} />
@@ -142,7 +144,7 @@ export default async function VendasPage({
                           <p className="truncate text-gray-900">
                             {item.title} x{item.quantity}
                           </p>
-                          <p className="text-xs text-gray-400">
+                          <p className="truncate text-xs text-gray-400">
                             {item.hasCustomSku ? "SKU" : "ID ML"}: {item.sku}
                           </p>
                           {/* DEBUG temporário — remover depois de achar a causa da foto sumida */}
