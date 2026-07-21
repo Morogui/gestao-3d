@@ -18,6 +18,7 @@ interface SkuResult {
   pecas_por_unidade: string;
   placa_nome: string;
   placa_numero: number;
+  variacoes: number;
 }
 
 export default function ProducaoPage() {
@@ -621,9 +622,9 @@ function CarregarPlacaForm({
         />
         {buscando && <p className="mt-1 text-xs text-gray-400">Buscando...</p>}
         {resultados.length > 0 && (
-          <ul className="mt-1 max-h-32 overflow-y-auto rounded border border-gray-200 text-xs">
+          <ul className="mt-1 max-h-48 overflow-y-auto rounded border border-gray-200 text-xs">
             {resultados.map((r) => (
-              <li key={`${r.sku}-${r.placa_id}`}>
+              <li key={r.placa_id}>
                 <button
                   onClick={() => {
                     setPlacaId(r.placa_id);
@@ -633,8 +634,11 @@ function CarregarPlacaForm({
                   }}
                   className="block w-full px-2 py-1 text-left hover:bg-gray-50"
                 >
-                  <span className="font-medium text-gray-900">{r.sku}</span>{" "}
-                  <span className="text-gray-400">→ {r.placa_nome}</span>
+                  <span className="font-medium text-gray-900">{r.placa_nome}</span>{" "}
+                  <span className="text-gray-400">
+                    ({r.sku}
+                    {r.variacoes > 1 ? ` +${r.variacoes - 1} variação(ões)` : ""})
+                  </span>
                 </button>
               </li>
             ))}
