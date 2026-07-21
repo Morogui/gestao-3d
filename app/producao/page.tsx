@@ -180,7 +180,7 @@ export default function ProducaoPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Card label="Pedidos (últimos 7 dias)" value={String(demanda?.totalPedidos ?? 0)} />
+        <Card label="Pedidos (últimos 30 dias)" value={String(demanda?.totalPedidos ?? 0)} />
         <Card label="Máquinas rodando" value={`${producoesEmAndamento.length}/${machines.length}`} />
         <Card label="Placas cadastradas" value={String(placas.length)} />
         <Card label="Peças vendidas no Full (semana)" value={String(totalFullSemana)} />
@@ -221,13 +221,15 @@ export default function ProducaoPage() {
           Fila de prioridade ({filaPrioridade.length})
         </h2>
         <p className="mb-3 text-xs text-gray-500">
-          Ordenada pelo que mais falta produzir (demanda semanal × Tier − estoque
-          atual). Use o campo de busca por SKU em cada impressora se quiser
-          carregar um produto fora dessa ordem.
+          Ordenada pelo que mais falta produzir (meta de estoque − estoque
+          atual). Meta = 1 semana no ritmo atual de venda + 1 semana extra de
+          reforço, calculada a partir da média dos últimos 30 dias. Use o
+          campo de busca por SKU em cada impressora se quiser carregar um
+          produto fora dessa ordem.
         </p>
         {filaPrioridade.length === 0 ? (
           <div className="rounded-lg border border-dashed border-gray-300 bg-white p-4 text-center text-sm text-gray-500">
-            Nada pendente — estoque cobre a demanda da semana.
+            Nada pendente — estoque cobre a meta das próximas 2 semanas.
           </div>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
@@ -238,6 +240,7 @@ export default function ProducaoPage() {
                   <th className="px-3 py-2">Placa</th>
                   <th className="px-3 py-2">Tier</th>
                   <th className="px-3 py-2 text-right">Estoque</th>
+                  <th className="px-3 py-2 text-right">Meta</th>
                   <th className="px-3 py-2 text-right">A produzir</th>
                 </tr>
               </thead>
@@ -250,6 +253,9 @@ export default function ProducaoPage() {
                       <TierBadge tier={item.placa.tier} />
                     </td>
                     <td className="px-3 py-2 text-right">{item.placa.estoque}</td>
+                    <td className="px-3 py-2 text-right text-gray-500">
+                      {item.demanda?.recomendadoEstoque ?? 0}
+                    </td>
                     <td className="px-3 py-2 text-right font-semibold text-gray-900">
                       {item.demanda?.aProduzir ?? 0}
                     </td>
@@ -266,10 +272,12 @@ export default function ProducaoPage() {
           Estoque de placas e recomendação de produção
         </h2>
         <p className="mb-3 text-xs text-gray-500">
-          &quot;A produzir&quot; = (vendido nos últimos 7 dias × multiplicador do
-          Tier) − estoque atual. Tier A produz 2.0x a demanda, B 1.3x, C 1.0x.
-          Pra placas compostas (corpo+gancho), o estoque &quot;vendável&quot; do
-          produto final é o menor entre as duas metades do par.
+          &quot;Meta&quot; = 1 semana no ritmo atual de venda + 1 semana extra
+          de reforço (2× a média semanal, calculada a partir dos últimos 30
+          dias — vendas locais e Full somadas). &quot;A produzir&quot; = meta
+          − estoque atual. Pra placas compostas (corpo+gancho), o estoque
+          &quot;vendável&quot; do produto final é o menor entre as duas
+          metades do par.
         </p>
         <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
           <table className="w-full text-sm">
@@ -279,8 +287,10 @@ export default function ProducaoPage() {
                 <th className="px-3 py-2">Tier</th>
                 <th className="px-3 py-2 text-right">Estoque</th>
                 <th className="px-3 py-2 text-right">Vendável (grupo)</th>
-                <th className="px-3 py-2 text-right">Vendido (7d)</th>
+                <th className="px-3 py-2 text-right">Vendido (30d)</th>
+                <th className="px-3 py-2 text-right">Média/semana</th>
                 <th className="px-3 py-2 text-right">Full (7d)</th>
+                <th className="px-3 py-2 text-right">Meta</th>
                 <th className="px-3 py-2 text-right">A produzir</th>
               </tr>
             </thead>
@@ -309,9 +319,15 @@ export default function ProducaoPage() {
                       {placa.estoque}
                     </td>
                     <td className="px-3 py-2 text-right text-gray-500">{vendavel ?? "—"}</td>
-                    <td className="px-3 py-2 text-right">{d?.qtyVendidaSemana ?? 0}</td>
+                    <td className="px-3 py-2 text-right">{d?.qtyVendidaPeriodo ?? 0}</td>
+                    <td className="px-3 py-2 text-right text-gray-500">
+                      {d ? d.mediaSemanal.toFixed(1) : "0.0"}
+                    </td>
                     <td className="px-3 py-2 text-right text-amber-700">
                       {d?.qtyVendidaFull ?? 0}
+                    </td>
+                    <td className="px-3 py-2 text-right text-gray-500">
+                      {d?.recomendadoEstoque ?? 0}
                     </td>
                     <td className="px-3 py-2 text-right font-semibold text-gray-900">
                       {d?.aProduzir ?? 0}

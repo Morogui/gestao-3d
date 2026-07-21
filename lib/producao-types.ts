@@ -32,9 +32,10 @@ export interface FalhaPecaRow {
 
 export interface DemandaPlacaRow {
   placaId: number;
-  qtyVendidaSemana: number;
+  qtyVendidaPeriodo: number;
   qtyVendidaFull: number;
-  recomendadoSemanal: number;
+  mediaSemanal: number;
+  recomendadoEstoque: number;
   aProduzir: number;
 }
 

@@ -19,14 +19,20 @@ function normalize(s: string): string {
 
 export const dynamic = "force-dynamic";
 
-// Demanda semanal (últimos 7 dias, incluindo hoje) por placa, com a
-// recomendação de produção por Tier (ver lib/demanda.ts). Usada pela
-// aba Produção pra sugerir o que carregar nas máquinas.
+const DIAS_BASE = 30;
+
+// Demanda (base: últimos 30 dias, incluindo hoje) por placa, com meta de
+// estoque de "1 semana no ritmo atual + 1 semana de reforço" — ver
+// lib/demanda.ts pra detalhes da mudança de fórmula (2026-07-21). Usada
+// pela aba Produção pra sugerir o que carregar nas máquinas.
 export async function GET() {
   const hoje = todaySP();
-  const seteDiasAtras = new Date(`${hoje}T12:00:00-03:00`);
-  seteDiasAtras.setDate(seteDiasAtras.getDate() - 6);
-  const inicio = seteDiasAtras.toISOString().slice(0, 10);
+  const inicioBaseDate = new Date(`${hoje}T12:00:00-03:00`);
+  inicioBaseDate.setDate(inicioBaseDate.getDate() - (DIAS_BASE - 1));
+  const inicio = inicioBaseDate.toISOString().slice(0, 10);
+
+  const seteDiasAtrasDate = new Date(`${hoje}T12:00:00-03:00`);
+  seteDiasAtrasDate.setDate(seteDiasAtrasDate.getDate() - 6);
 
   const result = await getOrdersRange(inicio, hoje);
 
@@ -69,17 +75,34 @@ export async function GET() {
     skuPlacaMap.set(chave, lista);
   }
 
-  const demandaPorPlaca = calcularDemandaSemanal(
+  // Base de 30 dias — define o ritmo semanal e a meta de estoque (ver
+  // lib/demanda.ts). aProduzir e recomendadoEstoque vêm daqui.
+  const demandaBase = calcularDemandaSemanal(
     result.orders,
     placas,
-    skuPlacaMap
+    skuPlacaMap,
+    DIAS_BASE
   );
+
+  // Só pra alimentar o "Vendido no Full (semana)" — reaproveita os
+  // pedidos já buscados (sem nova chamada à ML), filtrando pros últimos
+  // 7 dias. Não altera aProduzir/recomendadoEstoque.
+  const orders7d = result.orders.filter(
+    (o) => new Date(o.dateCreated) >= seteDiasAtrasDate
+  );
+  const demandaSemana = calcularDemandaSemanal(orders7d, placas, skuPlacaMap, 7);
+
+  const demandaFinal = placas.map((placa) => {
+    const base = demandaBase.get(placa.id)!;
+    const semana = demandaSemana.get(placa.id);
+    return { ...base, qtyVendidaFull: semana?.qtyVendidaFull ?? 0 };
+  });
 
   return NextResponse.json({
     connected: true,
     error: false,
     periodo: { inicio, fim: hoje },
     totalPedidos: result.orders.length,
-    demanda: Array.from(demandaPorPlaca.values()),
+    demanda: demandaFinal,
   });
 }

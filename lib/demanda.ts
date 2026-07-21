@@ -1,15 +1,22 @@
-// Cálculo de demanda semanal e recomendação de produção por Tier —
-// lógica descrita em docs/logica-producao-placas.md, seção 5.
+// Cálculo de demanda e recomendação de produção — atualizado em
+// 2026-07-21 a pedido do usuário: em vez de usar só os últimos 7 dias
+// (janela curta, ruidosa — muita placa ficava sem nenhuma venda
+// detectada nela) e o multiplicador por Tier, agora:
 //
-// Tier A (top 20% de velocidade de venda semanal): produzir 2.0x a
-// demanda semanal. Tier B (próximos 30%): 1.3x. Tier C (resto): 1.0x.
+// 1) A base de cálculo é o volume vendido num período maior (30 dias,
+//    passado pela rota /api/producao/demanda), convertido pra uma
+//    média semanal (qtyVendidaPeriodo / diasNoPeriodo × 7).
+// 2) A meta de estoque é sempre "1 semana de venda no ritmo atual + 1
+//    semana extra de reforço" — ou seja, 2× a média semanal — igual
+//    pra todas as placas, sem distinção por Tier.
+// 3) Vendas Full entram na mesma conta de "vendido" (produção serve
+//    tanto pra reposição local quanto pra reposição do Full) — o
+//    campo qtyVendidaFull é só informativo, não altera a meta.
 //
-// Simplificação assumida (v1): pra placas compostas (corpo+gancho), a
-// venda de 1 unidade do produto final consome ~1 peça de cada lado do
-// par — aplicamos a mesma demanda semanal a ambas as placas do grupo.
-// Isso é uma aproximação; se a proporção real corpo:gancho de um
-// produto específico não for 1:1, ajuste a quantidade "a produzir" na
-// hora de carregar a placa.
+// Simplificação assumida (v1, mantida): pra placas compostas
+// (corpo+gancho), a venda de 1 unidade do produto final consome ~1
+// peça de cada lado do par — aplicamos a mesma demanda a ambas as
+// placas do grupo.
 import { OrderSummary } from "./ml-orders";
 import { PlacaRow } from "./placas";
 
@@ -29,17 +36,20 @@ function correspondeAoItem(placa: PlacaRow, tituloOuSku: string): boolean {
   return alvo.includes(nomePlaca) || nomePlaca.includes(alvo);
 }
 
-const TIER_MULTIPLIER: Record<PlacaRow["tier"], number> = {
-  A: 2.0,
-  B: 1.3,
-  C: 1.0,
-};
-
 export interface DemandaPlaca {
   placaId: number;
-  qtyVendidaSemana: number;
+  // Total vendido no período usado como base de cálculo (ex: 30 dias) —
+  // já inclui vendas Full, que contam pra mesma demanda de produção.
+  qtyVendidaPeriodo: number;
+  // Informativo apenas — quanto disso foi vendido no Full nos últimos 7
+  // dias (pra você montar o envio de reposição de segunda-feira). Não
+  // entra na conta de aProduzir.
   qtyVendidaFull: number;
-  recomendadoSemanal: number;
+  // Ritmo médio de venda por semana, derivado do período (qtyVendidaPeriodo
+  // convertido pra uma janela de 7 dias).
+  mediaSemanal: number;
+  // Meta de estoque: 1 semana no ritmo atual + 1 semana extra de reforço.
+  recomendadoEstoque: number;
   aProduzir: number;
 }
 
@@ -56,7 +66,8 @@ export type SkuPlacaMap = Map<string, SkuPlacaEntry[]>;
 export function calcularDemandaSemanal(
   orders: OrderSummary[],
   placas: PlacaRow[],
-  skuPlacaMap: SkuPlacaMap = new Map()
+  skuPlacaMap: SkuPlacaMap = new Map(),
+  diasNoPeriodo: number = 7
 ): Map<number, DemandaPlaca> {
   const vendidoPorPlaca = new Map<number, number>();
   const vendidoFullPorPlaca = new Map<number, number>();
@@ -111,17 +122,18 @@ export function calcularDemandaSemanal(
 
   const resultado = new Map<number, DemandaPlaca>();
   for (const placa of placas) {
-    const qtyVendidaSemana = vendidoPorPlaca.get(placa.id) ?? 0;
+    const qtyVendidaPeriodo = vendidoPorPlaca.get(placa.id) ?? 0;
     const qtyVendidaFull = vendidoFullPorPlaca.get(placa.id) ?? 0;
-    const recomendadoSemanal = Math.ceil(
-      qtyVendidaSemana * TIER_MULTIPLIER[placa.tier]
-    );
-    const aProduzir = Math.max(0, recomendadoSemanal - placa.estoque);
+    const mediaSemanal = (qtyVendidaPeriodo / diasNoPeriodo) * 7;
+    // Meta = 1 semana no ritmo atual + 1 semana extra de reforço (2x).
+    const recomendadoEstoque = Math.ceil(mediaSemanal * 2);
+    const aProduzir = Math.max(0, recomendadoEstoque - placa.estoque);
     resultado.set(placa.id, {
       placaId: placa.id,
-      qtyVendidaSemana,
+      qtyVendidaPeriodo,
       qtyVendidaFull,
-      recomendadoSemanal,
+      mediaSemanal,
+      recomendadoEstoque,
       aProduzir,
     });
   }
