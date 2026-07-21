@@ -12,12 +12,22 @@ export interface ProducaoRow {
   machine_id: number;
   placa_id: number;
   quantidade_placas: string;
-  status: "em_andamento" | "concluida" | "cancelada";
+  status: "em_andamento" | "concluida" | "cancelada" | "falha_placa";
   iniciado_em: string;
   concluido_em: string | null;
   machine_nome: string;
   placa_nome: string;
   pecas_por_placa: string;
+  gramas_desperdicadas: string | null;
+  falhas_peca_count: string;
+}
+
+export interface FalhaPecaRow {
+  id: number;
+  producao_id: number;
+  peca_descricao: string;
+  gramas: string;
+  criado_em: string;
 }
 
 export interface DemandaPlacaRow {

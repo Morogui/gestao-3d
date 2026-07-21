@@ -88,26 +88,54 @@ Tabelas:
   do documento de lógica de produção compartilhado.
 - `estoque_placas` — contagem atual de peças em estoque por placa.
 - `producoes` — ordens de produção (uma placa carregada em uma
-  máquina); ao marcar como concluída, credita `estoque_placas`.
+  máquina); ao marcar como concluída, credita `estoque_placas`. Status
+  possíveis: `em_andamento`, `concluida`, `cancelada`, `falha_placa`
+  (falha na placa inteira — encerra sem creditar nada, guarda
+  `gramas_desperdicadas`).
+- `falhas_peca` — falhas pontuais de UMA peça dentro de uma placa que
+  continua imprimindo normalmente (não encerra a produção). Cada linha
+  tem `producao_id`, `peca_descricao` e `gramas`. Quando a produção é
+  concluída, a quantidade de peças já registradas aqui é descontada do
+  total creditado no estoque.
+- `sku_placa` — catálogo real de 111 SKUs (Shopee/ML/TikTok) mapeados
+  pra placa do catálogo de produção, com `pecas_por_unidade` pra SKUs
+  de kit (ex: "3 SUPORTE BOX 6MM BRANCO" = 3 peças). Fonte:
+  `docs/sku-catalogo.md`. Usado pela busca de SKU na aba Produção.
 
 ## Aba Produção
 
 Painel de estoque e produção, cruzando o catálogo de placas com as
 vendas dos últimos 7 dias (mesma fonte de dados da aba Vendas):
 
-- **Produções em andamento**: o que está carregado em cada máquina
-  agora, com botão para marcar como concluída (credita o estoque) ou
-  cancelar.
+- **Impressoras**: um card por máquina cadastrada (hoje 4). Card livre
+  mostra um formulário pra carregar uma placa — por busca de SKU (ex:
+  digitar "SUPORTE BMW" acha o SKU real e já seleciona a placa certa,
+  útil pra furar a fila de prioridade) ou pela fila de prioridade
+  direto. Card ocupado mostra a placa carregada, peças totais na
+  placa, e três ações:
+  - **Placa impressa com sucesso** — credita o estoque (peças da
+    placa menos as que já falharam individualmente nessa rodada).
+  - **Falha em peça** — registra a falha de UMA peça (descrição +
+    gramas perdidas) sem encerrar a produção; a impressão continua e
+    só aquela peça é descontada do crédito final.
+  - **Falha na placa** — encerra a produção sem creditar nada no
+    estoque; pede quantos gramas de filamento foram desperdiçados.
+  - Cancelar também está disponível, sem afetar o estoque.
+- **Fila de prioridade**: lista as placas com algo a produzir,
+  ordenada da maior pra menor urgência — é a referência de "o que
+  carregar a seguir" usada tanto no ranking quanto no formulário de
+  carregar cada impressora.
 - **Estoque de placas e recomendação de produção**: pra cada placa,
   mostra estoque atual, estoque "vendável" do par corpo+gancho (o
   menor dos dois lados), quanto foi vendido nos últimos 7 dias, quanto
   disso foi vendido no Full, e quanto falta produzir pra cobrir a meta
-  do Tier (A produz 2.0x a demanda semanal, B 1.3x, C 1.0x). Cada linha
-  tem um formulário rápido pra carregar a placa numa máquina.
+  do Tier (A produz 2.0x a demanda semanal, B 1.3x, C 1.0x).
 - **Lembrete Full**: total vendido no Full na semana, já que essas
   vendas não descontam o estoque local mas precisam ser repostas no
   próximo envio (a montagem do Full é toda segunda-feira).
-- **Histórico recente**: últimas produções concluídas/canceladas.
+- **Histórico recente**: últimas produções concluídas, canceladas ou
+  com falha, com a coluna "Perdas" mostrando gramas (falha de placa)
+  ou número de peças (falhas pontuais).
 
 **Simplificação assumida (v1)**: pra placas compostas, a demanda
 semanal é aplicada igualmente aos dois lados do par (corpo e gancho),
@@ -120,6 +148,8 @@ como leitura de referência em `docs/logica-producao-placas.md`.
 **Como funciona o cruzamento venda ↔ placa**: por nome — o texto
 cadastrado em `sku_ou_kit` de cada placa precisa aparecer no título do
 anúncio da ML (ou no SKU customizado do item). Ver `lib/demanda.ts`.
+Isso é independente da tabela `sku_placa` (que serve só pra busca
+manual ao carregar uma máquina, não pro cálculo de demanda semanal).
 
 ### Variáveis de ambiente necessárias
 
@@ -170,4 +200,6 @@ Pra subir mudanças sem git instalado: no GitHub, abra o repositório →
 - Aba Produção: automatizar a janela de turnos/corte de carregamento (seção 4 do documento de lógica) — hoje é só leitura de referência.
 - Aba Produção: refinar a recomendação de Full replenishment com o exemplo real do documento (frete #72430222) em vez do total simples da semana.
 - Aba Produção: se a proporção corpo:gancho de algum produto não for 1:1, ajustar `lib/demanda.ts` pra esse caso específico.
+- Aba Produção: confirmar peças/placa, tempo/placa e Tier reais das 14 placas novas (#33-#46) — hoje com placeholder (`dados_confirmados = false` na tabela `placas`).
+- Aba Produção: ligar `sku_placa` ao cálculo de demanda semanal (`lib/demanda.ts` ainda casa venda↔placa por nome/substring, não pelo mapeamento exato de SKU já importado).
 - Futura aba de Faturamento/Métricas: valor vendido no dia (por plataforma e geral da conta), produtos mais vendidos, produtos sem venda nos últimos 15 dias, produtos com menor venda — usando os escopos "Métricas do negócio" e "Faturamento de uma venda" já habilitados na ML.

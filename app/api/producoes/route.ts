@@ -10,12 +10,16 @@ export async function GET() {
   const rows = await sql`
     SELECT
       pr.id, pr.machine_id, pr.placa_id, pr.quantidade_placas, pr.status,
-      pr.iniciado_em, pr.concluido_em,
+      pr.iniciado_em, pr.concluido_em, pr.gramas_desperdicadas,
       m.nome AS machine_nome,
-      pl.nome AS placa_nome, pl.pecas_por_placa
+      pl.nome AS placa_nome, pl.pecas_por_placa,
+      COALESCE(fp.count, 0) AS falhas_peca_count
     FROM producoes pr
     JOIN machines m ON m.id = pr.machine_id
     JOIN placas pl ON pl.id = pr.placa_id
+    LEFT JOIN (
+      SELECT producao_id, count(*) AS count FROM falhas_peca GROUP BY producao_id
+    ) fp ON fp.producao_id = pr.id
     ORDER BY
       CASE WHEN pr.status = 'em_andamento' THEN 0 ELSE 1 END,
       pr.iniciado_em DESC
