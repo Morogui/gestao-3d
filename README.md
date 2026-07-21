@@ -3,8 +3,11 @@
 Sistema de gestão para produção e venda de produtos impressos em 3D, com três abas:
 
 1. **Custo** — calculadora de custo de impressão (pronta, funcionando)
-2. **Vendas** — integração futura com Mercado Livre, Shopee e TikTok Shop (placeholder)
+2. **Vendas** — integração com Mercado Livre (pronta), Shopee e TikTok Shop (futuro)
 3. **Produção** — cruzamento de vendas x produtos cadastrados (placeholder)
+
+Repositório: https://github.com/Morogui/gestao-3d
+Produção: https://gestao-3d-ecru.vercel.app
 
 ## Aba Custo
 
@@ -25,49 +28,78 @@ Vendas/Produção, não aqui.
 Parâmetros padrão (editáveis na tela): filamento R$ 75,40/kg, energia R$ 0,08/h,
 manutenção R$ 0,30/h, falha de impressão 3%.
 
-Cada produto tem um único campo de identificação (nome/código), usado tanto
-para exibir quanto para futuras buscas por nome ou SKU.
-
 Os produtos cadastrados e os parâmetros ficam salvos no `localStorage` do
-navegador por enquanto. Quando as abas Vendas/Produção entrarem em produção
-(integrações via API rodando no servidor), vale migrar esse cadastro para um
-banco de dados compartilhado (ex: Postgres via Vercel Postgres/Neon), já que
-localStorage só existe no navegador de quem acessa.
+navegador por enquanto. Vale migrar pra um banco de dados compartilhado (ex:
+Vercel Postgres/Neon) quando a aba Produção precisar cruzar esses dados no
+servidor.
+
+## Aba Vendas — Mercado Livre
+
+Fluxo OAuth2 completo:
+
+- `GET /api/mercadolivre/authorize` — manda o usuário pra tela de login/autorização da ML.
+- `GET /api/mercadolivre/callback` — recebe o `code`, troca por `access_token`/`refresh_token` e guarda em cookies `httpOnly` (não acessíveis via JS no navegador).
+- `POST /api/mercadolivre/webhook` — recebe notificações da ML (novo pedido, pagamento, etc) e responde 200 OK. Hoje só loga; pode evoluir pra processar eventos quando fizer sentido.
+- `app/vendas/page.tsx` — Server Component que mostra "Conectar com Mercado Livre" se ainda não autenticado, ou a tabela de pedidos (comprador, itens, total, status, modalidade de envio) se já autenticado.
+
+**Limitação atual**: se o `access_token` expirar (dura ~6h) e a chamada
+falhar, a tela pede pra reconectar em vez de renovar sozinha via
+`refresh_token` — isso porque Server Components não conseguem regravar
+cookies. Pra automatizar a renovação, o próximo passo é mover a checagem
+pra um Route Handler ou Middleware.
+
+### Escopos ativados no app da ML (Morolar Produção)
+
+- **Venda e envios de um produto** (Leitura) — pedidos e modalidade de envio, usado pela aba Vendas hoje.
+- **Métricas do negócio** (Leitura) — indicadores de vendas/estoque/operação, reservado pra futura aba de Faturamento (produto mais vendido, sem venda em 15 dias, menor venda).
+- **Faturamento de uma venda** (Leitura) — receitas, movimentações e saldos da conta, reservado pro mesmo painel futuro (valor vendido no dia, por plataforma e geral da conta).
+
+Os demais escopos (Comunicações pré/pós-venda, Publicação e sincronização,
+Publicidade de um produto, Promoções e cupons) continuam desligados —
+ativar só quando alguma funcionalidade específica precisar.
+
+### Variáveis de ambiente necessárias
+
+Ver `.env.example`. Resumo:
+
+| Variável | Onde configurar | Valor |
+|---|---|---|
+| `ML_CLIENT_ID` | Vercel + `.env.local` | Client ID do app na ML |
+| `ML_CLIENT_SECRET` | Vercel + `.env.local` | Chave secreta do app (nunca commitar) |
+| `ML_REDIRECT_URI` | Vercel + `.env.local` | Precisa ser idêntico ao Redirect URI cadastrado na ML |
+
+**Importante — lembrete para quando trocar de domínio**: o valor de
+`ML_REDIRECT_URI` e o Redirect URI cadastrado no app da ML (em
+developers.mercadolivre.com.br) precisam ser sempre idênticos. Hoje ambos
+apontam pra `https://gestao-3d-ecru.vercel.app/api/mercadolivre/callback`.
+Quando um domínio próprio for configurado (ex: `app.morolar.com.br`), os
+dois lugares precisam ser atualizados juntos — senão o login com o
+Mercado Livre para de funcionar.
 
 ## Rodando localmente
 
 ```bash
 npm install
+cp .env.example .env.local   # depois preencha os valores reais
 npm run dev
 ```
 
-Acesse `http://localhost:3000` (redireciona para `/custo`).
+Acesse `http://localhost:3000` (redireciona para `/custo`). Pra testar a
+aba Vendas localmente, use `ML_REDIRECT_URI=http://localhost:3000/api/mercadolivre/callback`
+e cadastre esse mesmo valor como um Redirect URI adicional no app da ML.
 
-## Publicando no GitHub
+## Publicando alterações (GitHub + Vercel)
 
-```bash
-git init
-git add .
-git commit -m "Setup inicial: aba Custo"
-git branch -M main
-git remote add origin <URL_DO_SEU_REPOSITORIO>
-git push -u origin main
-```
+Já está tudo conectado: `github.com/Morogui/gestao-3d` → import automático
+na Vercel. Cada novo commit/upload na branch `main` do GitHub dispara um
+novo deploy sozinho.
 
-## Publicando na Vercel
-
-1. Acesse [vercel.com](https://vercel.com) e faça login com a conta do GitHub.
-2. Clique em "Add New… → Project" e selecione o repositório.
-3. A Vercel detecta automaticamente que é um projeto Next.js — não precisa
-   mudar nenhuma configuração de build.
-4. Clique em "Deploy". Em poucos minutos o projeto fica disponível numa URL
-   pública (e em cada novo push no `main` ele atualiza sozinho).
+Pra subir mudanças sem git instalado: no GitHub, abra o repositório →
+"Add file" → "Upload files" → arraste os arquivos alterados → "Commit changes".
 
 ## Próximos passos
 
-- Aba Vendas: integrar API do Mercado Livre (OAuth + endpoint de pedidos),
-  depois Shopee, depois TikTok Shop. As credenciais devem ficar em variáveis
-  de ambiente (`.env.local` local / "Environment Variables" na Vercel) e as
-  chamadas de API devem rodar em API Routes do Next.js, nunca no navegador.
-- Aba Produção: consumir os pedidos da aba Vendas e cruzar com os produtos
-  cadastrados na aba Custo para gerar a lista do que precisa ser impresso.
+- Aba Vendas: adicionar Shopee (API em aprovação) e depois TikTok Shop.
+- Aba Vendas: automatizar a renovação do access_token via refresh_token.
+- Aba Produção: cruzar pedidos (Vendas) com produtos cadastrados (Custo) pra mostrar o que precisa ser impresso.
+- Futura aba de Faturamento/Métricas: valor vendido no dia (por plataforma e geral da conta), produtos mais vendidos, produtos sem venda nos últimos 15 dias, produtos com menor venda — usando os escopos "Métricas do negócio" e "Faturamento de uma venda" já habilitados na ML.
