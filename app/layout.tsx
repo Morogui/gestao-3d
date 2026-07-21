@@ -15,7 +15,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body>
-        <div className="mx-auto max-w-5xl px-4 py-6">
+        <div className="mx-auto max-w-[1400px] px-4 py-6">
           <header className="mb-6">
             <h1 className="text-2xl font-bold text-gray-900">Gestão 3D</h1>
             <p className="text-sm text-gray-500">

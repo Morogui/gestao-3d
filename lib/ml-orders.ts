@@ -6,6 +6,10 @@ export interface OrderItemSummary {
   title: string;
   quantity: number;
   sku: string;
+  // true = veio do campo "SKU" cadastrado no anúncio (seller_custom_field);
+  // false = a ML não tem SKU cadastrado nesse anúncio e o valor mostrado é
+  // o ID do item (MLBxxxx), só como referência.
+  hasCustomSku: boolean;
   thumbnail: string | null;
 }
 
@@ -42,12 +46,28 @@ interface MLOrder {
 interface MLItemDetail {
   id: string;
   thumbnail?: string;
+  secure_thumbnail?: string;
   seller_custom_field?: string;
+  pictures?: { secure_url?: string; url?: string }[];
 }
 
 function toHttps(url: string | undefined | null): string | null {
   if (!url) return null;
   return url.startsWith("http://") ? url.replace("http://", "https://") : url;
+}
+
+// A ML retorna a foto em lugares diferentes dependendo do item:
+// secure_thumbnail (https, preferível), thumbnail (às vezes http) e,
+// em último caso, a primeira foto da lista "pictures". Tenta nessa ordem.
+function pickThumbnail(detail: MLItemDetail | undefined): string | null {
+  if (!detail) return null;
+  return (
+    toHttps(detail.secure_thumbnail) ??
+    toHttps(detail.thumbnail) ??
+    toHttps(detail.pictures?.[0]?.secure_url) ??
+    toHttps(detail.pictures?.[0]?.url) ??
+    null
+  );
 }
 
 // Busca detalhes (foto + SKU) de uma lista de item ids em uma única
@@ -61,23 +81,31 @@ async function fetchItemDetails(
   const uniqueIds = Array.from(new Set(itemIds)).filter(Boolean);
   if (uniqueIds.length === 0) return map;
 
-  // A API multiget aceita até 20 ids por chamada.
+  // A API multiget aceita até 20 ids por chamada. Não filtramos por
+  // "attributes" aqui de propósito — pedir só alguns campos às vezes faz
+  // a ML omitir a foto da resposta; buscando o item inteiro garantimos
+  // que thumbnail/secure_thumbnail/pictures venham preenchidos.
   for (let i = 0; i < uniqueIds.length; i += 20) {
     const batch = uniqueIds.slice(i, i + 20);
     try {
       const resp = await fetch(
-        `${ML_API_BASE}/items?ids=${batch.join(",")}&attributes=id,thumbnail,seller_custom_field`,
+        `${ML_API_BASE}/items?ids=${batch.join(",")}`,
         { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" }
       );
-      if (!resp.ok) continue;
+      if (!resp.ok) {
+        console.error(`[ML orders] multiget items respondeu ${resp.status}`);
+        continue;
+      }
       const data = await resp.json();
       for (const entry of data ?? []) {
         if (entry?.code === 200 && entry.body?.id) {
           map.set(entry.body.id, entry.body);
+        } else {
+          console.error("[ML orders] item multiget com erro:", entry?.code, entry?.body);
         }
       }
-    } catch {
-      // se uma leva falhar, segue com o que já temos
+    } catch (err) {
+      console.error("[ML orders] erro no multiget de items:", err);
     }
   }
   return map;
@@ -137,16 +165,15 @@ export async function getOrders(): Promise<OrdersResult> {
     rawOrders.map(async (order): Promise<OrderSummary> => {
       const items: OrderItemSummary[] = (order.order_items ?? []).map((oi) => {
         const detail = oi.item?.id ? itemDetails.get(oi.item.id) : undefined;
+        const customSku =
+          oi.item?.seller_custom_field || detail?.seller_custom_field || "";
         return {
           itemId: oi.item?.id ?? "—",
           title: oi.item?.title ?? "item",
           quantity: oi.quantity ?? 1,
-          sku:
-            oi.item?.seller_custom_field ||
-            detail?.seller_custom_field ||
-            oi.item?.id ||
-            "—",
-          thumbnail: toHttps(detail?.thumbnail),
+          sku: customSku || oi.item?.id || "—",
+          hasCustomSku: Boolean(customSku),
+          thumbnail: pickThumbnail(detail),
         };
       });
 

@@ -104,6 +104,8 @@ export function labelLogisticType(logisticType: string | undefined): string {
       return "Flex";
     case "cross_docking":
       return "Coleta (Agência)";
+    case "xd_drop_off":
+      return "Coleta (Agência)";
     case "drop_off":
       return "Correios/Agência";
     case "custom":

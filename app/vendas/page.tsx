@@ -1,5 +1,6 @@
 import { getOrders } from "@/lib/ml-orders";
 import { formatBRL } from "@/lib/custo";
+import ItemThumbnail from "@/components/ItemThumbnail";
 
 export const dynamic = "force-dynamic";
 
@@ -89,23 +90,14 @@ export default async function VendasPage({
                   <div className="flex flex-col gap-2">
                     {order.items.map((item, idx) => (
                       <div key={`${item.itemId}-${idx}`} className="flex items-center gap-2">
-                        {item.thumbnail ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={item.thumbnail}
-                            alt={item.title}
-                            width={36}
-                            height={36}
-                            className="h-9 w-9 flex-shrink-0 rounded border border-gray-200 object-cover"
-                          />
-                        ) : (
-                          <div className="h-9 w-9 flex-shrink-0 rounded border border-gray-200 bg-gray-100" />
-                        )}
+                        <ItemThumbnail src={item.thumbnail} alt={item.title} />
                         <div className="min-w-0">
                           <p className="truncate text-gray-900">
                             {item.title} x{item.quantity}
                           </p>
-                          <p className="text-xs text-gray-400">SKU: {item.sku}</p>
+                          <p className="text-xs text-gray-400">
+                            {item.hasCustomSku ? "SKU" : "ID ML"}: {item.sku}
+                          </p>
                         </div>
                       </div>
                     ))}
