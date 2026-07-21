@@ -86,7 +86,30 @@ export default async function VendasPage({
                 </td>
                 <td className="px-4 py-3">{order.buyerNickname}</td>
                 <td className="px-4 py-3 text-gray-500">
-                  {order.itemsSummary}
+                  <div className="flex flex-col gap-2">
+                    {order.items.map((item, idx) => (
+                      <div key={`${item.itemId}-${idx}`} className="flex items-center gap-2">
+                        {item.thumbnail ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={item.thumbnail}
+                            alt={item.title}
+                            width={36}
+                            height={36}
+                            className="h-9 w-9 flex-shrink-0 rounded border border-gray-200 object-cover"
+                          />
+                        ) : (
+                          <div className="h-9 w-9 flex-shrink-0 rounded border border-gray-200 bg-gray-100" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="truncate text-gray-900">
+                            {item.title} x{item.quantity}
+                          </p>
+                          <p className="text-xs text-gray-400">SKU: {item.sku}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </td>
                 <td className="px-4 py-3 text-right font-semibold text-gray-900">
                   {formatBRL(order.totalAmount)}

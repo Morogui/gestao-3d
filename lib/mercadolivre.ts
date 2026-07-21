@@ -106,6 +106,10 @@ export function labelLogisticType(logisticType: string | undefined): string {
       return "Coleta (Agência)";
     case "drop_off":
       return "Correios/Agência";
+    case "custom":
+      return "Envio próprio";
+    case "not_specified":
+      return "A combinar";
     default:
       return logisticType ?? "—";
   }
