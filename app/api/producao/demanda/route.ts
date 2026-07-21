@@ -43,6 +43,15 @@ export async function GET() {
     return NextResponse.json({ connected: true, error: true });
   }
 
+  // IMPORTANTE: inclui placas descontinuadas aqui (sem WHERE
+  // descontinuada = false) — senão as vendas de um produto descontinuado
+  // (ex: Taça Copa do Mundo, que só vende o estoque que sobrou) nunca
+  // batem com nada e ficam presas pra sempre no relatório de "não
+  // identificado", mesmo com o texto do anúncio corretamente cadastrado
+  // em sku_ou_kit. A tela de Produção (fila de prioridade, formulário de
+  // carregar máquina etc.) continua só mostrando as não-descontinuadas
+  // porque busca a lista separadamente em /api/placas (que mantém esse
+  // filtro) — aqui é só pra fins de casamento venda↔placa.
   const placaRows = (await sql`
     SELECT
       p.id, p.numero, p.nome, p.tipo, p.papel, p.grupo_composto,
@@ -51,7 +60,6 @@ export async function GET() {
       COALESCE(e.quantidade_pecas, 0) AS estoque
     FROM placas p
     LEFT JOIN estoque_placas e ON e.placa_id = p.id
-    WHERE p.descontinuada = false
     ORDER BY p.numero ASC
   `) as DbPlacaRow[];
 
