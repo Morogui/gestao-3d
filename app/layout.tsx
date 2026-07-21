@@ -17,8 +17,9 @@ export default function RootLayout({
       <body>
         <div className="mx-auto max-w-[1400px] px-4 py-6">
           <header className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">Gestão 3D</h1>
-            <p className="text-sm text-gray-500">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.svg" alt="Morolar" className="h-10 w-auto" />
+            <p className="mt-1 text-sm text-gray-500">
               Custo · Vendas · Produção
             </p>
           </header>

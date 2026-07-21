@@ -5,6 +5,12 @@ import ItemThumbnail from "@/components/ItemThumbnail";
 
 export const dynamic = "force-dynamic";
 
+// Data de hoje no fuso de São Paulo (UTC-3), no formato aceito pelo
+// <input type="date"> (YYYY-MM-DD). Usado como padrão do filtro.
+function todaySP(): string {
+  return new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 function ConnectCard({ erro }: { erro?: string }) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
@@ -29,12 +35,37 @@ function ConnectCard({ erro }: { erro?: string }) {
   );
 }
 
+function DateFilter({ selectedDay }: { selectedDay: string }) {
+  return (
+    <form className="flex items-center gap-2" method="GET">
+      <label htmlFor="data" className="text-xs font-medium text-gray-500">
+        Data
+      </label>
+      <input
+        type="date"
+        id="data"
+        name="data"
+        defaultValue={selectedDay}
+        max={todaySP()}
+        className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+      />
+      <button
+        type="submit"
+        className="rounded-md bg-gray-900 px-3 py-1 text-sm font-medium text-white hover:bg-gray-700"
+      >
+        Buscar
+      </button>
+    </form>
+  );
+}
+
 export default async function VendasPage({
   searchParams,
 }: {
-  searchParams: { erro?: string };
+  searchParams: { erro?: string; data?: string };
 }) {
-  const result = await getOrders();
+  const selectedDay = searchParams.data || todaySP();
+  const result = await getOrders(selectedDay);
 
   if (!result.connected) {
     return <ConnectCard erro={searchParams.erro} />;
@@ -46,10 +77,22 @@ export default async function VendasPage({
     );
   }
 
+  const dataFormatada = new Date(`${selectedDay}T12:00:00-03:00`).toLocaleDateString(
+    "pt-BR"
+  );
+
   if (result.orders.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
-        Nenhum pedido encontrado ainda.
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-900">
+            Pedidos — Mercado Livre
+          </h2>
+          <DateFilter selectedDay={selectedDay} />
+        </div>
+        <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
+          Nenhum pedido em {dataFormatada}.
+        </div>
       </div>
     );
   }
@@ -58,11 +101,14 @@ export default async function VendasPage({
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-gray-900">
-          Pedidos — Mercado Livre
+          Pedidos — Mercado Livre — {dataFormatada}
         </h2>
-        <span className="text-xs text-gray-500">
-          {result.orders.length} pedido(s) recentes
-        </span>
+        <div className="flex items-center gap-4">
+          <span className="text-xs text-gray-500">
+            {result.orders.length} pedido(s)
+          </span>
+          <DateFilter selectedDay={selectedDay} />
+        </div>
       </div>
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -100,9 +146,11 @@ export default async function VendasPage({
                             {item.hasCustomSku ? "SKU" : "ID ML"}: {item.sku}
                           </p>
                           {/* DEBUG temporário — remover depois de achar a causa da foto sumida */}
-                          <p className="truncate text-[10px] text-gray-300">
-                            foto: {item.thumbnail ?? "API não retornou nenhuma URL de foto"}
-                          </p>
+                          {!item.thumbnail && (
+                            <p className="truncate text-[10px] text-gray-300">
+                              foto: {item.photoDebug ?? "motivo desconhecido"}
+                            </p>
+                          )}
                         </div>
                       </div>
                     ))}

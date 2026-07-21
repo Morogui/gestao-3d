@@ -11,6 +11,9 @@ export interface OrderItemSummary {
   // o ID do item (MLBxxxx), só como referência.
   hasCustomSku: boolean;
   thumbnail: string | null;
+  // DEBUG temporário — motivo de não ter foto, pra diagnosticar com o
+  // usuário. Remover quando o problema da foto estiver resolvido.
+  photoDebug?: string;
 }
 
 export interface OrderSummary {
@@ -73,13 +76,21 @@ function pickThumbnail(detail: MLItemDetail | undefined): string | null {
 // Busca detalhes (foto + SKU) de uma lista de item ids em uma única
 // chamada usando o endpoint multiget /items?ids=... da ML (mais rápido
 // do que uma chamada por item).
+interface ItemDetailsResult {
+  map: Map<string, MLItemDetail>;
+  // por item id que falhou, guarda o motivo (status HTTP ou msg de erro) —
+  // debug temporário pra achar a causa da foto sumida.
+  errorsByItemId: Map<string, string>;
+}
+
 async function fetchItemDetails(
   itemIds: string[],
   accessToken: string
-): Promise<Map<string, MLItemDetail>> {
+): Promise<ItemDetailsResult> {
   const map = new Map<string, MLItemDetail>();
+  const errorsByItemId = new Map<string, string>();
   const uniqueIds = Array.from(new Set(itemIds)).filter(Boolean);
-  if (uniqueIds.length === 0) return map;
+  if (uniqueIds.length === 0) return { map, errorsByItemId };
 
   // A API multiget aceita até 20 ids por chamada. Não filtramos por
   // "attributes" aqui de propósito — pedir só alguns campos às vezes faz
@@ -93,22 +104,30 @@ async function fetchItemDetails(
         { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" }
       );
       if (!resp.ok) {
-        console.error(`[ML orders] multiget items respondeu ${resp.status}`);
+        const bodyText = await resp.text().catch(() => "");
+        const msg = `HTTP ${resp.status} no /items: ${bodyText.slice(0, 200)}`;
+        console.error(`[ML orders] multiget items respondeu ${resp.status}`, bodyText);
+        for (const id of batch) errorsByItemId.set(id, msg);
         continue;
       }
       const data = await resp.json();
       for (const entry of data ?? []) {
+        const id = entry?.body?.id ?? entry?.id;
         if (entry?.code === 200 && entry.body?.id) {
           map.set(entry.body.id, entry.body);
         } else {
-          console.error("[ML orders] item multiget com erro:", entry?.code, entry?.body);
+          const msg = `código ${entry?.code} no item ${id}: ${JSON.stringify(entry?.body).slice(0, 150)}`;
+          console.error("[ML orders] item multiget com erro:", msg);
+          if (id) errorsByItemId.set(id, msg);
         }
       }
     } catch (err) {
+      const msg = `erro de rede: ${String(err).slice(0, 150)}`;
       console.error("[ML orders] erro no multiget de items:", err);
+      for (const id of batch) errorsByItemId.set(id, msg);
     }
   }
-  return map;
+  return { map, errorsByItemId };
 }
 
 // Extrai a modalidade de envio de forma tolerante a diferenças no
@@ -123,16 +142,30 @@ function extractLogisticType(shipData: any): string | undefined {
   );
 }
 
-// Busca os pedidos recentes do vendedor autenticado. Roda no servidor
-// (Server Component), usando o access_token guardado em cookie httpOnly
-// no /api/mercadolivre/callback.
+// Formata um Date no fuso de São Paulo como "YYYY-MM-DDTHH:mm:ss.000-03:00",
+// formato que a API de orders/search espera nos filtros de data.
+function toMLDateTime(date: Date, endOfDay: boolean): string {
+  // America/Sao_Paulo é sempre -03:00 (não tem mais horário de verão desde 2019)
+  const isoLocal = new Date(date.getTime() - 3 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  return `${isoLocal}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}-03:00`;
+}
+
+// Busca os pedidos do vendedor autenticado num intervalo de datas. Roda no
+// servidor (Server Component), usando o access_token guardado em cookie
+// httpOnly no /api/mercadolivre/callback.
+//
+// Se `day` não for informado, usa o dia de hoje (fuso de São Paulo) como
+// padrão — é isso que aparece na aba Vendas ao abrir a página, com um
+// filtro de data pra consultar outros dias.
 //
 // Nota: se o access_token tiver expirado (dura ~6h), a chamada falha com
 // 401 e devolvemos { connected: true, error: true } — a renovação
 // automática via refresh_token fica pra uma próxima iteração (precisa
 // rodar num Route Handler, que consegue re-gravar cookies; um Server
 // Component não consegue).
-export async function getOrders(): Promise<OrdersResult> {
+export async function getOrders(day?: string): Promise<OrdersResult> {
   const cookieStore = cookies();
   const accessToken = cookieStore.get("ml_access_token")?.value;
   const userId = cookieStore.get("ml_user_id")?.value;
@@ -141,8 +174,14 @@ export async function getOrders(): Promise<OrdersResult> {
     return { connected: false };
   }
 
+  const targetDate = day ? new Date(`${day}T12:00:00-03:00`) : new Date();
+  const dateFrom = toMLDateTime(targetDate, false);
+  const dateTo = toMLDateTime(targetDate, true);
+
   const resp = await fetch(
-    `${ML_API_BASE}/orders/search?seller=${userId}&sort=date_desc&limit=50`,
+    `${ML_API_BASE}/orders/search?seller=${userId}&sort=date_desc&limit=50` +
+      `&order.date_created.from=${encodeURIComponent(dateFrom)}` +
+      `&order.date_created.to=${encodeURIComponent(dateTo)}`,
     { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" }
   );
 
@@ -159,7 +198,10 @@ export async function getOrders(): Promise<OrdersResult> {
       .map((oi) => oi.item?.id)
       .filter((id): id is string => Boolean(id))
   );
-  const itemDetails = await fetchItemDetails(allItemIds, accessToken);
+  const { map: itemDetails, errorsByItemId } = await fetchItemDetails(
+    allItemIds,
+    accessToken
+  );
 
   const orders = await Promise.all(
     rawOrders.map(async (order): Promise<OrderSummary> => {
@@ -167,13 +209,24 @@ export async function getOrders(): Promise<OrdersResult> {
         const detail = oi.item?.id ? itemDetails.get(oi.item.id) : undefined;
         const customSku =
           oi.item?.seller_custom_field || detail?.seller_custom_field || "";
+        const thumbnail = pickThumbnail(detail);
+        let photoDebug: string | undefined;
+        if (!thumbnail) {
+          photoDebug = oi.item?.id
+            ? errorsByItemId.get(oi.item.id) ??
+              (detail
+                ? "item encontrado, mas sem thumbnail/secure_thumbnail/pictures no corpo"
+                : "item não veio na resposta do multiget /items")
+            : "pedido sem item.id";
+        }
         return {
           itemId: oi.item?.id ?? "—",
           title: oi.item?.title ?? "item",
           quantity: oi.quantity ?? 1,
           sku: customSku || oi.item?.id || "—",
           hasCustomSku: Boolean(customSku),
-          thumbnail: pickThumbnail(detail),
+          thumbnail,
+          photoDebug,
         };
       });
 
