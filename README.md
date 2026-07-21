@@ -4,7 +4,8 @@ Sistema de gestão para produção e venda de produtos impressos em 3D, com trê
 
 1. **Custo** — calculadora de custo de impressão (pronta, funcionando)
 2. **Vendas** — integração com Mercado Livre (pronta), Shopee e TikTok Shop (futuro)
-3. **Produção** — cruzamento de vendas x produtos cadastrados (MVP pronto)
+3. **Produção** — estoque de placas, tiers de demanda e ordens de produção
+   (com banco de dados Postgres — ver seção "Banco de dados" abaixo)
 
 Repositório: https://github.com/Morogui/gestao-3d
 Produção: https://gestao-3d-ecru.vercel.app
@@ -28,10 +29,12 @@ Vendas/Produção, não aqui.
 Parâmetros padrão (editáveis na tela): filamento R$ 75,40/kg, energia R$ 0,08/h,
 manutenção R$ 0,30/h, falha de impressão 3%.
 
-Os produtos cadastrados e os parâmetros ficam salvos no `localStorage` do
-navegador por enquanto. Vale migrar pra um banco de dados compartilhado (ex:
-Vercel Postgres/Neon) quando a aba Produção precisar cruzar esses dados no
-servidor.
+Os produtos cadastrados e os parâmetros ficam salvos no banco de dados
+(Postgres via Neon/Vercel — ver seção "Banco de dados" abaixo), nas tabelas
+`produtos` e `parametros_globais`, através das rotas `/api/produtos` e
+`/api/parametros`. Isso corrige a limitação antiga (dados só existiam no
+navegador de quem cadastrou) e é o que permite a aba Produção cruzar esses
+dados no servidor.
 
 ## Aba Vendas — Mercado Livre
 
@@ -66,30 +69,57 @@ Assim que o painel "Minhas aplicações" da ML (que está fora do ar) voltar,
 habilitar esse escopo e reconectar a conta na aba Vendas pra gerar um
 token novo com essa permissão.
 
+## Banco de dados (Postgres via Neon/Vercel)
+
+O projeto usa um banco Postgres provisionado pela integração Neon da
+Vercel (Storage → neon-citron-lever), conectado ao projeto com a
+variável `DATABASE_URL` (injetada automaticamente em produção). O
+cliente fica em `lib/db.ts` (`@neondatabase/serverless`).
+
+Tabelas:
+
+- `produtos` / `parametros_globais` — substituem o antigo localStorage
+  da aba Custo (peça solta + parâmetros de custo).
+- `machines` — as impressoras 3D cadastradas (hoje: Impressora 1 a 4 —
+  edite direto no banco se os nomes reais forem outros).
+- `placas` — catálogo oficial de 32 placas (peça direta, ou corpo/gancho
+  de um produto composto), com peças/placa, tempo/placa e Tier de
+  demanda (A/B/C). Fonte: `docs/logica-producao-placas.md`, transcrito
+  do documento de lógica de produção compartilhado.
+- `estoque_placas` — contagem atual de peças em estoque por placa.
+- `producoes` — ordens de produção (uma placa carregada em uma
+  máquina); ao marcar como concluída, credita `estoque_placas`.
+
 ## Aba Produção
 
-Cruza os pedidos do dia (mesma fonte de dados da aba Vendas, via
-`GET /api/mercadolivre/orders?data=YYYY-MM-DD`) com os produtos
-cadastrados na aba Custo, e mostra:
+Painel de estoque e produção, cruzando o catálogo de placas com as
+vendas dos últimos 7 dias (mesma fonte de dados da aba Vendas):
 
-- quantas peças de cada produto cadastrado precisam ser impressas;
-- o custo estimado (unitário × quantidade), usando a fórmula da aba Custo;
-- os itens vendidos que não bateram com nenhum produto cadastrado, pra
-  você cadastrar.
+- **Produções em andamento**: o que está carregado em cada máquina
+  agora, com botão para marcar como concluída (credita o estoque) ou
+  cancelar.
+- **Estoque de placas e recomendação de produção**: pra cada placa,
+  mostra estoque atual, estoque "vendável" do par corpo+gancho (o
+  menor dos dois lados), quanto foi vendido nos últimos 7 dias, quanto
+  disso foi vendido no Full, e quanto falta produzir pra cobrir a meta
+  do Tier (A produz 2.0x a demanda semanal, B 1.3x, C 1.0x). Cada linha
+  tem um formulário rápido pra carregar a placa numa máquina.
+- **Lembrete Full**: total vendido no Full na semana, já que essas
+  vendas não descontam o estoque local mas precisam ser repostas no
+  próximo envio (a montagem do Full é toda segunda-feira).
+- **Histórico recente**: últimas produções concluídas/canceladas.
 
-**Como funciona a casada produto ↔ item vendido**: como os produtos do
-Custo só existem no `localStorage` do navegador (não no servidor), o
-cruzamento roda no cliente (`lib/producao.ts`). A comparação é por nome:
-o "Nome/código" cadastrado no Custo precisa aparecer no título do anúncio
-da ML (ou ser igual ao SKU customizado do item, se você preencher esse
-campo na ML com o mesmo nome/código). Itens sem produto cadastrado
-aparecem separados, com a sugestão de cadastrá-los.
+**Simplificação assumida (v1)**: pra placas compostas, a demanda
+semanal é aplicada igualmente aos dois lados do par (corpo e gancho),
+assumindo proporção 1:1 por unidade vendida — se um produto específico
+precisar de mais peças de um lado que do outro, ajuste a quantidade na
+hora de carregar a placa. A janela de turnos/corte de carregamento
+(seção 4 do documento de lógica) ainda não está automatizada — fica
+como leitura de referência em `docs/logica-producao-placas.md`.
 
-**Limitação atual**: não existe controle de "já produzido" — a fila
-mostra tudo que foi vendido no dia selecionado, sem marcar o que já foi
-impresso. Pra isso (e pra deixar a casada produto↔item mais robusta),
-o próximo passo é migrar o cadastro de produtos do Custo pra um banco de
-dados compartilhado.
+**Como funciona o cruzamento venda ↔ placa**: por nome — o texto
+cadastrado em `sku_ou_kit` de cada placa precisa aparecer no título do
+anúncio da ML (ou no SKU customizado do item). Ver `lib/demanda.ts`.
 
 ### Variáveis de ambiente necessárias
 
@@ -100,6 +130,7 @@ Ver `.env.example`. Resumo:
 | `ML_CLIENT_ID` | Vercel + `.env.local` | Client ID do app na ML |
 | `ML_CLIENT_SECRET` | Vercel + `.env.local` | Chave secreta do app (nunca commitar) |
 | `ML_REDIRECT_URI` | Vercel + `.env.local` | Precisa ser idêntico ao Redirect URI cadastrado na ML |
+| `DATABASE_URL` | Vercel (automático) + `.env.local` | Conexão do Postgres (Neon) — a Vercel injeta sozinha em produção |
 
 **Importante — lembrete para quando trocar de domínio**: o valor de
 `ML_REDIRECT_URI` e o Redirect URI cadastrado no app da ML (em
@@ -135,5 +166,8 @@ Pra subir mudanças sem git instalado: no GitHub, abra o repositório →
 - Aba Vendas: adicionar Shopee (API em aprovação) e depois TikTok Shop.
 - Aba Vendas: automatizar a renovação do access_token via refresh_token.
 - Aba Vendas: habilitar o escopo "Publicação e sincronização" no app da ML pra corrigir a foto do produto (ver pendência acima).
-- Aba Produção: marcar itens como "já produzido" (precisa de banco de dados compartilhado, já que o Custo hoje só existe em localStorage).
+- Aba Produção: confirmar os nomes reais das 4 máquinas (hoje cadastradas como "Impressora 1" a "4" — editar direto na tabela `machines` do banco).
+- Aba Produção: automatizar a janela de turnos/corte de carregamento (seção 4 do documento de lógica) — hoje é só leitura de referência.
+- Aba Produção: refinar a recomendação de Full replenishment com o exemplo real do documento (frete #72430222) em vez do total simples da semana.
+- Aba Produção: se a proporção corpo:gancho de algum produto não for 1:1, ajustar `lib/demanda.ts` pra esse caso específico.
 - Futura aba de Faturamento/Métricas: valor vendido no dia (por plataforma e geral da conta), produtos mais vendidos, produtos sem venda nos últimos 15 dias, produtos com menor venda — usando os escopos "Métricas do negócio" e "Faturamento de uma venda" já habilitados na ML.

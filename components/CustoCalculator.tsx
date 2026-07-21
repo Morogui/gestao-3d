@@ -8,7 +8,14 @@ import {
   GlobalParams,
   ProdutoInput,
 } from "@/lib/custo";
-import { loadParams, loadProdutos, saveParams, saveProdutos } from "@/lib/storage";
+import {
+  atualizarProduto,
+  criarProduto,
+  excluirProduto,
+  loadParams,
+  loadProdutos,
+  saveParams,
+} from "@/lib/storage";
 import ProdutosTable from "./ProdutosTable";
 
 const EMPTY_FORM: Omit<ProdutoInput, "id"> = {
@@ -18,34 +25,27 @@ const EMPTY_FORM: Omit<ProdutoInput, "id"> = {
   pecasNaPlaca: 1,
 };
 
-function newId(): string {
-  return `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
 export default function CustoCalculator() {
   const [params, setParams] = useState<GlobalParams>(DEFAULT_PARAMS);
   const [produtos, setProdutos] = useState<ProdutoInput[]>([]);
   const [form, setForm] = useState<Omit<ProdutoInput, "id">>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [hydrated, setHydrated] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [salvandoParams, setSalvandoParams] = useState(false);
+  const [paramsSalvos, setParamsSalvos] = useState(true);
 
-  // Carrega dados salvos assim que o componente monta no navegador
+  // Carrega dados salvos do banco assim que o componente monta
   useEffect(() => {
-    setParams(loadParams());
-    setProdutos(loadProdutos());
-    setHydrated(true);
+    (async () => {
+      const [paramsCarregados, produtosCarregados] = await Promise.all([
+        loadParams(),
+        loadProdutos(),
+      ]);
+      setParams(paramsCarregados);
+      setProdutos(produtosCarregados);
+      setLoading(false);
+    })();
   }, []);
-
-  // Persiste sempre que params/produtos mudam (depois da carga inicial)
-  useEffect(() => {
-    if (!hydrated) return;
-    saveParams(params);
-  }, [params, hydrated]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    saveProdutos(produtos);
-  }, [produtos, hydrated]);
 
   const preview = useMemo(() => calcularCusto(form, params), [form, params]);
 
@@ -55,18 +55,32 @@ export default function CustoCalculator() {
 
   function updateParam<K extends keyof GlobalParams>(key: K, value: number) {
     setParams((prev) => ({ ...prev, [key]: value }));
+    setParamsSalvos(false);
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSalvarParams() {
+    setSalvandoParams(true);
+    try {
+      const salvos = await saveParams(params);
+      setParams(salvos);
+      setParamsSalvos(true);
+    } finally {
+      setSalvandoParams(false);
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.nome.trim()) return;
 
     if (editingId) {
-      setProdutos((prev) =>
-        prev.map((p) => (p.id === editingId ? { ...form, id: editingId } : p))
-      );
+      const atualizado = await atualizarProduto({ ...form, id: editingId });
+      setProdutos((prev) => prev.map((p) => (p.id === editingId ? atualizado : p)));
     } else {
-      setProdutos((prev) => [...prev, { ...form, id: newId() }]);
+      const criado = await criarProduto(form);
+      setProdutos((prev) =>
+        [...prev, criado].sort((a, b) => a.nome.localeCompare(b.nome))
+      );
     }
     setForm(EMPTY_FORM);
     setEditingId(null);
@@ -78,12 +92,13 @@ export default function CustoCalculator() {
     setEditingId(id);
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     setProdutos((prev) => prev.filter((p) => p.id !== id));
     if (editingId === id) {
       setForm(EMPTY_FORM);
       setEditingId(null);
     }
+    await excluirProduto(id);
   }
 
   function handleCancelEdit() {
@@ -91,13 +106,38 @@ export default function CustoCalculator() {
     setEditingId(null);
   }
 
+  if (loading) {
+    return (
+      <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
+        Carregando produtos...
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6">
       {/* Parâmetros globais */}
       <section className="rounded-lg border border-gray-200 bg-white p-5">
-        <h2 className="mb-4 text-sm font-semibold text-gray-900">
-          Parâmetros de custo
-        </h2>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-900">
+            Parâmetros de custo
+          </h2>
+          <div className="flex items-center gap-2">
+            {paramsSalvos ? (
+              <span className="text-xs text-gray-400">Salvo</span>
+            ) : (
+              <span className="text-xs text-amber-600">Alterações não salvas</span>
+            )}
+            <button
+              type="button"
+              onClick={handleSalvarParams}
+              disabled={salvandoParams || paramsSalvos}
+              className="rounded-md bg-gray-900 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
+            >
+              {salvandoParams ? "Salvando..." : "Salvar parâmetros"}
+            </button>
+          </div>
+        </div>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <NumberField
             label="Filamento (R$/kg)"

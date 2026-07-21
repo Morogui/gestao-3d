@@ -166,6 +166,26 @@ function toMLDateTime(date: Date, endOfDay: boolean): string {
 // rodar num Route Handler, que consegue re-gravar cookies; um Server
 // Component não consegue).
 export async function getOrders(day?: string): Promise<OrdersResult> {
+  const targetDate = day ? new Date(`${day}T12:00:00-03:00`) : new Date();
+  return fetchOrdersInRange(toMLDateTime(targetDate, false), toMLDateTime(targetDate, true));
+}
+
+// Variante para janelas maiores que um dia — usada pela aba Produção pra
+// calcular a velocidade de venda semanal (Tiers A/B/C). `fromDay`/`toDay`
+// no formato "YYYY-MM-DD" (fuso São Paulo).
+export async function getOrdersRange(
+  fromDay: string,
+  toDay: string
+): Promise<OrdersResult> {
+  const from = toMLDateTime(new Date(`${fromDay}T12:00:00-03:00`), false);
+  const to = toMLDateTime(new Date(`${toDay}T12:00:00-03:00`), true);
+  return fetchOrdersInRange(from, to);
+}
+
+async function fetchOrdersInRange(
+  dateFrom: string,
+  dateTo: string
+): Promise<OrdersResult> {
   const cookieStore = cookies();
   const accessToken = cookieStore.get("ml_access_token")?.value;
   const userId = cookieStore.get("ml_user_id")?.value;
@@ -174,23 +194,31 @@ export async function getOrders(day?: string): Promise<OrdersResult> {
     return { connected: false };
   }
 
-  const targetDate = day ? new Date(`${day}T12:00:00-03:00`) : new Date();
-  const dateFrom = toMLDateTime(targetDate, false);
-  const dateTo = toMLDateTime(targetDate, true);
+  // Pagina até 500 pedidos (10 páginas de 50) — suficiente pra uma janela
+  // semanal de vendas; evita truncar silenciosamente contas com volume alto.
+  const rawOrders: MLOrder[] = [];
+  const PAGE_SIZE = 50;
+  const MAX_PAGES = 10;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const resp = await fetch(
+      `${ML_API_BASE}/orders/search?seller=${userId}&sort=date_desc&limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}` +
+        `&order.date_created.from=${encodeURIComponent(dateFrom)}` +
+        `&order.date_created.to=${encodeURIComponent(dateTo)}`,
+      { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" }
+    );
 
-  const resp = await fetch(
-    `${ML_API_BASE}/orders/search?seller=${userId}&sort=date_desc&limit=50` +
-      `&order.date_created.from=${encodeURIComponent(dateFrom)}` +
-      `&order.date_created.to=${encodeURIComponent(dateTo)}`,
-    { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" }
-  );
+    if (!resp.ok) {
+      if (page === 0) return { connected: true, error: true };
+      break;
+    }
 
-  if (!resp.ok) {
-    return { connected: true, error: true };
+    const data = await resp.json();
+    const pageResults: MLOrder[] = data.results ?? [];
+    rawOrders.push(...pageResults);
+
+    const total = data.paging?.total ?? pageResults.length;
+    if (rawOrders.length >= total || pageResults.length < PAGE_SIZE) break;
   }
-
-  const data = await resp.json();
-  const rawOrders: MLOrder[] = data.results ?? [];
 
   // Busca foto + SKU de todos os itens de todos os pedidos de uma vez
   const allItemIds = rawOrders.flatMap((order) =>
