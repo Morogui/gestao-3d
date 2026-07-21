@@ -20,7 +20,7 @@ export default function RootLayout({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo.svg" alt="Morolar" className="h-10 w-auto" />
             <p className="mt-1 text-sm text-gray-500">
-              Custo · Vendas · Produção
+              Custo · Vendas · Produção · Estoque
             </p>
           </header>
           <TabsNav />
