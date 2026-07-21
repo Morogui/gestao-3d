@@ -20,30 +20,32 @@ por número:
   é só embalagem, mesma peça física).
 - **#2 Suporte Multigancho**: SUPORTE MULTIGANCHOS BRANCO, SUPORTE
   MULTIGANCHOS PRETO (qty 1).
-- **#3 6X3 21 FATIAS**: 6X3 21 FATIAS BRANCO, 6X3 21 FATIAS PRETO (qty 1).
+- **#3 6X3 21 FATIAS**: 6X3 21 FATIAS COLORIDO (qty 1). Atualizado em
+  2026-07-21: os fatiadores pararam de ter versão branco/preto, agora só
+  saem coloridos — SKUs antigos BRANCO/PRETO removidos do mapeamento.
 - **#4/#5 Suporte Universal (corpo/gancho)**: SUPORTE UNIVERSAL BRANCO,
   SUPORTE UNIVERSAL PRETO — cada SKU consome 1 peça de #4 E 1 peça de #5.
 - **#6 Suporte Box 6mm (kit 1/2/3)**: 1/2/3 SUPORTE BOX 6MM BRANCO, 1/2/3
   SUPORTE BOX 6MM PRETO — qty = 1, 2 ou 3 conforme o número no SKU.
-- **#7 6X3 14 FATIAS**: 6X3 14 FATIAS BRANCO, 6X3 14 FATIAS PRETO (qty 1).
+- **#7 6X3 14 FATIAS**: 6X3 14 FATIAS COLORIDO (qty 1).
 - **#8/#9 Suporte Carro (corpo/gancho)**: SUPORTE CARRO BRANCO, SUPORTE
   CARRO CINZA, SUPORTE CARRO PRETO — cada SKU consome 1 peça de #8 E 1 de #9.
-- **#10 6X3 15 FATIAS**: 6X3 15 FATIAS BRANCO, 6X3 15 FATIAS PRETO (qty 1).
-- **#11 6X3 18 FATIAS**: 6X3 18 FATIAS BRANCO, 6X3 18 FATIAS PRETO (qty 1).
+- **#10 6X3 15 FATIAS**: 6X3 15 FATIAS COLORIDO (qty 1).
+- **#11 6X3 18 FATIAS**: 6X3 18 FATIAS COLORIDO (qty 1).
 - **#12 Cortina (com/sem parafuso)**: PAR DE GANCHOS CORTINA COM PARAFUSO
   BRANCO/PRETO, PAR DE GANCHOS CORTINA SEM PARAFUSO BRANCO/PRETO — "par"
   assumido como 2 peças por venda (ajustável se a suposição estiver errada).
 - **#13 STAM-01**: STAM-01 BEGE (qty 1).
 - **#14 Suporte Orelha (kit 1/2/3)**: KIT 1/2/3 SUPORTE ORELHA (qty = número).
 - **#15 Suporte para Garrafa Coração**: SUPORTE PARA GARRAFA CORACAO (qty 1).
-- **#16 6X2 21 FATIAS**: 6X2 21 FATIAS BRANCO, 6X2 21 FATIAS PRETO (qty 1).
+- **#16 6X2 21 FATIAS**: 6X2 21 FATIAS COLORIDO (qty 1).
 - **#17 Suporte Box 8mm (kit 1/2/3)**: 1/2/3 SUPORTE BOX 8MM BRANCO, 1/2/3
   SUPORTE BOX 8MM PRETO (qty = número).
-- **#18 6X2.5 18 FATIAS**: 6X2.5 18 FATIAS BRANCO, 6X2.5 18 FATIAS PRETO.
+- **#18 6X2.5 18 FATIAS**: 6X2.5 18 FATIAS COLORIDO.
 - **#19 STAM-02**: STAM-02 BRANCO.
-- **#20 6X2.5 21 FATIAS**: 6X2.5 21 FATIAS BRANCO, 6X2.5 21 FATIAS PRETO.
-- **#21 6X2 18 FATIAS**: 6X2 18 FATIAS BRANCO, 6X2 18 FATIAS PRETO.
-- **#22 7X2 21 FATIAS**: 7X2 21 FATIAS BRANCO, 7X2 21 FATIAS PRETO.
+- **#20 6X2.5 21 FATIAS**: 6X2.5 21 FATIAS COLORIDO.
+- **#21 6X2 18 FATIAS**: 6X2 18 FATIAS COLORIDO.
+- **#22 7X2 21 FATIAS**: 7X2 21 FATIAS COLORIDO.
 - **#23 Suporte Talher e Tampa**: SUPORTE TALHER E TAMPA.
 - **#24 Gancho Branco (kit 1/2/3)**: KIT 1/2/3 GANCHO(S) BRANCO (qty = número).
 - **#25 Suporte Controle PS5**: SUPORTE PS5 BRANCO, SUPORTE PS5 PRETO.

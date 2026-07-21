@@ -22,4 +22,12 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const sql = neon(process.env.DATABASE_URL ?? "");
+// O driver HTTP do Neon usa fetch() por baixo dos panos, e o Next.js
+// intercepta e cacheia chamadas fetch automaticamente — mesmo em rotas
+// com `export const dynamic = "force-dynamic"`, em alguns casos esse
+// cache "gruda" numa resposta antiga (ex: a lista de placas ficou
+// travada em 32 registros mesmo depois de cadastrar mais 14 no banco).
+// `cache: "no-store"` força toda query a ir direto no Postgres.
+export const sql = neon(process.env.DATABASE_URL ?? "", {
+  fetchOptions: { cache: "no-store" },
+});
