@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { getOrders, getOrdersRange, OrdersResult } from "@/lib/ml-orders";
 import { formatBRL } from "@/lib/custo";
 import { labelOrderStatus } from "@/lib/mercadolivre";
@@ -31,6 +32,32 @@ function ConnectCard({ erro }: { erro?: string }) {
   );
 }
 
+function ShopeeConnectCard({ erro }: { erro?: string }) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
+      <p className="mb-2 font-medium text-gray-900">
+        Conecte sua conta da Shopee
+      </p>
+      <p className="mb-4 text-sm text-gray-500">
+        Pra puxar os pedidos automaticamente, autorize o acesso à sua loja.
+        (Por enquanto rodando em ambiente de teste/sandbox da Shopee — a
+        busca de pedidos de verdade ainda está em construção.)
+      </p>
+      {erro && (
+        <p className="mb-4 text-sm text-red-600">
+          Não deu pra conectar agora ({erro}). Tenta de novo?
+        </p>
+      )}
+      <a
+        href="/api/shopee/authorize"
+        className="inline-block rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700"
+      >
+        Conectar com Shopee
+      </a>
+    </div>
+  );
+}
+
 function quickBtnClass(active: boolean): string {
   return (
     "rounded-md px-3 py-1 text-sm font-medium " +
@@ -42,8 +69,9 @@ function quickBtnClass(active: boolean): string {
 
 // Filtro de período — 3 atalhos (Hoje/Ontem/Semana) como links simples
 // (funcionam sem JS, é só navegação com query params) + um formulário
-// De/Até pra intervalo customizado. O seletor de Plataforma já vem
-// pronto pra quando a Shopee entrar — hoje só Mercado Livre funciona.
+// De/Até pra intervalo customizado. O seletor de Plataforma já cobre
+// Mercado Livre e Shopee (Shopee ainda só faz o OAuth — busca de pedidos
+// de verdade é uma próxima etapa).
 function RangeFilter({
   de,
   ate,
@@ -113,9 +141,7 @@ function RangeFilter({
           className="rounded-md border border-gray-300 px-2 py-1 text-sm"
         >
           <option value="ml">Mercado Livre</option>
-          <option value="shopee" disabled>
-            Shopee (em breve)
-          </option>
+          <option value="shopee">Shopee</option>
         </select>
         <button
           type="submit"
@@ -158,14 +184,32 @@ export default async function VendasPage({
   const de = searchParams.de || hoje;
   const ate = searchParams.ate || hoje;
 
-  // Shopee ainda não está integrado (sem credenciais/OAuth configurados) —
-  // o seletor já existe na UI, só falta ligar quando tivermos a conta.
+  // Shopee: OAuth já configurado (app "MOROLAR" no Shopee Open Platform,
+  // ambiente sandbox por enquanto). A busca de pedidos de verdade
+  // (equivalente ao lib/ml-orders.ts) ainda não foi construída — por ora
+  // só validamos a conexão e mostramos o botão de autorizar.
   if (plataforma === "shopee") {
+    const cookieStore = cookies();
+    const shopeeConnected = Boolean(
+      cookieStore.get("shopee_access_token")?.value
+    );
+
+    if (!shopeeConnected) {
+      return (
+        <div className="flex flex-col gap-4">
+          <RangeFilter de={de} ate={ate} plataforma={plataforma} />
+          <ShopeeConnectCard erro={searchParams.erro} />
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col gap-4">
         <RangeFilter de={de} ate={ate} plataforma={plataforma} />
         <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
-          Integração com Shopee ainda não está disponível — em breve.
+          Conectado com a Shopee! A busca de pedidos ainda está em
+          construção — assim que tivermos isso pronto, os pedidos aparecem
+          aqui igual à aba do Mercado Livre.
         </div>
       </div>
     );
