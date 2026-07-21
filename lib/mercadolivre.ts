@@ -95,6 +95,32 @@ export async function refreshAccessToken(
   return resp.json();
 }
 
+// Mapeia o status do pedido da ML para um rótulo amigável em português.
+export function labelOrderStatus(status: string | undefined): string {
+  switch (status) {
+    case "confirmed":
+      return "Confirmado";
+    case "payment_required":
+      return "Aguardando pagamento";
+    case "payment_in_process":
+      return "Pagamento em processamento";
+    case "paid":
+      return "Pago";
+    case "partially_paid":
+      return "Parcialmente pago";
+    case "partially_refunded":
+      return "Parcialmente reembolsado";
+    case "pending_cancel":
+      return "Cancelamento pendente";
+    case "cancelled":
+      return "Cancelado";
+    case "invalidated":
+      return "Invalidado";
+    default:
+      return status ?? "—";
+  }
+}
+
 // Mapeia o "logistic_type" do envio da ML para um rótulo amigável.
 export function labelLogisticType(logisticType: string | undefined): string {
   switch (logisticType) {

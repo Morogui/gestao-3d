@@ -1,5 +1,6 @@
 import { getOrders } from "@/lib/ml-orders";
 import { formatBRL } from "@/lib/custo";
+import { labelOrderStatus } from "@/lib/mercadolivre";
 import ItemThumbnail from "@/components/ItemThumbnail";
 
 export const dynamic = "force-dynamic";
@@ -98,6 +99,10 @@ export default async function VendasPage({
                           <p className="text-xs text-gray-400">
                             {item.hasCustomSku ? "SKU" : "ID ML"}: {item.sku}
                           </p>
+                          {/* DEBUG temporário — remover depois de achar a causa da foto sumida */}
+                          <p className="truncate text-[10px] text-gray-300">
+                            foto: {item.thumbnail ?? "API não retornou nenhuma URL de foto"}
+                          </p>
                         </div>
                       </div>
                     ))}
@@ -106,7 +111,7 @@ export default async function VendasPage({
                 <td className="px-4 py-3 text-right font-semibold text-gray-900">
                   {formatBRL(order.totalAmount)}
                 </td>
-                <td className="px-4 py-3">{order.status}</td>
+                <td className="px-4 py-3">{labelOrderStatus(order.status)}</td>
                 <td className="px-4 py-3">{order.shippingMode}</td>
               </tr>
             ))}
