@@ -154,22 +154,46 @@ function RangeFilter({
   );
 }
 
-// Extrai contagem de pedidos + faturamento total de um resultado de
-// pedidos, tolerante a estados de erro/desconectado (fica em 0/0).
-function resumoStats(result: OrdersResult): { pedidos: number; faturamento: number } {
-  if (!result.connected || result.error) return { pedidos: 0, faturamento: 0 };
+// Extrai contagem de pedidos + itens vendidos + faturamento total de um
+// resultado de pedidos, tolerante a estados de erro/desconectado (fica em
+// 0/0/0). "Itens vendidos" soma a quantidade de cada item de cada
+// pedido — diferente de "pedidos", que conta 1 por pedido mesmo que ele
+// tenha vários produtos/unidades dentro.
+function resumoStats(result: OrdersResult): {
+  pedidos: number;
+  itensVendidos: number;
+  faturamento: number;
+} {
+  if (!result.connected || result.error)
+    return { pedidos: 0, itensVendidos: 0, faturamento: 0 };
   return {
     pedidos: result.orders.length,
+    itensVendidos: result.orders.reduce(
+      (soma, o) => soma + o.items.reduce((s, item) => s + item.quantity, 0),
+      0
+    ),
     faturamento: result.orders.reduce((soma, o) => soma + o.totalAmount, 0),
   };
 }
 
-function ResumoCard({ label, pedidos, faturamento }: { label: string; pedidos: number; faturamento: number }) {
+function ResumoCard({
+  label,
+  pedidos,
+  itensVendidos,
+  faturamento,
+}: {
+  label: string;
+  pedidos: number;
+  itensVendidos: number;
+  faturamento: number;
+}) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4">
       <p className="text-xs text-gray-500">{label}</p>
       <p className="text-xl font-semibold text-gray-900">{formatBRL(faturamento)}</p>
-      <p className="text-xs text-gray-400">{pedidos} pedido(s)</p>
+      <p className="text-xs text-gray-400">
+        {pedidos} pedido(s) · {itensVendidos} produto(s) vendido(s)
+      </p>
     </div>
   );
 }
@@ -250,9 +274,9 @@ export default async function VendasPage({
 
   const resumo = (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-      <ResumoCard label="Vendas de hoje" pedidos={resumoDia.pedidos} faturamento={resumoDia.faturamento} />
-      <ResumoCard label="Vendas na semana (últimos 7 dias)" pedidos={resumoSemana.pedidos} faturamento={resumoSemana.faturamento} />
-      <ResumoCard label="Vendas no mês" pedidos={resumoMes.pedidos} faturamento={resumoMes.faturamento} />
+      <ResumoCard label="Vendas de hoje" pedidos={resumoDia.pedidos} itensVendidos={resumoDia.itensVendidos} faturamento={resumoDia.faturamento} />
+      <ResumoCard label="Vendas na semana (últimos 7 dias)" pedidos={resumoSemana.pedidos} itensVendidos={resumoSemana.itensVendidos} faturamento={resumoSemana.faturamento} />
+      <ResumoCard label="Vendas no mês" pedidos={resumoMes.pedidos} itensVendidos={resumoMes.itensVendidos} faturamento={resumoMes.faturamento} />
     </div>
   );
 
