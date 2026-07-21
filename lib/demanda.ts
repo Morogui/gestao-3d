@@ -53,16 +53,31 @@ function palavrasSignificativas(s: string): string[] {
 //    como token inteiro em algum lugar do título (mais tolerante a
 //    reordenação/marketing do anúncio, ex: "Suporte Universal" batendo em
 //    "Suporte Universal Multiuso Organizador Parede Branco").
+// Aceita várias frases alternativas dentro do mesmo campo, separadas por
+// "|" — útil quando o mesmo produto aparece em anúncios com títulos bem
+// diferentes do nome/SKU interno (ex: um SKU "GPAN BRANCO" mas o anúncio
+// da ML se chama "Kit Gancho Para Box Vidro..."). Basta UMA das frases
+// bater (substring ou todas as palavras significativas presentes) pra
+// considerar correspondência.
 function textoCorresponde(referencia: string, tituloOuSku: string): boolean {
   const alvo = normalize(tituloOuSku);
-  const ref = normalize(referencia);
-  if (!alvo || !ref) return false;
-  if (alvo.includes(ref) || ref.includes(alvo)) return true;
+  if (!alvo) return false;
 
-  const palavrasRef = palavrasSignificativas(referencia);
-  if (palavrasRef.length === 0) return false;
-  const tokensAlvo = new Set(alvo.split(" "));
-  return palavrasRef.every((p) => tokensAlvo.has(p));
+  const frases = referencia
+    .split("|")
+    .map((f) => f.trim())
+    .filter(Boolean);
+
+  return frases.some((frase) => {
+    const ref = normalize(frase);
+    if (!ref) return false;
+    if (alvo.includes(ref) || ref.includes(alvo)) return true;
+
+    const palavrasRef = palavrasSignificativas(frase);
+    if (palavrasRef.length === 0) return false;
+    const tokensAlvo = new Set(alvo.split(" "));
+    return palavrasRef.every((p) => tokensAlvo.has(p));
+  });
 }
 
 function correspondeAoItem(placa: PlacaRow, tituloOuSku: string): boolean {
