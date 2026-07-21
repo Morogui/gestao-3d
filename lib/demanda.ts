@@ -29,11 +29,47 @@ function normalize(s: string): string {
     .trim();
 }
 
-function correspondeAoItem(placa: PlacaRow, tituloOuSku: string): boolean {
+// Palavras curtas/de ligação que não ajudam a identificar o produto — se
+// entrassem na comparação por token, dariam falso positivo fácil demais
+// (ex: "de" aparece em quase todo título de anúncio).
+const STOPWORDS = new Set([
+  "de", "da", "do", "das", "dos", "e", "com", "sem", "para", "pra", "um",
+  "uma", "uns", "umas", "no", "na", "nos", "nas", "os", "as", "por", "em",
+  "a", "o",
+]);
+
+function palavrasSignificativas(s: string): string[] {
+  return normalize(s)
+    .split(" ")
+    .filter((w) => w.length >= 3 && !STOPWORDS.has(w));
+}
+
+// Testa se o texto de referência da placa (SKU/kit interno ou nome
+// comercial) "aparece" no título/SKU do pedido. Duas estratégias, da mais
+// pra menos estrita:
+// 1) Substring literal (rápido, sem falso positivo, mas exige que o
+//    texto apareça na mesma ordem/forma — funciona bem pra SKUs internos).
+// 2) Todas as palavras significativas do texto de referência aparecem
+//    como token inteiro em algum lugar do título (mais tolerante a
+//    reordenação/marketing do anúncio, ex: "Suporte Universal" batendo em
+//    "Suporte Universal Multiuso Organizador Parede Branco").
+function textoCorresponde(referencia: string, tituloOuSku: string): boolean {
   const alvo = normalize(tituloOuSku);
-  const nomePlaca = normalize(placa.skuOuKit);
-  if (!alvo || !nomePlaca) return false;
-  return alvo.includes(nomePlaca) || nomePlaca.includes(alvo);
+  const ref = normalize(referencia);
+  if (!alvo || !ref) return false;
+  if (alvo.includes(ref) || ref.includes(alvo)) return true;
+
+  const palavrasRef = palavrasSignificativas(referencia);
+  if (palavrasRef.length === 0) return false;
+  const tokensAlvo = new Set(alvo.split(" "));
+  return palavrasRef.every((p) => tokensAlvo.has(p));
+}
+
+function correspondeAoItem(placa: PlacaRow, tituloOuSku: string): boolean {
+  return (
+    textoCorresponde(placa.skuOuKit, tituloOuSku) ||
+    textoCorresponde(placa.nome, tituloOuSku)
+  );
 }
 
 export interface DemandaPlaca {
@@ -63,14 +99,35 @@ export interface SkuPlacaEntry {
 }
 export type SkuPlacaMap = Map<string, SkuPlacaEntry[]>;
 
+// Itens vendidos que não bateram com nenhuma placa do catálogo (nem por
+// SKU exato, nem por texto) — ou porque o produto ainda não está
+// cadastrado em Produção, ou porque o SKU customizado do anúncio não
+// bate com o catálogo. Serve pra deixar visível o quanto de venda está
+// "invisível" pro cálculo de demanda, em vez de sumir silenciosamente.
+export interface NaoIdentificado {
+  qtyPeriodo: number;
+  qtyFull: number;
+  amostras: { titulo: string; sku: string; quantity: number; isFull: boolean }[];
+}
+
+export interface ResultadoDemanda {
+  porPlaca: Map<number, DemandaPlaca>;
+  naoIdentificado: NaoIdentificado;
+}
+
 export function calcularDemandaSemanal(
   orders: OrderSummary[],
   placas: PlacaRow[],
   skuPlacaMap: SkuPlacaMap = new Map(),
   diasNoPeriodo: number = 7
-): Map<number, DemandaPlaca> {
+): ResultadoDemanda {
   const vendidoPorPlaca = new Map<number, number>();
   const vendidoFullPorPlaca = new Map<number, number>();
+  const naoIdentificado: NaoIdentificado = {
+    qtyPeriodo: 0,
+    qtyFull: 0,
+    amostras: [],
+  };
 
   const somar = (placaId: number, qty: number, isFull: boolean) => {
     vendidoPorPlaca.set(placaId, (vendidoPorPlaca.get(placaId) ?? 0) + qty);
@@ -89,11 +146,11 @@ export function calcularDemandaSemanal(
       // catálogo sku_placa. Tem prioridade sobre o texto — é preciso,
       // já lida com kits (pecas_por_unidade) e com pares corpo+gancho
       // sem duplicar nem perder venda por causa de variação de cor.
-      let casouExato = false;
+      let casou = false;
       if (item.hasCustomSku) {
         const entradas = skuPlacaMap.get(normalize(item.sku));
         if (entradas && entradas.length > 0) {
-          casouExato = true;
+          casou = true;
           for (const entrada of entradas) {
             somar(
               entrada.placaId,
@@ -104,23 +161,40 @@ export function calcularDemandaSemanal(
         }
       }
 
-      // 2) Fallback por texto (título do anúncio / sku_ou_kit da placa),
-      // só usado quando não achou casamento exato — placa ainda não
-      // cadastrada em sku_placa, ou pedido sem SKU customizado na ML.
-      if (!casouExato) {
+      // 2) Fallback por texto (título do anúncio / SKU vs. sku_ou_kit ou
+      // nome comercial da placa), só usado quando não achou casamento
+      // exato — placa ainda não cadastrada em sku_placa, ou pedido sem
+      // SKU customizado na ML.
+      if (!casou) {
         for (const placa of placas) {
           if (
             correspondeAoItem(placa, item.title) ||
             (item.hasCustomSku && correspondeAoItem(placa, item.sku))
           ) {
+            casou = true;
             somar(placa.id, item.quantity, isFull);
           }
+        }
+      }
+
+      // 3) Nada bateu — registra como não identificado em vez de
+      // simplesmente sumir da conta.
+      if (!casou) {
+        naoIdentificado.qtyPeriodo += item.quantity;
+        if (isFull) naoIdentificado.qtyFull += item.quantity;
+        if (naoIdentificado.amostras.length < 20) {
+          naoIdentificado.amostras.push({
+            titulo: item.title,
+            sku: item.hasCustomSku ? item.sku : "",
+            quantity: item.quantity,
+            isFull,
+          });
         }
       }
     }
   }
 
-  const resultado = new Map<number, DemandaPlaca>();
+  const porPlaca = new Map<number, DemandaPlaca>();
   for (const placa of placas) {
     const qtyVendidaPeriodo = vendidoPorPlaca.get(placa.id) ?? 0;
     const qtyVendidaFull = vendidoFullPorPlaca.get(placa.id) ?? 0;
@@ -128,7 +202,7 @@ export function calcularDemandaSemanal(
     // Meta = 1 semana no ritmo atual + 1 semana extra de reforço (2x).
     const recomendadoEstoque = Math.ceil(mediaSemanal * 2);
     const aProduzir = Math.max(0, recomendadoEstoque - placa.estoque);
-    resultado.set(placa.id, {
+    porPlaca.set(placa.id, {
       placaId: placa.id,
       qtyVendidaPeriodo,
       qtyVendidaFull,
@@ -138,5 +212,5 @@ export function calcularDemandaSemanal(
     });
   }
 
-  return resultado;
+  return { porPlaca, naoIdentificado };
 }

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getOrders, getOrdersRange, OrdersResult } from "@/lib/ml-orders";
 import { formatBRL } from "@/lib/custo";
 import { labelOrderStatus } from "@/lib/mercadolivre";
@@ -30,27 +31,100 @@ function ConnectCard({ erro }: { erro?: string }) {
   );
 }
 
-function DateFilter({ selectedDay }: { selectedDay: string }) {
+function quickBtnClass(active: boolean): string {
   return (
-    <form className="flex items-center gap-2" method="GET">
-      <label htmlFor="data" className="text-xs font-medium text-gray-500">
-        Data
-      </label>
-      <input
-        type="date"
-        id="data"
-        name="data"
-        defaultValue={selectedDay}
-        max={todaySP()}
-        className="rounded-md border border-gray-300 px-2 py-1 text-sm"
-      />
-      <button
-        type="submit"
-        className="rounded-md bg-gray-900 px-3 py-1 text-sm font-medium text-white hover:bg-gray-700"
-      >
-        Buscar
-      </button>
-    </form>
+    "rounded-md px-3 py-1 text-sm font-medium " +
+    (active
+      ? "bg-gray-900 text-white"
+      : "border border-gray-300 text-gray-700 hover:bg-gray-50")
+  );
+}
+
+// Filtro de período — 3 atalhos (Hoje/Ontem/Semana) como links simples
+// (funcionam sem JS, é só navegação com query params) + um formulário
+// De/Até pra intervalo customizado. O seletor de Plataforma já vem
+// pronto pra quando a Shopee entrar — hoje só Mercado Livre funciona.
+function RangeFilter({
+  de,
+  ate,
+  plataforma,
+}: {
+  de: string;
+  ate: string;
+  plataforma: string;
+}) {
+  const hoje = todaySP();
+  const ontem = diasAtras(hoje, 1);
+  const semanaInicio = diasAtras(hoje, 6);
+
+  const isHoje = de === hoje && ate === hoje;
+  const isOntem = de === ontem && ate === ontem;
+  const isSemana = de === semanaInicio && ate === hoje;
+
+  const hrefAtalho = (deQ: string, ateQ: string) =>
+    `/vendas?de=${deQ}&ate=${ateQ}&plataforma=${plataforma}`;
+
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+      <div className="flex gap-1.5">
+        <Link href={hrefAtalho(hoje, hoje)} className={quickBtnClass(isHoje)}>
+          Hoje
+        </Link>
+        <Link href={hrefAtalho(ontem, ontem)} className={quickBtnClass(isOntem)}>
+          Ontem
+        </Link>
+        <Link
+          href={hrefAtalho(semanaInicio, hoje)}
+          className={quickBtnClass(isSemana)}
+        >
+          Semana
+        </Link>
+      </div>
+      <form className="flex flex-wrap items-center gap-2" method="GET">
+        <label htmlFor="de" className="text-xs font-medium text-gray-500">
+          De
+        </label>
+        <input
+          type="date"
+          id="de"
+          name="de"
+          defaultValue={de}
+          max={hoje}
+          className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+        />
+        <label htmlFor="ate" className="text-xs font-medium text-gray-500">
+          Até
+        </label>
+        <input
+          type="date"
+          id="ate"
+          name="ate"
+          defaultValue={ate}
+          max={hoje}
+          className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+        />
+        <label htmlFor="plataforma" className="text-xs font-medium text-gray-500">
+          Plataforma
+        </label>
+        <select
+          id="plataforma"
+          name="plataforma"
+          defaultValue={plataforma}
+          className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+        >
+          <option value="ml">Mercado Livre</option>
+          <option value="shopee" disabled>
+            Shopee (em breve)
+          </option>
+        </select>
+        <button
+          type="submit"
+          className="rounded-md bg-gray-900 px-3 py-1 text-sm font-medium text-white hover:bg-gray-700"
+        >
+          Buscar
+        </button>
+      </form>
+    </div>
   );
 }
 
@@ -77,11 +151,27 @@ function ResumoCard({ label, pedidos, faturamento }: { label: string; pedidos: n
 export default async function VendasPage({
   searchParams,
 }: {
-  searchParams: { erro?: string; data?: string };
+  searchParams: { erro?: string; de?: string; ate?: string; plataforma?: string };
 }) {
   const hoje = todaySP();
-  const selectedDay = searchParams.data || hoje;
-  const result = await getOrders(selectedDay);
+  const plataforma = searchParams.plataforma === "shopee" ? "shopee" : "ml";
+  const de = searchParams.de || hoje;
+  const ate = searchParams.ate || hoje;
+
+  // Shopee ainda não está integrado (sem credenciais/OAuth configurados) —
+  // o seletor já existe na UI, só falta ligar quando tivermos a conta.
+  if (plataforma === "shopee") {
+    return (
+      <div className="flex flex-col gap-4">
+        <RangeFilter de={de} ate={ate} plataforma={plataforma} />
+        <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
+          Integração com Shopee ainda não está disponível — em breve.
+        </div>
+      </div>
+    );
+  }
+
+  const result = await getOrdersRange(de, ate);
 
   if (!result.connected) {
     return <ConnectCard erro={searchParams.erro} />;
@@ -94,21 +184,25 @@ export default async function VendasPage({
   }
 
   // Resumo do dia/semana/mês — sempre relativo a hoje, independente do
-  // filtro de data usado na tabela detalhada abaixo. Reaproveita a
-  // consulta já feita se o filtro estiver em "hoje", pra não duplicar
-  // chamada à API da ML.
+  // filtro usado na tabela detalhada abaixo. Reaproveita a consulta já
+  // feita quando o filtro coincide com um desses períodos, pra não
+  // duplicar chamada à API da ML.
   const semanaInicio = diasAtras(hoje, 6);
   const mesInicio = inicioDoMes(hoje);
+  const isRangeHoje = de === hoje && ate === hoje;
+  const isRangeSemana = de === semanaInicio && ate === hoje;
+  const isRangeMes = de === mesInicio && ate === hoje;
   const [resultDia, resultSemana, resultMes] = await Promise.all([
-    selectedDay === hoje ? Promise.resolve(result) : getOrders(hoje),
-    getOrdersRange(semanaInicio, hoje),
-    getOrdersRange(mesInicio, hoje),
+    isRangeHoje ? Promise.resolve(result) : getOrders(hoje),
+    isRangeSemana ? Promise.resolve(result) : getOrdersRange(semanaInicio, hoje),
+    isRangeMes ? Promise.resolve(result) : getOrdersRange(mesInicio, hoje),
   ]);
   const resumoDia = resumoStats(resultDia);
   const resumoSemana = resumoStats(resultSemana);
   const resumoMes = resumoStats(resultMes);
 
-  const dataFormatada = formatDiaBR(selectedDay);
+  const rotuloPeriodo =
+    de === ate ? formatDiaBR(de) : `${formatDiaBR(de)} até ${formatDiaBR(ate)}`;
 
   const resumo = (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -126,10 +220,10 @@ export default async function VendasPage({
           <h2 className="text-sm font-semibold text-gray-900">
             Pedidos — Mercado Livre
           </h2>
-          <DateFilter selectedDay={selectedDay} />
+          <RangeFilter de={de} ate={ate} plataforma={plataforma} />
         </div>
         <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
-          Nenhum pedido em {dataFormatada}.
+          Nenhum pedido em {rotuloPeriodo}.
         </div>
       </div>
     );
@@ -138,15 +232,15 @@ export default async function VendasPage({
   return (
     <div className="flex flex-col gap-4">
       {resumo}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-sm font-semibold text-gray-900">
-          Pedidos — Mercado Livre — {dataFormatada}
+          Pedidos — Mercado Livre — {rotuloPeriodo}
         </h2>
         <div className="flex items-center gap-4">
           <span className="text-xs text-gray-500">
             {result.orders.length} pedido(s)
           </span>
-          <DateFilter selectedDay={selectedDay} />
+          <RangeFilter de={de} ate={ate} plataforma={plataforma} />
         </div>
       </div>
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">

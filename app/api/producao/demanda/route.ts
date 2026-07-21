@@ -77,7 +77,7 @@ export async function GET() {
 
   // Base de 30 dias — define o ritmo semanal e a meta de estoque (ver
   // lib/demanda.ts). aProduzir e recomendadoEstoque vêm daqui.
-  const demandaBase = calcularDemandaSemanal(
+  const { porPlaca: demandaBase, naoIdentificado } = calcularDemandaSemanal(
     result.orders,
     placas,
     skuPlacaMap,
@@ -90,7 +90,8 @@ export async function GET() {
   const orders7d = result.orders.filter(
     (o) => new Date(o.dateCreated) >= seteDiasAtrasDate
   );
-  const demandaSemana = calcularDemandaSemanal(orders7d, placas, skuPlacaMap, 7);
+  const { porPlaca: demandaSemana, naoIdentificado: naoIdentificadoSemana } =
+    calcularDemandaSemanal(orders7d, placas, skuPlacaMap, 7);
 
   const demandaFinal = placas.map((placa) => {
     const base = demandaBase.get(placa.id)!;
@@ -104,5 +105,12 @@ export async function GET() {
     periodo: { inicio, fim: hoje },
     totalPedidos: result.orders.length,
     demanda: demandaFinal,
+    // Vendas (30 dias) que não bateram com nenhuma placa do catálogo —
+    // produto ainda não cadastrado em Produção ou SKU sem
+    // correspondência. qtyFull aqui é sobre os 30 dias; naoIdentificadoSemana
+    // é a mesma conta só pros últimos 7 dias (compatível com o card de
+    // Full da semana).
+    naoIdentificado,
+    naoIdentificadoSemana,
   });
 }

@@ -195,6 +195,31 @@ export default function ProducaoPage() {
         </p>
       </div>
 
+      {(demanda?.naoIdentificadoSemana?.qtyPeriodo ?? 0) > 0 && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+          <p className="font-semibold">
+            {demanda?.naoIdentificadoSemana?.qtyPeriodo} peça(s) vendida(s) nos
+            últimos 7 dias não bateram com nenhuma placa do catálogo
+            {(demanda?.naoIdentificadoSemana?.qtyFull ?? 0) > 0 &&
+              ` (${demanda?.naoIdentificadoSemana?.qtyFull} no Full)`}
+            .
+          </p>
+          <p className="mt-1 text-red-800">
+            Ou o produto ainda não está cadastrado em Produção, ou o anúncio da
+            ML não tem um SKU customizado que bata com o catálogo. Esses itens
+            NÃO entram nas contas de demanda/Full acima. Exemplos:
+          </p>
+          <ul className="mt-2 list-disc space-y-0.5 pl-5">
+            {demanda?.naoIdentificadoSemana?.amostras.slice(0, 8).map((a, i) => (
+              <li key={i}>
+                {a.titulo} {a.sku && `(SKU: ${a.sku})`} — {a.quantity}x
+                {a.isFull ? " · Full" : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <section>
         <h2 className="mb-3 text-sm font-semibold text-gray-900">Impressoras</h2>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">

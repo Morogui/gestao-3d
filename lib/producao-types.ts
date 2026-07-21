@@ -39,10 +39,18 @@ export interface DemandaPlacaRow {
   aProduzir: number;
 }
 
+export interface NaoIdentificadoRow {
+  qtyPeriodo: number;
+  qtyFull: number;
+  amostras: { titulo: string; sku: string; quantity: number; isFull: boolean }[];
+}
+
 export interface DemandaResult {
   connected: boolean;
   error?: boolean;
   periodo?: { inicio: string; fim: string };
   totalPedidos?: number;
   demanda?: DemandaPlacaRow[];
+  naoIdentificado?: NaoIdentificadoRow;
+  naoIdentificadoSemana?: NaoIdentificadoRow;
 }
