@@ -1,7 +1,7 @@
-import { getOrders } from "@/lib/ml-orders";
+import { getOrders, getOrdersRange, OrdersResult } from "@/lib/ml-orders";
 import { formatBRL } from "@/lib/custo";
 import { labelOrderStatus } from "@/lib/mercadolivre";
-import { todaySP, formatDiaBR } from "@/lib/date";
+import { todaySP, formatDiaBR, diasAtras, inicioDoMes } from "@/lib/date";
 import ItemThumbnail from "@/components/ItemThumbnail";
 
 export const dynamic = "force-dynamic";
@@ -54,12 +54,33 @@ function DateFilter({ selectedDay }: { selectedDay: string }) {
   );
 }
 
+// Extrai contagem de pedidos + faturamento total de um resultado de
+// pedidos, tolerante a estados de erro/desconectado (fica em 0/0).
+function resumoStats(result: OrdersResult): { pedidos: number; faturamento: number } {
+  if (!result.connected || result.error) return { pedidos: 0, faturamento: 0 };
+  return {
+    pedidos: result.orders.length,
+    faturamento: result.orders.reduce((soma, o) => soma + o.totalAmount, 0),
+  };
+}
+
+function ResumoCard({ label, pedidos, faturamento }: { label: string; pedidos: number; faturamento: number }) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <p className="text-xs text-gray-500">{label}</p>
+      <p className="text-xl font-semibold text-gray-900">{formatBRL(faturamento)}</p>
+      <p className="text-xs text-gray-400">{pedidos} pedido(s)</p>
+    </div>
+  );
+}
+
 export default async function VendasPage({
   searchParams,
 }: {
   searchParams: { erro?: string; data?: string };
 }) {
-  const selectedDay = searchParams.data || todaySP();
+  const hoje = todaySP();
+  const selectedDay = searchParams.data || hoje;
   const result = await getOrders(selectedDay);
 
   if (!result.connected) {
@@ -72,11 +93,35 @@ export default async function VendasPage({
     );
   }
 
+  // Resumo do dia/semana/mês — sempre relativo a hoje, independente do
+  // filtro de data usado na tabela detalhada abaixo. Reaproveita a
+  // consulta já feita se o filtro estiver em "hoje", pra não duplicar
+  // chamada à API da ML.
+  const semanaInicio = diasAtras(hoje, 6);
+  const mesInicio = inicioDoMes(hoje);
+  const [resultDia, resultSemana, resultMes] = await Promise.all([
+    selectedDay === hoje ? Promise.resolve(result) : getOrders(hoje),
+    getOrdersRange(semanaInicio, hoje),
+    getOrdersRange(mesInicio, hoje),
+  ]);
+  const resumoDia = resumoStats(resultDia);
+  const resumoSemana = resumoStats(resultSemana);
+  const resumoMes = resumoStats(resultMes);
+
   const dataFormatada = formatDiaBR(selectedDay);
+
+  const resumo = (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <ResumoCard label="Vendas de hoje" pedidos={resumoDia.pedidos} faturamento={resumoDia.faturamento} />
+      <ResumoCard label="Vendas na semana (últimos 7 dias)" pedidos={resumoSemana.pedidos} faturamento={resumoSemana.faturamento} />
+      <ResumoCard label="Vendas no mês" pedidos={resumoMes.pedidos} faturamento={resumoMes.faturamento} />
+    </div>
+  );
 
   if (result.orders.length === 0) {
     return (
       <div className="flex flex-col gap-4">
+        {resumo}
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-900">
             Pedidos — Mercado Livre
@@ -92,6 +137,7 @@ export default async function VendasPage({
 
   return (
     <div className="flex flex-col gap-4">
+      {resumo}
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-gray-900">
           Pedidos — Mercado Livre — {dataFormatada}

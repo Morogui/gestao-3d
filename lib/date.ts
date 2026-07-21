@@ -10,3 +10,16 @@ export function todaySP(): string {
 export function formatDiaBR(day: string): string {
   return new Date(`${day}T12:00:00-03:00`).toLocaleDateString("pt-BR");
 }
+
+// "N dias atrás" a partir de um dia (YYYY-MM-DD), fuso São Paulo. Usado
+// pra montar janelas de resumo (ex: últimos 7 dias = diasAtras(hoje, 6)).
+export function diasAtras(day: string, n: number): string {
+  const d = new Date(`${day}T12:00:00-03:00`);
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+// Primeiro dia do mês de um dia de referência (YYYY-MM-DD).
+export function inicioDoMes(day: string): string {
+  return `${day.slice(0, 7)}-01`;
+}

@@ -20,6 +20,7 @@ import ProdutosTable from "./ProdutosTable";
 
 const EMPTY_FORM: Omit<ProdutoInput, "id"> = {
   nome: "",
+  sku: "",
   pesoPlacaG: 0,
   tempoPlacaH: 0,
   pecasNaPlaca: 1,
@@ -178,6 +179,11 @@ export default function CustoCalculator() {
               value={form.nome}
               onChange={(v) => updateForm("nome", v)}
               required
+            />
+            <TextField
+              label="SKU (opcional)"
+              value={form.sku}
+              onChange={(v) => updateForm("sku", v)}
             />
             <NumberField
               label="Peso da placa (g)"

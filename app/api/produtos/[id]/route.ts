@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 type ProdutoRow = {
   id: number;
   nome: string;
+  sku: string | null;
   peso_placa_g: string;
   tempo_placa_h: string;
   pecas_na_placa: string;
@@ -16,6 +17,7 @@ function toProdutoInput(row: ProdutoRow): ProdutoInput {
   return {
     id: String(row.id),
     nome: row.nome,
+    sku: row.sku ?? "",
     pesoPlacaG: Number(row.peso_placa_g),
     tempoPlacaH: Number(row.tempo_placa_h),
     pecasNaPlaca: Number(row.pecas_na_placa),
@@ -32,7 +34,7 @@ export async function PUT(
   }
 
   const body = await request.json();
-  const { nome, pesoPlacaG, tempoPlacaH, pecasNaPlaca } = body as Omit<
+  const { nome, sku, pesoPlacaG, tempoPlacaH, pecasNaPlaca } = body as Omit<
     ProdutoInput,
     "id"
   >;
@@ -40,11 +42,12 @@ export async function PUT(
   const rows = (await sql`
     UPDATE produtos
     SET nome = ${nome},
+        sku = ${sku || null},
         peso_placa_g = ${pesoPlacaG},
         tempo_placa_h = ${tempoPlacaH},
         pecas_na_placa = ${pecasNaPlaca}
     WHERE id = ${id}
-    RETURNING id, nome, peso_placa_g, tempo_placa_h, pecas_na_placa
+    RETURNING id, nome, sku, peso_placa_g, tempo_placa_h, pecas_na_placa
   `) as ProdutoRow[];
 
   if (rows.length === 0) {

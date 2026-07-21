@@ -30,6 +30,7 @@ export default function ProdutosTable({
         <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
           <tr>
             <th className="px-4 py-3">Produto</th>
+            <th className="px-4 py-3">SKU</th>
             <th className="px-4 py-3 text-right">Peso placa (g)</th>
             <th className="px-4 py-3 text-right">Tempo (h)</th>
             <th className="px-4 py-3 text-right">Peças/placa</th>
@@ -45,6 +46,7 @@ export default function ProdutosTable({
                 <td className="px-4 py-3 font-medium text-gray-900">
                   {produto.nome}
                 </td>
+                <td className="px-4 py-3 text-gray-500">{produto.sku || "—"}</td>
                 <td className="px-4 py-3 text-right">{produto.pesoPlacaG}</td>
                 <td className="px-4 py-3 text-right">{produto.tempoPlacaH}</td>
                 <td className="px-4 py-3 text-right">{produto.pecasNaPlaca}</td>

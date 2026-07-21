@@ -96,12 +96,19 @@ async function fetchItemDetails(
   // "attributes" aqui de propósito — pedir só alguns campos às vezes faz
   // a ML omitir a foto da resposta; buscando o item inteiro garantimos
   // que thumbnail/secure_thumbnail/pictures venham preenchidos.
+  //
+  // IMPORTANTE: esse endpoint é chamado SEM o token do vendedor. Dados
+  // de catálogo (foto, título) são públicos na ML; mandar o
+  // Authorization aqui é o que disparava 403
+  // PA_UNAUTHORIZED_RESULT_FROM_POLICIES, porque o app não tem o escopo
+  // "Publicação e sincronização" — sem o header, a ML trata como
+  // consulta pública e devolve os dados normalmente.
   for (let i = 0; i < uniqueIds.length; i += 20) {
     const batch = uniqueIds.slice(i, i + 20);
     try {
       const resp = await fetch(
         `${ML_API_BASE}/items?ids=${batch.join(",")}`,
-        { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" }
+        { cache: "no-store" }
       );
       if (!resp.ok) {
         const bodyText = await resp.text().catch(() => "");

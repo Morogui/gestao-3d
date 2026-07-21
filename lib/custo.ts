@@ -35,6 +35,8 @@ export interface ProdutoInput {
   id: string;
   /** nome ou código do produto — serve como identificador para busca/filtro */
   nome: string;
+  /** SKU do produto (opcional) — pra identificar/cruzar com vendas */
+  sku: string;
   /** peso da placa inteira, em gramas */
   pesoPlacaG: number;
   /** tempo de impressão da placa, em horas */
