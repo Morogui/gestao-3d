@@ -1,16 +1,32 @@
 import Link from "next/link";
-import { cookies } from "next/headers";
 import {
-  getOrdersRange,
+  getOrdersRange as getOrdersRangeML,
   getDailyTotalsRange,
   OrdersResult,
   OrderSummary,
+  DailyTotalsResult,
 } from "@/lib/ml-orders";
+import { getOrdersRange as getOrdersRangeShopee } from "@/lib/shopee-orders";
 import { formatBRL } from "@/lib/custo";
 import { labelOrderStatus } from "@/lib/mercadolivre";
+import { labelShopeeOrderStatus } from "@/lib/shopee";
 import { todaySP, formatDiaBR, diasAtras, inicioDoMes } from "@/lib/date";
 import ItemThumbnail from "@/components/ItemThumbnail";
 import VendasTabSwitch from "@/components/VendasTabSwitch";
+
+// Busca pedidos na plataforma certa — ML e Shopee devolvem o mesmo
+// formato (OrdersResult/OrderSummary), então todo o resto da tela
+// (resumo, ranking, cálculo de demanda) não precisa saber de qual
+// plataforma veio.
+function buscarPedidos(
+  plataforma: string,
+  de: string,
+  ate: string
+): Promise<OrdersResult> {
+  return plataforma === "shopee"
+    ? getOrdersRangeShopee(de, ate)
+    : getOrdersRangeML(de, ate);
+}
 
 export const dynamic = "force-dynamic";
 
@@ -46,8 +62,6 @@ function ShopeeConnectCard({ erro }: { erro?: string }) {
       </p>
       <p className="mb-4 text-sm text-gray-500">
         Pra puxar os pedidos automaticamente, autorize o acesso à sua loja.
-        (Por enquanto rodando em ambiente de teste/sandbox da Shopee — a
-        busca de pedidos de verdade ainda está em construção.)
       </p>
       {erro && (
         <p className="mb-4 text-sm text-red-600">
@@ -75,9 +89,8 @@ function quickBtnClass(active: boolean): string {
 
 // Filtro de período — 3 atalhos (Hoje/Ontem/Semana) como links simples
 // (funcionam sem JS, é só navegação com query params) + um formulário
-// De/Até pra intervalo customizado. O seletor de Plataforma já cobre
-// Mercado Livre e Shopee (Shopee ainda só faz o OAuth — busca de pedidos
-// de verdade é uma próxima etapa).
+// De/Até pra intervalo customizado. O seletor de Plataforma cobre
+// Mercado Livre e Shopee — as duas já buscam pedidos de verdade.
 function RangeFilter({
   de,
   ate,
@@ -333,7 +346,7 @@ function RankingProdutosTable({ ranking }: { ranking: RankingProduto[] }) {
               <td className="px-4 py-3">
                 <p className="text-gray-900">{r.titulo}</p>
                 <p className="text-xs text-gray-400">
-                  {r.sku ? `SKU: ${r.sku}` : `ID ML: ${r.itemId}`}
+                  {r.sku ? `SKU: ${r.sku}` : `ID: ${r.itemId}`}
                 </p>
               </td>
               <td className="px-4 py-3 text-right text-gray-500">{r.pedidos}</td>
@@ -366,45 +379,26 @@ export default async function VendasPage({
   const de = searchParams.de || hoje;
   const ate = searchParams.ate || hoje;
 
-  // Shopee: OAuth já configurado (app "MOROLAR" no Shopee Open Platform,
-  // ambiente sandbox por enquanto). A busca de pedidos de verdade
-  // (equivalente ao lib/ml-orders.ts) ainda não foi construída — por ora
-  // só validamos a conexão e mostramos o botão de autorizar.
-  if (plataforma === "shopee") {
-    const cookieStore = cookies();
-    const shopeeConnected = Boolean(
-      cookieStore.get("shopee_access_token")?.value
-    );
-
-    if (!shopeeConnected) {
-      return (
-        <div className="flex flex-col gap-4">
-          <RangeFilter de={de} ate={ate} plataforma={plataforma} />
-          <ShopeeConnectCard erro={searchParams.erro} />
-        </div>
-      );
-    }
-
-    return (
-      <div className="flex flex-col gap-4">
-        <RangeFilter de={de} ate={ate} plataforma={plataforma} />
-        <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
-          Conectado com a Shopee! A busca de pedidos ainda está em
-          construção — assim que tivermos isso pronto, os pedidos aparecem
-          aqui igual à aba do Mercado Livre.
-        </div>
-      </div>
-    );
-  }
-
-  const result = await getOrdersRange(de, ate);
+  const result = await buscarPedidos(plataforma, de, ate);
 
   if (!result.connected) {
-    return <ConnectCard erro={searchParams.erro} />;
+    return plataforma === "shopee" ? (
+      <div className="flex flex-col gap-4">
+        <RangeFilter de={de} ate={ate} plataforma={plataforma} />
+        <ShopeeConnectCard erro={searchParams.erro} />
+      </div>
+    ) : (
+      <ConnectCard erro={searchParams.erro} />
+    );
   }
 
   if (result.error) {
-    return (
+    return plataforma === "shopee" ? (
+      <div className="flex flex-col gap-4">
+        <RangeFilter de={de} ate={ate} plataforma={plataforma} />
+        <ShopeeConnectCard erro="sessão expirada, reconecte" />
+      </div>
+    ) : (
       <ConnectCard erro="sessão expirada, reconecte" />
     );
   }
@@ -420,10 +414,16 @@ export default async function VendasPage({
   const noventaDiasInicio = diasAtras(hoje, 89);
   const isRangeSemana = de === semanaInicio && ate === hoje;
   const isRangeMes = de === mesInicio && ate === hoje;
+  // Recorde da loja (90 dias) usa uma busca leve dedicada
+  // (getDailyTotalsRange) que só existe pra ML por enquanto — a Shopee
+  // ainda não tem esse atalho, então esse card fica "sem dados" nessa
+  // plataforma pra não pesar a página com 90 dias de detalhes completos.
   const [resultSemana, resultMes, recorde90d] = await Promise.all([
-    isRangeSemana ? Promise.resolve(result) : getOrdersRange(semanaInicio, hoje),
-    isRangeMes ? Promise.resolve(result) : getOrdersRange(mesInicio, hoje),
-    getDailyTotalsRange(noventaDiasInicio, hoje),
+    isRangeSemana ? Promise.resolve(result) : buscarPedidos(plataforma, semanaInicio, hoje),
+    isRangeMes ? Promise.resolve(result) : buscarPedidos(plataforma, mesInicio, hoje),
+    plataforma === "ml"
+      ? getDailyTotalsRange(noventaDiasInicio, hoje)
+      : Promise.resolve({ connected: false } as DailyTotalsResult),
   ]);
   const resumoSelecionado = resumoStats(result);
   const resumoSemana = resumoStats(resultSemana);
@@ -462,7 +462,16 @@ export default async function VendasPage({
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <RecordeDiaCard label="Recorde do mês (melhor dia)" melhorDia={melhorDiaMes} />
-        <RecordeDiaCard label="Recorde da loja (melhor dia, últimos 90 dias)" melhorDia={melhorDia90d} />
+        {plataforma === "ml" ? (
+          <RecordeDiaCard
+            label="Recorde da loja (melhor dia, últimos 90 dias)"
+            melhorDia={melhorDia90d}
+          />
+        ) : (
+          <div className="rounded-lg border border-dashed border-gray-300 bg-white p-4 text-xs text-gray-400">
+            Recorde de 90 dias ainda não disponível pra Shopee.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -473,7 +482,8 @@ export default async function VendasPage({
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-sm font-semibold text-gray-900">
-          Pedidos — Mercado Livre — {rotuloPeriodo}
+          Pedidos — {plataforma === "shopee" ? "Shopee" : "Mercado Livre"} —{" "}
+          {rotuloPeriodo}
         </h2>
         <div className="flex items-center gap-4">
           <span className="text-xs text-gray-500">
@@ -529,7 +539,7 @@ export default async function VendasPage({
                               {item.title} x{item.quantity}
                             </p>
                             <p className="truncate text-xs text-gray-400">
-                              {item.hasCustomSku ? "SKU" : "ID ML"}: {item.sku}
+                              {item.hasCustomSku ? "SKU" : "ID"}: {item.sku}
                             </p>
                             {/* DEBUG temporário — remover depois de achar a causa da foto sumida */}
                             {!item.thumbnail && (
@@ -545,7 +555,11 @@ export default async function VendasPage({
                   <td className="px-4 py-3 text-right font-semibold text-gray-900">
                     {formatBRL(order.totalAmount)}
                   </td>
-                  <td className="px-4 py-3">{labelOrderStatus(order.status)}</td>
+                  <td className="px-4 py-3">
+                    {plataforma === "shopee"
+                      ? labelShopeeOrderStatus(order.status)
+                      : labelOrderStatus(order.status)}
+                  </td>
                   <td className="px-4 py-3">{order.shippingMode}</td>
                 </tr>
               ))}
