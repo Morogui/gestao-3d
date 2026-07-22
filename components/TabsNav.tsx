@@ -8,6 +8,7 @@ const TABS = [
   { href: "/vendas", label: "Vendas" },
   { href: "/producao", label: "Produção" },
   { href: "/estoque", label: "Estoque" },
+  { href: "/full", label: "Full" },
 ];
 
 export default function TabsNav() {
