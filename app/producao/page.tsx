@@ -251,6 +251,31 @@ export default function ProducaoPage() {
         {consumo && <ImpressoManualEditor consumo={consumo} onSalvar={salvarImpressoManualKg} />}
       </section>
 
+      <section>
+        <h2 className="mb-3 text-sm font-semibold text-gray-900">Índice de falhas</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <Card
+            label="Taxa de falha real"
+            value={consumo ? `${consumo.percentualFalha.toFixed(1)}%` : "—"}
+          />
+          <Card
+            label="Peças com falha"
+            value={consumo ? String(consumo.pecasComFalha) : "—"}
+          />
+          <Card
+            label="Peças rodadas (total)"
+            value={consumo ? String(consumo.pecasRodadas) : "—"}
+          />
+        </div>
+        <p className="mt-2 text-xs text-gray-500">
+          Calculado sobre tudo que já foi rodado até hoje (produções concluídas
+          + placas com falha total) — não conta o que está em andamento nem o
+          que foi cancelado. Placa com &quot;falha na placa&quot; conta todas
+          as peças daquela placa como perdidas; produção concluída só conta as
+          peças marcadas em &quot;falha em peça&quot;.
+        </p>
+      </section>
+
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         <p className="font-semibold">Lembrete Full</p>
         <p className="mt-1">
