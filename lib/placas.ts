@@ -14,6 +14,12 @@ export interface PlacaRow {
   tier: "A" | "B" | "C";
   descontinuada: boolean;
   estoque: number;
+  // Peso de filamento gasto por placa impressa, em gramas — usado pra
+  // calcular quanto já foi impresso (aba Produção). Null enquanto o
+  // Guilherme não confirma o valor real (mesmo padrão de "dado ainda não
+  // confirmado" já usado pra tempo/placa e peças/placa nas 14 placas
+  // novas do catálogo).
+  pesoPlacaGramas: number | null;
 }
 
 export interface DbPlacaRow {
@@ -29,6 +35,7 @@ export interface DbPlacaRow {
   tier: string;
   descontinuada: boolean;
   estoque: string;
+  peso_placa_gramas: string | null;
 }
 
 export function toPlacaRow(row: DbPlacaRow): PlacaRow {
@@ -45,6 +52,10 @@ export function toPlacaRow(row: DbPlacaRow): PlacaRow {
     tier: row.tier as PlacaRow["tier"],
     descontinuada: row.descontinuada,
     estoque: Number(row.estoque),
+    pesoPlacaGramas:
+      row.peso_placa_gramas === null || row.peso_placa_gramas === undefined
+        ? null
+        : Number(row.peso_placa_gramas),
   };
 }
 

@@ -54,3 +54,14 @@ export interface DemandaResult {
   naoIdentificado?: NaoIdentificadoRow;
   naoIdentificadoSemana?: NaoIdentificadoRow;
 }
+
+// Consumo de filamento acumulado (desde sempre) — ver
+// app/api/producao/consumo/route.ts pra detalhes de como é calculado.
+export interface ConsumoResult {
+  gramasImpressas: number;
+  gramasDesperdicadas: number;
+  gramasDesperdicadasPlaca: number;
+  gramasDesperdicadasPeca: number;
+  placasSemPeso: number;
+  totalPlacas: number;
+}
