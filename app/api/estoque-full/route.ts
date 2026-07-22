@@ -92,10 +92,18 @@ export async function GET() {
   // ML correspondem a cada placa (reaproveitando o mesmo casamento
   // SKU/texto usado no cálculo de demanda) — é esse item_id que dá
   // acesso ao user_product_id e, a partir dele, ao estoque real no Full.
+  // Guarda também o título/SKU do anúncio de cada item_id, só pra
+  // conseguir mostrar na tela QUAL anúncio da ML gerou aquele número —
+  // sem isso fica impossível conferir o valor no painel da ML.
   const itemIdsPorPlaca = new Map<number, Set<string>>();
+  const infoPorItemId = new Map<string, { titulo: string; sku: string }>();
   for (const order of result.orders) {
     for (const item of order.items) {
       if (!item.itemId || item.itemId === "—") continue;
+      infoPorItemId.set(item.itemId, {
+        titulo: item.title,
+        sku: item.hasCustomSku ? item.sku : "",
+      });
       const placaIds = matchItemToPlacaIds(item, placas, skuPlacaMap);
       for (const placaId of placaIds) {
         const set = itemIdsPorPlaca.get(placaId) ?? new Set<string>();
@@ -107,6 +115,24 @@ export async function GET() {
   const todosItemIds = Array.from(
     new Set(Array.from(itemIdsPorPlaca.values()).flatMap((s) => Array.from(s)))
   );
+
+  // Lista (deduplicada por título) dos anúncios da ML que casaram com
+  // uma placa — exibida na tela pra dar rastreabilidade do número.
+  function anunciosDaPlaca(placaId: number): { titulo: string; sku: string }[] {
+    const itemIds = itemIdsPorPlaca.get(placaId);
+    if (!itemIds) return [];
+    const vistos = new Set<string>();
+    const anuncios: { titulo: string; sku: string }[] = [];
+    for (const itemId of itemIds) {
+      const info = infoPorItemId.get(itemId);
+      if (!info) continue;
+      const chave = info.titulo + "|" + info.sku;
+      if (vistos.has(chave)) continue;
+      vistos.add(chave);
+      anuncios.push(info);
+    }
+    return anuncios;
+  }
 
   const fullStockLookup =
     accessToken && todosItemIds.length > 0
@@ -153,6 +179,9 @@ export async function GET() {
       estoqueLocal: placa.estoque,
       vendidoFull7d,
       estoqueFullAtual,
+      // Anúncio(s) da ML que geraram esse número — pra conferir no
+      // painel da ML que é o produto certo.
+      anuncios: anunciosDaPlaca(placa.id),
       // "api" = lido agora mesmo da ML (mais confiável); "manual" = caiu
       // pro valor que você digitou aqui (sem venda recente pra achar o
       // item, ou conta ainda fora do modelo User Products).
