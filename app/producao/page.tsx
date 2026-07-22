@@ -75,6 +75,15 @@ export default function ProducaoPage() {
     await carregarTudo();
   }
 
+  async function salvarImpressoManualKg(kg: number) {
+    await fetch("/api/producao/consumo", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gramasImpressasManual: Math.max(0, kg) * 1000 }),
+    });
+    await carregarTudo();
+  }
+
   useEffect(() => {
     carregarTudo();
   }, []);
@@ -231,13 +240,15 @@ export default function ProducaoPage() {
         {consumo && consumo.placasSemPeso > 0 && (
           <p className="mt-2 text-xs text-gray-500">
             {consumo.placasSemPeso} de {consumo.totalPlacas} placa(s) ainda sem
-            peso/placa (g) cadastrado — o total impresso acima fica{" "}
-            <span className="font-medium">subestimado</span> até isso ser
+            peso/placa (g) cadastrado — a parte calculada automaticamente do
+            total impresso ({formatGramas(consumo.gramasImpressasCalculadas)})
+            fica <span className="font-medium">subestimada</span> até isso ser
             preenchido. Preencha o campo &quot;Peso/placa (g)&quot; na tabela
             abaixo (usar o peso real de filamento gasto por placa impressa,
             não o peso da peça pronta).
           </p>
         )}
+        {consumo && <ImpressoManualEditor consumo={consumo} onSalvar={salvarImpressoManualKg} />}
       </section>
 
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -480,6 +491,79 @@ function Card({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border border-gray-200 bg-white p-4">
       <p className="text-xs text-gray-500">{label}</p>
       <p className="text-xl font-semibold text-gray-900">{value}</p>
+    </div>
+  );
+}
+
+// Campo pra informar manualmente o total já impresso ANTES do cadastro
+// de peso/placa existir (ex: "eu sei que já gastei uns 40kg de filamento
+// desde que comecei a rodar o sistema") — soma com o que for calculado
+// automaticamente das produções concluídas dali em diante. Guarda em kg
+// na tela (mais prático pra declarar um total histórico) mas converte
+// pra gramas ao salvar, já que é essa a unidade usada no resto do app.
+function ImpressoManualEditor({
+  consumo,
+  onSalvar,
+}: {
+  consumo: ConsumoResult;
+  onSalvar: (kg: number) => void;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState(String(consumo.gramasImpressasManual / 1000));
+  const [salvando, setSalvando] = useState(false);
+
+  if (!editando) {
+    return (
+      <p className="mt-3 text-xs text-gray-500">
+        Total informado manualmente (impresso antes do cadastro de peso/placa):{" "}
+        <span className="font-medium text-gray-700">
+          {formatGramas(consumo.gramasImpressasManual)}
+        </span>{" "}
+        <button
+          onClick={() => {
+            setValor(String(consumo.gramasImpressasManual / 1000));
+            setEditando(true);
+          }}
+          className="text-blue-600 hover:underline"
+        >
+          editar
+        </button>
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-3 flex items-center gap-1.5 text-xs">
+      <span className="text-gray-500">
+        Total já impresso antes do cadastro de peso/placa (kg):
+      </span>
+      <input
+        type="number"
+        min={0}
+        step="0.1"
+        autoFocus
+        value={valor}
+        onChange={(e) => setValor(e.target.value)}
+        className="w-24 rounded border border-gray-300 px-1.5 py-0.5 text-right"
+      />
+      <button
+        disabled={salvando}
+        onClick={async () => {
+          setSalvando(true);
+          try {
+            await onSalvar(Number(valor) || 0);
+            setEditando(false);
+          } finally {
+            setSalvando(false);
+          }
+        }}
+        className="rounded bg-gray-900 px-2 py-0.5 font-medium text-white hover:bg-gray-700 disabled:opacity-40"
+      >
+        Salvar
+      </button>
+      <button onClick={() => setEditando(false)} className="text-gray-400 hover:underline">
+        cancelar
+      </button>
     </div>
   );
 }
