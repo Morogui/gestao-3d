@@ -33,6 +33,7 @@ export default function FullPage() {
   const [linhas, setLinhas] = useState<LinhaFull[]>([]);
   const [periodo, setPeriodo] = useState<{ inicio: string; fim: string } | null>(null);
   const [apiDisponivel, setApiDisponivel] = useState(false);
+  const [userProductSeller, setUserProductSeller] = useState<boolean | null>(null);
   const [busca, setBusca] = useState("");
   const [salvando, setSalvando] = useState<Record<number, boolean>>({});
 
@@ -51,6 +52,7 @@ export default function FullPage() {
       setLinhas(data.linhas);
       setPeriodo(data.periodo);
       setApiDisponivel(Boolean(data.apiDisponivel));
+      setUserProductSeller(data.userProductSeller ?? null);
       setStatus("ready");
     } catch {
       setStatus("erro");
@@ -166,10 +168,28 @@ export default function FullPage() {
           {!apiDisponivel && (
             <>
               {" "}
-              Nenhuma placa retornou leitura via API ainda nesta consulta
-              — pode ser sessão da ML expirada, conta ainda fora do
-              modelo &quot;User Products&quot;, ou nenhuma venda no Full
-              na janela de 7 dias.
+              Nenhuma placa retornou leitura via API ainda nesta consulta.
+              {userProductSeller === false ? (
+                <>
+                  {" "}
+                  Motivo confirmado: sua conta na ML ainda não está no
+                  modelo &quot;User Products&quot; (sem a tag
+                  &quot;user_product_seller&quot;) — enquanto isso não
+                  mudar do lado da ML, os itens não têm user_product_id
+                  e essa leitura automática não tem como funcionar. O
+                  ajuste manual continua sendo o caminho até lá.
+                </>
+              ) : userProductSeller === true ? (
+                <>
+                  {" "}
+                  Sua conta já está no modelo &quot;User Products&quot;,
+                  então pode ser sessão da ML expirada ou nenhuma venda
+                  no Full na janela de 7 dias (sem venda recente não
+                  temos o item pra consultar).
+                </>
+              ) : (
+                <> Pode ser sessão da ML expirada — reconecte na aba Vendas.</>
+              )}
             </>
           )}
         </p>
