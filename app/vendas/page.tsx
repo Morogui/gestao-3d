@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { getOrders, getOrdersRange, OrdersResult } from "@/lib/ml-orders";
+import {
+  getOrdersRange,
+  getDailyTotalsRange,
+  OrdersResult,
+  OrderSummary,
+} from "@/lib/ml-orders";
 import { formatBRL } from "@/lib/custo";
 import { labelOrderStatus } from "@/lib/mercadolivre";
 import { todaySP, formatDiaBR, diasAtras, inicioDoMes } from "@/lib/date";
@@ -181,14 +186,21 @@ function ResumoCard({
   pedidos,
   itensVendidos,
   faturamento,
+  destaque,
 }: {
   label: string;
   pedidos: number;
   itensVendidos: number;
   faturamento: number;
+  destaque?: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
+    <div
+      className={
+        "rounded-lg border bg-white p-4 " +
+        (destaque ? "border-blue-300 ring-1 ring-blue-100" : "border-gray-200")
+      }
+    >
       <p className="text-xs text-gray-500">{label}</p>
       <p className="text-xl font-semibold text-gray-900">{formatBRL(faturamento)}</p>
       <p className="text-xs text-gray-400">
@@ -196,6 +208,64 @@ function ResumoCard({
       </p>
     </div>
   );
+}
+
+// Card de recorde (melhor dia): mostra a data do melhor dia dentro da
+// janela analisada + o valor faturado nele. Usado tanto pro recorde do
+// mês atual (dados já buscados pro card de "Vendas no mês") quanto pro
+// recorde da loja nos últimos 90 dias (busca leve dedicada, sem multiget
+// de itens nem chamada de shipments por pedido).
+function RecordeDiaCard({
+  label,
+  melhorDia,
+}: {
+  label: string;
+  melhorDia: { dia: string; faturamento: number; pedidos: number } | null;
+}) {
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+      <p className="text-xs text-amber-700">{label}</p>
+      {melhorDia ? (
+        <>
+          <p className="text-xl font-semibold text-gray-900">
+            {formatBRL(melhorDia.faturamento)}
+          </p>
+          <p className="text-xs text-amber-700">
+            {formatDiaBR(melhorDia.dia)} · {melhorDia.pedidos} pedido(s)
+          </p>
+        </>
+      ) : (
+        <p className="text-sm text-gray-400">Sem vendas no período</p>
+      )}
+    </div>
+  );
+}
+
+// Acha o dia (YYYY-MM-DD, fuso São Paulo) com maior faturamento dentro de
+// uma lista de pedidos já buscada — evita uma nova chamada à API quando
+// já temos os pedidos do mês em mãos (ver resultMes abaixo).
+function melhorDiaDeOrders(
+  orders: OrderSummary[]
+): { dia: string; faturamento: number; pedidos: number } | null {
+  const porDia = new Map<string, { faturamento: number; pedidos: number }>();
+  for (const o of orders) {
+    const dia = new Date(
+      new Date(o.dateCreated).getTime() - 3 * 60 * 60 * 1000
+    )
+      .toISOString()
+      .slice(0, 10);
+    const atual = porDia.get(dia) ?? { faturamento: 0, pedidos: 0 };
+    atual.faturamento += o.totalAmount;
+    atual.pedidos += 1;
+    porDia.set(dia, atual);
+  }
+  let melhor: { dia: string; faturamento: number; pedidos: number } | null = null;
+  for (const [dia, v] of porDia) {
+    if (!melhor || v.faturamento > melhor.faturamento) {
+      melhor = { dia, ...v };
+    }
+  }
+  return melhor;
 }
 
 export default async function VendasPage({
@@ -251,32 +321,61 @@ export default async function VendasPage({
     );
   }
 
-  // Resumo do dia/semana/mês — sempre relativo a hoje, independente do
-  // filtro usado na tabela detalhada abaixo. Reaproveita a consulta já
-  // feita quando o filtro coincide com um desses períodos, pra não
-  // duplicar chamada à API da ML.
+  // Resumo semana/mês — sempre relativo a hoje, independente do filtro
+  // usado na tabela detalhada abaixo. Reaproveita a consulta já feita
+  // quando o filtro coincide com um desses períodos, pra não duplicar
+  // chamada à API da ML. O card do período selecionado (1º card) usa
+  // `result`, que já é a busca do filtro de data escolhido — por isso
+  // muda junto quando o filtro muda.
   const semanaInicio = diasAtras(hoje, 6);
   const mesInicio = inicioDoMes(hoje);
-  const isRangeHoje = de === hoje && ate === hoje;
+  const noventaDiasInicio = diasAtras(hoje, 89);
   const isRangeSemana = de === semanaInicio && ate === hoje;
   const isRangeMes = de === mesInicio && ate === hoje;
-  const [resultDia, resultSemana, resultMes] = await Promise.all([
-    isRangeHoje ? Promise.resolve(result) : getOrders(hoje),
+  const [resultSemana, resultMes, recorde90d] = await Promise.all([
     isRangeSemana ? Promise.resolve(result) : getOrdersRange(semanaInicio, hoje),
     isRangeMes ? Promise.resolve(result) : getOrdersRange(mesInicio, hoje),
+    getDailyTotalsRange(noventaDiasInicio, hoje),
   ]);
-  const resumoDia = resumoStats(resultDia);
+  const resumoSelecionado = resumoStats(result);
   const resumoSemana = resumoStats(resultSemana);
   const resumoMes = resumoStats(resultMes);
 
   const rotuloPeriodo =
     de === ate ? formatDiaBR(de) : `${formatDiaBR(de)} até ${formatDiaBR(ate)}`;
 
+  // Recorde do mês atual: reaproveita os pedidos já buscados pro card de
+  // "Vendas no mês" (resultMes), sem chamada extra à API.
+  const melhorDiaMes =
+    resultMes.connected && !resultMes.error ? melhorDiaDeOrders(resultMes.orders) : null;
+
+  // Recorde da loja (últimos 90 dias): busca leve dedicada (getDailyTotalsRange),
+  // sem multiget de itens nem chamada de shipments por pedido — por isso
+  // consegue cobrir uma janela maior sem pesar no carregamento da página.
+  let melhorDia90d: { dia: string; faturamento: number; pedidos: number } | null = null;
+  if (recorde90d.connected && !recorde90d.error) {
+    for (const d of recorde90d.porDia) {
+      if (!melhorDia90d || d.faturamento > melhorDia90d.faturamento) melhorDia90d = d;
+    }
+  }
+
   const resumo = (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-      <ResumoCard label="Vendas de hoje" pedidos={resumoDia.pedidos} itensVendidos={resumoDia.itensVendidos} faturamento={resumoDia.faturamento} />
-      <ResumoCard label="Vendas na semana (últimos 7 dias)" pedidos={resumoSemana.pedidos} itensVendidos={resumoSemana.itensVendidos} faturamento={resumoSemana.faturamento} />
-      <ResumoCard label="Vendas no mês" pedidos={resumoMes.pedidos} itensVendidos={resumoMes.itensVendidos} faturamento={resumoMes.faturamento} />
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <ResumoCard
+          label={`Vendas em ${rotuloPeriodo}`}
+          pedidos={resumoSelecionado.pedidos}
+          itensVendidos={resumoSelecionado.itensVendidos}
+          faturamento={resumoSelecionado.faturamento}
+          destaque
+        />
+        <ResumoCard label="Vendas na semana (últimos 7 dias)" pedidos={resumoSemana.pedidos} itensVendidos={resumoSemana.itensVendidos} faturamento={resumoSemana.faturamento} />
+        <ResumoCard label="Vendas no mês" pedidos={resumoMes.pedidos} itensVendidos={resumoMes.itensVendidos} faturamento={resumoMes.faturamento} />
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <RecordeDiaCard label="Recorde do mês (melhor dia)" melhorDia={melhorDiaMes} />
+        <RecordeDiaCard label="Recorde da loja (melhor dia, últimos 90 dias)" melhorDia={melhorDia90d} />
+      </div>
     </div>
   );
 
