@@ -116,6 +116,46 @@ export async function GET() {
     new Set(Array.from(itemIdsPorPlaca.values()).flatMap((s) => Array.from(s)))
   );
 
+  // Quebra por SKU/anúncio real da ML dentro de cada placa (ex: "Com
+  // Parafuso" x "Sem Parafuso" da Cortina) — pedido pelo Guilherme porque
+  // a produção/estoque local só precisa saber a cor (1 placa por cor),
+  // mas na hora de mandar reposição pro Full e contar venda, cada SKU que
+  // a própria ML traz precisa aparecer separado (o painel nativo da ML
+  // também mostra estoque por anúncio, não somado). Chave = SKU
+  // cadastrado no anúncio quando existe, senão o título do anúncio.
+  interface VarianteAcumulada {
+    label: string;
+    itemIds: Set<string>;
+    vendidoFull7d: number;
+  }
+  const variantesPorPlaca = new Map<number, Map<string, VarianteAcumulada>>();
+  for (const order of result.orders) {
+    const isFull = order.shippingMode === "Full";
+    for (const item of order.items) {
+      if (!item.itemId || item.itemId === "—") continue;
+      const placaIds = matchItemToPlacaIds(item, placas, skuPlacaMap);
+      if (placaIds.length === 0) continue;
+      const varianteKey = item.hasCustomSku
+        ? `sku:${item.sku.toLowerCase()}`
+        : `titulo:${item.title.toLowerCase()}`;
+      const varianteLabel = item.hasCustomSku ? item.sku : item.title;
+      for (const placaId of placaIds) {
+        let variantes = variantesPorPlaca.get(placaId);
+        if (!variantes) {
+          variantes = new Map();
+          variantesPorPlaca.set(placaId, variantes);
+        }
+        let acumulada = variantes.get(varianteKey);
+        if (!acumulada) {
+          acumulada = { label: varianteLabel, itemIds: new Set(), vendidoFull7d: 0 };
+          variantes.set(varianteKey, acumulada);
+        }
+        acumulada.itemIds.add(item.itemId);
+        if (isFull) acumulada.vendidoFull7d += item.quantity;
+      }
+    }
+  }
+
   // Lista (deduplicada por título) dos anúncios da ML que casaram com
   // uma placa — exibida na tela pra dar rastreabilidade do número.
   function anunciosDaPlaca(placaId: number): { titulo: string; sku: string }[] {
@@ -142,10 +182,8 @@ export async function GET() {
   // Soma o estoque Full lido via API pra uma placa, deduplicando por
   // user_product_id (dois item_id diferentes podem apontar pro mesmo
   // produto físico/UP — sem isso contaríamos o mesmo estoque 2x).
-  function estoqueFullViaApi(placaId: number): number | null {
-    if (!fullStockLookup) return null;
-    const itemIds = itemIdsPorPlaca.get(placaId);
-    if (!itemIds) return null;
+  function estoqueFullViaApiParaItens(itemIds: Set<string> | undefined): number | null {
+    if (!fullStockLookup || !itemIds) return null;
     const userProductIds = new Set<string>();
     for (const itemId of itemIds) {
       const info = fullStockLookup.perItem.get(itemId);
@@ -164,12 +202,30 @@ export async function GET() {
     return leuAlgo ? total : null;
   }
 
+  function estoqueFullViaApi(placaId: number): number | null {
+    return estoqueFullViaApiParaItens(itemIdsPorPlaca.get(placaId));
+  }
+
   const linhas = placas.map((placa) => {
     const demanda = porPlaca.get(placa.id);
     const vendidoFull7d = demanda?.qtyVendidaFull ?? 0;
     const full = estoqueFullPorPlaca.get(placa.id);
     const apiFull = estoqueFullViaApi(placa.id);
     const estoqueFullAtual = apiFull ?? full?.quantidade_pecas ?? 0;
+
+    // Só mostra quebra por variante quando há mais de 1 SKU/anúncio real
+    // distinto vendido nessa placa na semana — placas com 1 SKU só (a
+    // maioria do catálogo) continuam exatamente como antes.
+    const variantesMap = variantesPorPlaca.get(placa.id);
+    const variantes =
+      variantesMap && variantesMap.size > 1
+        ? Array.from(variantesMap.values()).map((v) => ({
+            label: v.label,
+            vendidoFull7d: v.vendidoFull7d,
+            estoqueFullAtual: estoqueFullViaApiParaItens(v.itemIds),
+          }))
+        : [];
+
     return {
       placaId: placa.id,
       numero: placa.numero,
@@ -190,6 +246,7 @@ export async function GET() {
       // Recomendação simples: reponha o que vendeu no Full na semana —
       // mesmo critério já usado no "Lembrete Full" da aba Produção.
       recomendacaoEnvio: vendidoFull7d,
+      variantes,
     };
   });
 
