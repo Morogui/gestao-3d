@@ -66,4 +66,12 @@ export interface ConsumoResult {
   gramasDesperdicadasPeca: number;
   placasSemPeso: number;
   totalPlacas: number;
+  // Taxa de falha real: peças com falha (falha de peça avulsa + placas
+  // inteiras perdidas em falha_placa) sobre o total de peças já rodadas
+  // (produções concluídas ou com falha_placa — não conta em_andamento nem
+  // cancelada, já que essas não chegaram a ser realmente impressas até o
+  // fim). Ver app/api/producao/consumo/route.ts pra detalhes do cálculo.
+  pecasRodadas: number;
+  pecasComFalha: number;
+  percentualFalha: number;
 }
