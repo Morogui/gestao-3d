@@ -87,6 +87,35 @@ function correspondeAoItem(placa: PlacaRow, tituloOuSku: string): boolean {
   );
 }
 
+// Mesma lógica de casamento usada dentro de calcularDemandaSemanal (SKU
+// exato via sku_placa, senão texto do título/SKU vs. catálogo), exposta
+// separadamente pra quem precisa saber A QUAL(IS) placa(s) um item
+// específico pertence — usado pela aba Full pra descobrir o item_id da
+// ML de cada placa e então consultar o estoque real no Full via API.
+export function matchItemToPlacaIds(
+  item: { sku: string; hasCustomSku: boolean; title: string },
+  placas: PlacaRow[],
+  skuPlacaMap: SkuPlacaMap
+): number[] {
+  if (item.hasCustomSku) {
+    const entradas = skuPlacaMap.get(normalize(item.sku));
+    if (entradas && entradas.length > 0) {
+      return entradas.map((e) => e.placaId);
+    }
+  }
+
+  const ids: number[] = [];
+  for (const placa of placas) {
+    if (
+      correspondeAoItem(placa, item.title) ||
+      (item.hasCustomSku && correspondeAoItem(placa, item.sku))
+    ) {
+      ids.push(placa.id);
+    }
+  }
+  return ids;
+}
+
 export interface DemandaPlaca {
   placaId: number;
   // Total vendido no período usado como base de cálculo (ex: 30 dias) —
