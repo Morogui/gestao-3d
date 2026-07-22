@@ -5,6 +5,12 @@ import Link from "next/link";
 
 type Status = "loading" | "ready" | "erro" | "desconectado";
 
+interface VarianteFull {
+  label: string;
+  vendidoFull7d: number;
+  estoqueFullAtual: number | null;
+}
+
 interface LinhaFull {
   placaId: number;
   numero: number;
@@ -18,6 +24,11 @@ interface LinhaFull {
   atualizadoEm: string | null;
   recomendacaoEnvio: number;
   anuncios: { titulo: string; sku: string }[];
+  // Quebra por SKU real da ML (ex: Com Parafuso x Sem Parafuso) — só vem
+  // preenchido quando a placa (cor) teve mais de 1 SKU distinto vendido
+  // no Full na semana. A produção/estoque local continua só por cor;
+  // isso é só pra bater o número com o painel nativo da ML por anúncio.
+  variantes: VarianteFull[];
 }
 
 // Aba Full: acompanha o estoque que você tem hoje no Full e recomenda
@@ -165,7 +176,11 @@ export default function FullPage() {
           <span className="rounded bg-gray-200 px-1 py-0.5 font-semibold text-gray-700">Manual</span>
           ) quando não há venda recente ou a leitura da API não retornou
           nada. O ajuste manual continua disponível como reforço/correção
-          pra esses casos.
+          pra esses casos. Quando uma placa tem mais de um SKU real
+          vendido na ML (ex: Com Parafuso x Sem Parafuso), aparece uma
+          tabelinha abaixo do nome quebrando venda e estoque por SKU —
+          a produção/estoque local continua só por cor, essa quebra é só
+          pra reposição e conferência com o painel da ML.
           {!apiDisponivel && (
             <>
               {" "}
@@ -292,6 +307,34 @@ function LinhaFullRow({
           <p className="mt-1 text-xs text-gray-400 italic">
             Sem venda no Full na semana — nenhum anúncio identificado.
           </p>
+        )}
+        {linha.variantes.length > 0 && (
+          <div className="mt-2 overflow-hidden rounded border border-gray-200">
+            <table className="w-full text-[11px]">
+              <thead className="bg-gray-50 text-gray-500">
+                <tr>
+                  <th className="px-2 py-1 text-left font-medium">
+                    SKU (ML) — separado por variação
+                  </th>
+                  <th className="px-2 py-1 text-right font-medium">Vendido (7d)</th>
+                  <th className="px-2 py-1 text-right font-medium">Estoque Full</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {linha.variantes.map((v, i) => (
+                  <tr key={i}>
+                    <td className="px-2 py-1 text-gray-700">{v.label}</td>
+                    <td className="px-2 py-1 text-right text-gray-700">
+                      {v.vendidoFull7d}
+                    </td>
+                    <td className="px-2 py-1 text-right text-gray-700">
+                      {v.estoqueFullAtual ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </td>
       <td className="px-3 py-2">
