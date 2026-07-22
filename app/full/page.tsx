@@ -17,6 +17,7 @@ interface LinhaFull {
   fonteEstoqueFull: "api" | "manual";
   atualizadoEm: string | null;
   recomendacaoEnvio: number;
+  anuncios: { titulo: string; sku: string }[];
 }
 
 // Aba Full: acompanha o estoque que você tem hoje no Full e recomenda
@@ -278,6 +279,20 @@ function LinhaFullRow({
       <td className="px-3 py-2">
         <p className="font-medium text-gray-900">{linha.nome}</p>
         <p className="text-xs text-gray-400">{linha.skuOuKit.split("|")[0].trim()}</p>
+        {linha.anuncios.length > 0 ? (
+          <div className="mt-1 space-y-0.5">
+            {linha.anuncios.map((a, i) => (
+              <p key={i} className="text-xs text-blue-700">
+                Anúncio ML: {a.titulo}
+                {a.sku ? ` (SKU: ${a.sku})` : ""}
+              </p>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-1 text-xs text-gray-400 italic">
+            Sem venda no Full na semana — nenhum anúncio identificado.
+          </p>
+        )}
       </td>
       <td className="px-3 py-2">
         <TierBadge tier={linha.tier} />
