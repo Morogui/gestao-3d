@@ -148,6 +148,31 @@ export interface FullStockLookup {
   perUserProduct: Map<string, number>;
 }
 
+// Verifica se o vendedor já está no modelo "User Products" da ML —
+// pré-requisito documentado pra existir user_product_id (e portanto pra
+// conseguir ler o estoque Full via /user-products/$ID/stock). Sem essa
+// tag, todo item volta sem user_product_id e a leitura automática cai
+// pro valor manual pra 100% das placas — útil pra diagnosticar isso em
+// vez de só "não funcionou".
+export async function checkUserProductSeller(
+  userId: string,
+  accessToken: string
+): Promise<{ isUserProductSeller: boolean; tags: string[] } | null> {
+  try {
+    const resp = await fetch(`${ML_API_BASE}/users/${userId}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const tags: string[] = data?.tags ?? [];
+    return { isUserProductSeller: tags.includes("user_product_seller"), tags };
+  } catch (err) {
+    console.error(`[ML full-stock] erro ao verificar tag user_product_seller:`, err);
+    return null;
+  }
+}
+
 export async function fetchFullStockForItems(
   itemIds: string[],
   accessToken: string
@@ -160,6 +185,7 @@ export async function fetchFullStockForItems(
   // 1) Descobre o user_product_id de cada item. Autenticado (com o
   // token do vendedor) pra garantir que o campo venha mesmo se não for
   // exposto na consulta pública.
+  let semUserProductId = 0;
   await Promise.all(
     uniqueIds.map(async (itemId) => {
       try {
@@ -168,11 +194,16 @@ export async function fetchFullStockForItems(
           cache: "no-store",
         });
         if (!resp.ok) {
+          const bodyText = await resp.text().catch(() => "");
+          console.error(
+            `[ML full-stock] GET /items/${itemId} respondeu ${resp.status}: ${bodyText.slice(0, 200)}`
+          );
           perItem.set(itemId, { userProductId: null, fullQuantity: null });
           return;
         }
         const data = await resp.json();
         const userProductId: string | null = data?.user_product_id ?? null;
+        if (!userProductId) semUserProductId++;
         perItem.set(itemId, { userProductId, fullQuantity: null });
       } catch (err) {
         console.error(`[ML full-stock] erro ao buscar item ${itemId}:`, err);
@@ -180,6 +211,11 @@ export async function fetchFullStockForItems(
       }
     })
   );
+  if (semUserProductId > 0) {
+    console.log(
+      `[ML full-stock] ${semUserProductId}/${uniqueIds.length} itens sem user_product_id (conta provavelmente ainda fora do modelo User Products)`
+    );
+  }
 
   // 2) Pra cada user_product_id único encontrado, busca o estoque real
   // e soma só as localizações do tipo "meli_facility" (Full).
