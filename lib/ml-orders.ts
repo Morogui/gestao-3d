@@ -17,7 +17,12 @@ export interface OrderItemSummary {
 }
 
 export interface OrderSummary {
-  id: number;
+  // number = pedido da ML (id numérico); string = pedido da Shopee
+  // (order_sn alfanumérico, ex: "2607ABCDE12345") — os dois usam o mesmo
+  // formato de OrderSummary/OrdersResult pra reaproveitar toda a tela de
+  // Vendas, o ranking de produtos e o cálculo de demanda sem duplicar
+  // lógica por plataforma.
+  id: number | string;
   dateCreated: string;
   buyerNickname: string;
   items: OrderItemSummary[];
