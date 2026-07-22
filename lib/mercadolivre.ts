@@ -121,6 +121,105 @@ export function labelOrderStatus(status: string | undefined): string {
   }
 }
 
+// Leitura do estoque real no Full via a API da ML — modelo "User
+// Products" (UP). Documentação: developers.mercadolivre.com.br/pt_br/
+// user-products e /estoque-distribuido.
+//
+// Fluxo (só leitura, não dá pra editar o estoque Full por API):
+// 1) GET /items/$ITEM_ID -> devolve user_product_id do anúncio (quando o
+//    vendedor já está no modelo UP; senão vem null/ausente).
+// 2) GET /user-products/$USER_PRODUCT_ID/stock -> devolve "locations",
+//    cada uma com um "type" (meli_facility = Full, selling_address =
+//    Flex, seller_warehouse = multi-origem) e "quantity". Somamos só as
+//    localizações meli_facility.
+//
+// Um mesmo user_product_id pode ser compartilhado por vários item_id
+// (variações do mesmo produto físico) — por isso o resultado é indexado
+// tanto por item quanto por user_product_id, pra quem for somar por
+// placa conseguir deduplicar antes de somar (evita contar o mesmo
+// estoque físico duas vezes quando dois anúncios apontam pro mesmo UP).
+export interface FullStockPorItem {
+  userProductId: string | null;
+  fullQuantity: number | null; // null = não foi possível ler via API
+}
+
+export interface FullStockLookup {
+  perItem: Map<string, FullStockPorItem>;
+  perUserProduct: Map<string, number>;
+}
+
+export async function fetchFullStockForItems(
+  itemIds: string[],
+  accessToken: string
+): Promise<FullStockLookup> {
+  const perItem = new Map<string, FullStockPorItem>();
+  const perUserProduct = new Map<string, number>();
+  const uniqueIds = Array.from(new Set(itemIds)).filter(Boolean);
+  if (uniqueIds.length === 0) return { perItem, perUserProduct };
+
+  // 1) Descobre o user_product_id de cada item. Autenticado (com o
+  // token do vendedor) pra garantir que o campo venha mesmo se não for
+  // exposto na consulta pública.
+  await Promise.all(
+    uniqueIds.map(async (itemId) => {
+      try {
+        const resp = await fetch(`${ML_API_BASE}/items/${itemId}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          cache: "no-store",
+        });
+        if (!resp.ok) {
+          perItem.set(itemId, { userProductId: null, fullQuantity: null });
+          return;
+        }
+        const data = await resp.json();
+        const userProductId: string | null = data?.user_product_id ?? null;
+        perItem.set(itemId, { userProductId, fullQuantity: null });
+      } catch (err) {
+        console.error(`[ML full-stock] erro ao buscar item ${itemId}:`, err);
+        perItem.set(itemId, { userProductId: null, fullQuantity: null });
+      }
+    })
+  );
+
+  // 2) Pra cada user_product_id único encontrado, busca o estoque real
+  // e soma só as localizações do tipo "meli_facility" (Full).
+  const uniqueUserProductIds = Array.from(
+    new Set(
+      Array.from(perItem.values())
+        .map((v) => v.userProductId)
+        .filter((v): v is string => Boolean(v))
+    )
+  );
+
+  await Promise.all(
+    uniqueUserProductIds.map(async (upId) => {
+      try {
+        const resp = await fetch(`${ML_API_BASE}/user-products/${upId}/stock`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          cache: "no-store",
+        });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const locations: { type?: string; quantity?: number }[] = data?.locations ?? [];
+        const fullQty = locations
+          .filter((l) => l.type === "meli_facility")
+          .reduce((s, l) => s + (l.quantity ?? 0), 0);
+        perUserProduct.set(upId, fullQty);
+      } catch (err) {
+        console.error(`[ML full-stock] erro ao buscar stock do UP ${upId}:`, err);
+      }
+    })
+  );
+
+  for (const info of perItem.values()) {
+    if (info.userProductId) {
+      info.fullQuantity = perUserProduct.get(info.userProductId) ?? null;
+    }
+  }
+
+  return { perItem, perUserProduct };
+}
+
 // Mapeia o "logistic_type" do envio da ML para um rótulo amigável.
 export function labelLogisticType(logisticType: string | undefined): string {
   switch (logisticType) {
