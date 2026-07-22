@@ -1,22 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { sql } from "@/lib/db";
 import { DbPlacaRow, toPlacaRow } from "@/lib/placas";
 import { getOrdersRange } from "@/lib/ml-orders";
-import { calcularDemandaSemanal, SkuPlacaMap } from "@/lib/demanda";
+import { calcularDemandaSemanal, matchItemToPlacaIds, SkuPlacaMap } from "@/lib/demanda";
+import { fetchFullStockForItems } from "@/lib/mercadolivre";
 import { diasAtras, todaySP } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
 // Aba Full: pra cada placa, mostra quanto vendeu no Full nos últimos 7
 // dias (mesma fonte/lógica de lib/demanda.ts usada na aba Produção),
-// quanto tem hoje de estoque NO Full — controlado manualmente aqui,
-// numa tabela própria (estoque_full_placas), já que a API da ML não
-// expõe isso hoje sem um escopo/integração de Fulfillment separada — e a
-// recomendação de envio (reposição = o que vendeu no Full na semana,
-// mesmo critério já usado no "Lembrete Full" da aba Produção).
+// quanto tem hoje de estoque NO Full e a recomendação de envio
+// (reposição = o que vendeu no Full na semana, mesmo critério já usado
+// no "Lembrete Full" da aba Produção).
+//
+// Estoque no Full: tentamos ler o valor REAL via API da ML (modelo User
+// Products — GET /items/$ID -> user_product_id -> GET
+// /user-products/$ID/stock, localização "meli_facility"). Isso só
+// funciona pra placas que tiveram pelo menos 1 venda na janela de 7 dias
+// (é dali que vem o item_id de cada placa) e só se a conta do vendedor
+// já estiver no modelo User Products. Quando a API não devolve nada pra
+// uma placa (sem venda recente, conta ainda no modelo antigo, etc.),
+// caímos pro valor cadastrado manualmente em estoque_full_placas.
 export async function GET() {
   const hoje = todaySP();
   const seteDiasAtras = diasAtras(hoje, 6);
+
+  const cookieStore = cookies();
+  const accessToken = cookieStore.get("ml_access_token")?.value;
 
   const result = await getOrdersRange(seteDiasAtras, hoje);
   if (!result.connected) {
@@ -67,11 +79,62 @@ export async function GET() {
     estoqueFullRows.map((r) => [r.placa_id, r])
   );
 
+  // Descobre, a partir dos pedidos dos últimos 7 dias, quais item_id da
+  // ML correspondem a cada placa (reaproveitando o mesmo casamento
+  // SKU/texto usado no cálculo de demanda) — é esse item_id que dá
+  // acesso ao user_product_id e, a partir dele, ao estoque real no Full.
+  const itemIdsPorPlaca = new Map<number, Set<string>>();
+  for (const order of result.orders) {
+    for (const item of order.items) {
+      if (!item.itemId || item.itemId === "—") continue;
+      const placaIds = matchItemToPlacaIds(item, placas, skuPlacaMap);
+      for (const placaId of placaIds) {
+        const set = itemIdsPorPlaca.get(placaId) ?? new Set<string>();
+        set.add(item.itemId);
+        itemIdsPorPlaca.set(placaId, set);
+      }
+    }
+  }
+  const todosItemIds = Array.from(
+    new Set(Array.from(itemIdsPorPlaca.values()).flatMap((s) => Array.from(s)))
+  );
+
+  const fullStockLookup =
+    accessToken && todosItemIds.length > 0
+      ? await fetchFullStockForItems(todosItemIds, accessToken)
+      : null;
+
+  // Soma o estoque Full lido via API pra uma placa, deduplicando por
+  // user_product_id (dois item_id diferentes podem apontar pro mesmo
+  // produto físico/UP — sem isso contaríamos o mesmo estoque 2x).
+  function estoqueFullViaApi(placaId: number): number | null {
+    if (!fullStockLookup) return null;
+    const itemIds = itemIdsPorPlaca.get(placaId);
+    if (!itemIds) return null;
+    const userProductIds = new Set<string>();
+    for (const itemId of itemIds) {
+      const info = fullStockLookup.perItem.get(itemId);
+      if (info?.userProductId) userProductIds.add(info.userProductId);
+    }
+    if (userProductIds.size === 0) return null;
+    let total = 0;
+    let leuAlgo = false;
+    for (const upId of userProductIds) {
+      const qty = fullStockLookup.perUserProduct.get(upId);
+      if (qty !== undefined) {
+        total += qty;
+        leuAlgo = true;
+      }
+    }
+    return leuAlgo ? total : null;
+  }
+
   const linhas = placas.map((placa) => {
     const demanda = porPlaca.get(placa.id);
     const vendidoFull7d = demanda?.qtyVendidaFull ?? 0;
     const full = estoqueFullPorPlaca.get(placa.id);
-    const estoqueFullAtual = full?.quantidade_pecas ?? 0;
+    const apiFull = estoqueFullViaApi(placa.id);
+    const estoqueFullAtual = apiFull ?? full?.quantidade_pecas ?? 0;
     return {
       placaId: placa.id,
       numero: placa.numero,
@@ -81,6 +144,10 @@ export async function GET() {
       estoqueLocal: placa.estoque,
       vendidoFull7d,
       estoqueFullAtual,
+      // "api" = lido agora mesmo da ML (mais confiável); "manual" = caiu
+      // pro valor que você digitou aqui (sem venda recente pra achar o
+      // item, ou conta ainda fora do modelo User Products).
+      fonteEstoqueFull: apiFull !== null ? "api" : "manual",
       atualizadoEm: full?.atualizado_em ?? null,
       // Recomendação simples: reponha o que vendeu no Full na semana —
       // mesmo critério já usado no "Lembrete Full" da aba Produção.
@@ -92,6 +159,7 @@ export async function GET() {
     connected: true,
     error: false,
     periodo: { inicio: seteDiasAtras, fim: hoje },
+    apiDisponivel: linhas.some((l) => l.fonteEstoqueFull === "api"),
     linhas,
   });
 }
