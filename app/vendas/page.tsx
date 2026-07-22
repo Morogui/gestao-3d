@@ -467,23 +467,6 @@ export default async function VendasPage({
     </div>
   );
 
-  if (result.orders.length === 0) {
-    return (
-      <div className="flex flex-col gap-4">
-        {resumo}
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-900">
-            Pedidos — Mercado Livre
-          </h2>
-          <RangeFilter de={de} ate={ate} plataforma={plataforma} />
-        </div>
-        <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
-          Nenhum pedido em {rotuloPeriodo}.
-        </div>
-      </div>
-    );
-  }
-
   const ranking = rankingPorQuantidade(result.orders);
 
   const pedidosView = (
@@ -499,71 +482,77 @@ export default async function VendasPage({
           <RangeFilter de={de} ate={ate} plataforma={plataforma} />
         </div>
       </div>
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table className="w-full table-fixed divide-y divide-gray-200 text-sm">
-          <colgroup>
-            <col className="w-[7%]" />
-            <col className="w-[8%]" />
-            <col className="w-[13%]" />
-            <col className="w-[34%]" />
-            <col className="w-[10%]" />
-            <col className="w-[11%]" />
-            <col className="w-[12%]" />
-          </colgroup>
-          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
-            <tr>
-              <th className="px-4 py-3">Pedido</th>
-              <th className="px-4 py-3">Data</th>
-              <th className="px-4 py-3">Comprador</th>
-              <th className="px-4 py-3">Itens</th>
-              <th className="px-4 py-3 text-right">Total</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Envio</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {result.orders.map((order) => (
-              <tr key={order.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 font-medium text-gray-900">
-                  #{order.id}
-                </td>
-                <td className="px-4 py-3 text-gray-500">
-                  {new Date(order.dateCreated).toLocaleDateString("pt-BR")}
-                </td>
-                <td className="truncate px-4 py-3">{order.buyerNickname}</td>
-                <td className="px-4 py-3 text-gray-500">
-                  <div className="flex flex-col gap-1.5">
-                    {order.items.map((item, idx) => (
-                      <div key={`${item.itemId}-${idx}`} className="flex items-center gap-2">
-                        <ItemThumbnail src={item.thumbnail} alt={item.title} />
-                        <div className="min-w-0">
-                          <p className="truncate text-gray-900">
-                            {item.title} x{item.quantity}
-                          </p>
-                          <p className="truncate text-xs text-gray-400">
-                            {item.hasCustomSku ? "SKU" : "ID ML"}: {item.sku}
-                          </p>
-                          {/* DEBUG temporário — remover depois de achar a causa da foto sumida */}
-                          {!item.thumbnail && (
-                            <p className="truncate text-[10px] text-gray-300">
-                              foto: {item.photoDebug ?? "motivo desconhecido"}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-right font-semibold text-gray-900">
-                  {formatBRL(order.totalAmount)}
-                </td>
-                <td className="px-4 py-3">{labelOrderStatus(order.status)}</td>
-                <td className="px-4 py-3">{order.shippingMode}</td>
+      {result.orders.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
+          Nenhum pedido em {rotuloPeriodo}.
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+          <table className="w-full table-fixed divide-y divide-gray-200 text-sm">
+            <colgroup>
+              <col className="w-[7%]" />
+              <col className="w-[8%]" />
+              <col className="w-[13%]" />
+              <col className="w-[34%]" />
+              <col className="w-[10%]" />
+              <col className="w-[11%]" />
+              <col className="w-[12%]" />
+            </colgroup>
+            <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
+              <tr>
+                <th className="px-4 py-3">Pedido</th>
+                <th className="px-4 py-3">Data</th>
+                <th className="px-4 py-3">Comprador</th>
+                <th className="px-4 py-3">Itens</th>
+                <th className="px-4 py-3 text-right">Total</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Envio</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {result.orders.map((order) => (
+                <tr key={order.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 font-medium text-gray-900">
+                    #{order.id}
+                  </td>
+                  <td className="px-4 py-3 text-gray-500">
+                    {new Date(order.dateCreated).toLocaleDateString("pt-BR")}
+                  </td>
+                  <td className="truncate px-4 py-3">{order.buyerNickname}</td>
+                  <td className="px-4 py-3 text-gray-500">
+                    <div className="flex flex-col gap-1.5">
+                      {order.items.map((item, idx) => (
+                        <div key={`${item.itemId}-${idx}`} className="flex items-center gap-2">
+                          <ItemThumbnail src={item.thumbnail} alt={item.title} />
+                          <div className="min-w-0">
+                            <p className="truncate text-gray-900">
+                              {item.title} x{item.quantity}
+                            </p>
+                            <p className="truncate text-xs text-gray-400">
+                              {item.hasCustomSku ? "SKU" : "ID ML"}: {item.sku}
+                            </p>
+                            {/* DEBUG temporário — remover depois de achar a causa da foto sumida */}
+                            {!item.thumbnail && (
+                              <p className="truncate text-[10px] text-gray-300">
+                                foto: {item.photoDebug ?? "motivo desconhecido"}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                    {formatBRL(order.totalAmount)}
+                  </td>
+                  <td className="px-4 py-3">{labelOrderStatus(order.status)}</td>
+                  <td className="px-4 py-3">{order.shippingMode}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 
