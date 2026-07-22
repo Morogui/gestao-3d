@@ -4,7 +4,7 @@ import { sql } from "@/lib/db";
 import { DbPlacaRow, toPlacaRow } from "@/lib/placas";
 import { getOrdersRange } from "@/lib/ml-orders";
 import { calcularDemandaSemanal, matchItemToPlacaIds, SkuPlacaMap } from "@/lib/demanda";
-import { fetchFullStockForItems } from "@/lib/mercadolivre";
+import { checkUserProductSeller, fetchFullStockForItems } from "@/lib/mercadolivre";
 import { diasAtras, todaySP } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +29,15 @@ export async function GET() {
 
   const cookieStore = cookies();
   const accessToken = cookieStore.get("ml_access_token")?.value;
+  const userId = cookieStore.get("ml_user_id")?.value;
+
+  // Diagnóstico: confirma se a conta já está no modelo "User Products"
+  // da ML (tag user_product_seller) — sem essa tag, nenhum item vem com
+  // user_product_id e a leitura automática do Full nunca vai funcionar,
+  // não importa o que mais a gente tente. Expor isso na resposta evita
+  // ficar adivinhando o motivo quando "apiDisponivel" vier false.
+  const userProductStatus =
+    accessToken && userId ? await checkUserProductSeller(userId, accessToken) : null;
 
   const result = await getOrdersRange(seteDiasAtras, hoje);
   if (!result.connected) {
@@ -160,6 +169,7 @@ export async function GET() {
     error: false,
     periodo: { inicio: seteDiasAtras, fim: hoje },
     apiDisponivel: linhas.some((l) => l.fonteEstoqueFull === "api"),
+    userProductSeller: userProductStatus?.isUserProductSeller ?? null,
     linhas,
   });
 }
