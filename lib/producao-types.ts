@@ -59,6 +59,8 @@ export interface DemandaResult {
 // app/api/producao/consumo/route.ts pra detalhes de como é calculado.
 export interface ConsumoResult {
   gramasImpressas: number;
+  gramasImpressasCalculadas: number;
+  gramasImpressasManual: number;
   gramasDesperdicadas: number;
   gramasDesperdicadasPlaca: number;
   gramasDesperdicadasPeca: number;
