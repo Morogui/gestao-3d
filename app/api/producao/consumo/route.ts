@@ -27,8 +27,14 @@ export const dynamic = "force-dynamic";
 // - `falhas_peca.gramas`: cada peça individual descartada numa placa que
 //   continuou imprimindo normalmente.
 export async function GET() {
-  const [impressoRows, desperdicoPlacaRows, desperdicoPecaRows, cobertura, manualRows] =
-    await Promise.all([
+  const [
+    impressoRows,
+    desperdicoPlacaRows,
+    desperdicoPecaRows,
+    cobertura,
+    manualRows,
+    falhaRows,
+  ] = await Promise.all([
       sql`
         SELECT COALESCE(SUM(pr.quantidade_placas * pl.peso_placa_gramas), 0) AS total
         FROM producoes pr
@@ -54,6 +60,28 @@ export async function GET() {
         ORDER BY id DESC
         LIMIT 1
       `,
+      // Taxa de falha real: peças rodadas (concluída ou falha_placa) vs
+      // peças com falha. Numa produção com falha_placa a placa inteira é
+      // considerada perdida (não credita nada no estoque, então todas as
+      // peças daquela placa contam como falha). Numa produção concluída,
+      // só as peças avulsas marcadas em falhas_peca contam como falha —
+      // o resto foi creditado normalmente no estoque.
+      sql`
+        SELECT
+          COALESCE(SUM(pr.quantidade_placas * pl.pecas_por_placa), 0) AS pecas_rodadas,
+          COALESCE(SUM(
+            CASE
+              WHEN pr.status = 'falha_placa' THEN pr.quantidade_placas * pl.pecas_por_placa
+              ELSE COALESCE(fp.count, 0)
+            END
+          ), 0) AS pecas_com_falha
+        FROM producoes pr
+        JOIN placas pl ON pl.id = pr.placa_id
+        LEFT JOIN (
+          SELECT producao_id, count(*) AS count FROM falhas_peca GROUP BY producao_id
+        ) fp ON fp.producao_id = pr.id
+        WHERE pr.status IN ('concluida', 'falha_placa')
+      `,
     ]);
 
   const gramasImpressasCalculadas = Number(
@@ -72,6 +100,13 @@ export async function GET() {
     (manualRows as { gramas_impressas_manual: string }[])[0]?.gramas_impressas_manual ?? 0
   );
 
+  const { pecas_rodadas: pecasRodadas, pecas_com_falha: pecasComFalha } = (
+    falhaRows as { pecas_rodadas: string; pecas_com_falha: string }[]
+  )[0];
+  const pecasRodadasNum = Number(pecasRodadas);
+  const pecasComFalhaNum = Number(pecasComFalha);
+  const percentualFalha = pecasRodadasNum > 0 ? (pecasComFalhaNum / pecasRodadasNum) * 100 : 0;
+
   return NextResponse.json({
     gramasImpressas: gramasImpressasCalculadas + gramasImpressasManual,
     gramasImpressasCalculadas,
@@ -81,6 +116,9 @@ export async function GET() {
     gramasDesperdicadasPeca,
     placasSemPeso: Number(placasSemPeso),
     totalPlacas: Number(totalPlacas),
+    pecasRodadas: pecasRodadasNum,
+    pecasComFalha: pecasComFalhaNum,
+    percentualFalha,
   });
 }
 
