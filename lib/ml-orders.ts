@@ -189,6 +189,102 @@ export async function getOrdersRange(
   return fetchOrdersInRange(from, to);
 }
 
+export interface DiaTotal {
+  dia: string; // YYYY-MM-DD, fuso São Paulo
+  faturamento: number;
+  pedidos: number;
+}
+
+export type DailyTotalsResult =
+  | { connected: false }
+  | { connected: true; error: true }
+  | { connected: true; error: false; porDia: DiaTotal[] };
+
+// Versão "leve" de fetchOrdersInRange — usada só pra somar faturamento
+// por dia (recordes de melhor dia do mês / da loja). Busca APENAS
+// /orders/search (id, data, total), sem o multiget de /items (foto/SKU)
+// nem a chamada de /shipments por pedido — o que faz a diferença entre
+// levar 1 chamada de API vs. 1 + N (N = nº de pedidos) chamadas. Isso é
+// o que permite varrer 90 dias de histórico sem estourar o timeout da
+// função serverless. As páginas são buscadas em paralelo (depois de
+// descobrir o total na primeira página) pra reduzir ainda mais o tempo
+// de resposta.
+export async function getDailyTotalsRange(
+  fromDay: string,
+  toDay: string
+): Promise<DailyTotalsResult> {
+  const cookieStore = cookies();
+  const accessToken = cookieStore.get("ml_access_token")?.value;
+  const userId = cookieStore.get("ml_user_id")?.value;
+
+  if (!accessToken || !userId) {
+    return { connected: false };
+  }
+
+  const dateFrom = toMLDateTime(new Date(`${fromDay}T12:00:00-03:00`), false);
+  const dateTo = toMLDateTime(new Date(`${toDay}T12:00:00-03:00`), true);
+
+  const PAGE_SIZE = 50;
+  // Teto alto o bastante pra cobrir ~90 dias de histórico mesmo numa loja
+  // com bastante volume (até 3000 pedidos), sem risco de rodar pra
+  // sempre caso a paginação da ML se comporte de forma inesperada.
+  const MAX_PAGES = 60;
+
+  const baseUrl =
+    `${ML_API_BASE}/orders/search?seller=${userId}&sort=date_desc&limit=${PAGE_SIZE}` +
+    `&order.date_created.from=${encodeURIComponent(dateFrom)}` +
+    `&order.date_created.to=${encodeURIComponent(dateTo)}`;
+
+  const fetchPage = (page: number) =>
+    fetch(`${baseUrl}&offset=${page * PAGE_SIZE}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+
+  const firstResp = await fetchPage(0);
+  if (!firstResp.ok) {
+    return { connected: true, error: true };
+  }
+  const firstData = await firstResp.json();
+  const firstResults: MLOrder[] = firstData.results ?? [];
+  const total: number = firstData.paging?.total ?? firstResults.length;
+
+  const rawOrders: MLOrder[] = [...firstResults];
+  const totalPages = Math.min(MAX_PAGES, Math.ceil(total / PAGE_SIZE));
+
+  if (totalPages > 1 && firstResults.length === PAGE_SIZE) {
+    const restPages = await Promise.all(
+      Array.from({ length: totalPages - 1 }, (_, i) => fetchPage(i + 1))
+    );
+    for (const resp of restPages) {
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      rawOrders.push(...(data.results ?? []));
+    }
+  }
+
+  const porDiaMap = new Map<string, { faturamento: number; pedidos: number }>();
+  for (const order of rawOrders) {
+    // date_created vem em ISO com offset; normaliza pro fuso de São Paulo
+    // pegando a data local a partir do timestamp UTC.
+    const diaKey = new Date(
+      new Date(order.date_created).getTime() - 3 * 60 * 60 * 1000
+    )
+      .toISOString()
+      .slice(0, 10);
+    const atual = porDiaMap.get(diaKey) ?? { faturamento: 0, pedidos: 0 };
+    atual.faturamento += order.total_amount ?? 0;
+    atual.pedidos += 1;
+    porDiaMap.set(diaKey, atual);
+  }
+
+  const porDia: DiaTotal[] = Array.from(porDiaMap.entries()).map(
+    ([dia, v]) => ({ dia, faturamento: v.faturamento, pedidos: v.pedidos })
+  );
+
+  return { connected: true, error: false, porDia };
+}
+
 async function fetchOrdersInRange(
   dateFrom: string,
   dateTo: string
