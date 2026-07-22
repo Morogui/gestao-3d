@@ -8,7 +8,17 @@ import {
   ProducaoRow,
   DemandaResult,
   DemandaPlacaRow,
+  ConsumoResult,
 } from "@/lib/producao-types";
+
+// Formata gramas como "X,X kg" (ou "Xg" pra valores pequenos) — os
+// totais acumulados de filamento tendem a passar de 1kg rapidinho.
+function formatGramas(gramas: number): string {
+  if (gramas >= 1000) {
+    return `${(gramas / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} kg`;
+  }
+  return `${gramas.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} g`;
+}
 
 type Status = "loading" | "ready" | "erro" | "desconectado";
 
@@ -27,14 +37,16 @@ export default function ProducaoPage() {
   const [machines, setMachines] = useState<MachineRow[]>([]);
   const [producoes, setProducoes] = useState<ProducaoRow[]>([]);
   const [demanda, setDemanda] = useState<DemandaResult | null>(null);
+  const [consumo, setConsumo] = useState<ConsumoResult | null>(null);
   const [carregando, setCarregando] = useState<Record<number, boolean>>({});
 
   async function carregarTudo() {
-    const [placasRes, machinesRes, producoesRes, demandaRes] = await Promise.all([
+    const [placasRes, machinesRes, producoesRes, demandaRes, consumoRes] = await Promise.all([
       fetch("/api/placas").then((r) => r.json()),
       fetch("/api/machines").then((r) => r.json()),
       fetch("/api/producoes").then((r) => r.json()),
       fetch("/api/producao/demanda").then((r) => r.json()),
+      fetch("/api/producao/consumo").then((r) => r.json()),
     ]);
 
     if (!demandaRes.connected) {
@@ -50,7 +62,17 @@ export default function ProducaoPage() {
     setMachines(machinesRes);
     setProducoes(producoesRes);
     setDemanda(demandaRes);
+    setConsumo(consumoRes);
     setStatus("ready");
+  }
+
+  async function salvarPesoPlaca(placaId: number, pesoPlacaGramas: number | null) {
+    await fetch(`/api/placas/${placaId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pesoPlacaGramas }),
+    });
+    await carregarTudo();
   }
 
   useEffect(() => {
@@ -186,6 +208,38 @@ export default function ProducaoPage() {
         <Card label="Peças vendidas no Full (semana)" value={String(totalFullSemana)} />
       </div>
 
+      <section>
+        <h2 className="mb-3 text-sm font-semibold text-gray-900">Consumo de filamento</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <Card
+            label="Total já impresso"
+            value={consumo ? formatGramas(consumo.gramasImpressas) : "—"}
+          />
+          <Card
+            label="Total já desperdiçado"
+            value={consumo ? formatGramas(consumo.gramasDesperdicadas) : "—"}
+          />
+          <Card
+            label="Total consumido (impresso + perda)"
+            value={
+              consumo
+                ? formatGramas(consumo.gramasImpressas + consumo.gramasDesperdicadas)
+                : "—"
+            }
+          />
+        </div>
+        {consumo && consumo.placasSemPeso > 0 && (
+          <p className="mt-2 text-xs text-gray-500">
+            {consumo.placasSemPeso} de {consumo.totalPlacas} placa(s) ainda sem
+            peso/placa (g) cadastrado — o total impresso acima fica{" "}
+            <span className="font-medium">subestimado</span> até isso ser
+            preenchido. Preencha o campo &quot;Peso/placa (g)&quot; na tabela
+            abaixo (usar o peso real de filamento gasto por placa impressa,
+            não o peso da peça pronta).
+          </p>
+        )}
+      </section>
+
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         <p className="font-semibold">Lembrete Full</p>
         <p className="mt-1">
@@ -302,7 +356,10 @@ export default function ProducaoPage() {
           dias — vendas locais e Full somadas). &quot;A produzir&quot; = meta
           − estoque atual. Pra placas compostas (corpo+gancho), o estoque
           &quot;vendável&quot; do produto final é o menor entre as duas
-          metades do par.
+          metades do par. &quot;Peso/placa (g)&quot; é o peso de filamento
+          gasto pra imprimir 1 placa inteira (não o peso da peça pronta) —
+          alimenta os cards de &quot;Consumo de filamento&quot; acima; clique
+          no valor pra editar.
         </p>
         <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
           <table className="w-full text-sm">
@@ -317,6 +374,7 @@ export default function ProducaoPage() {
                 <th className="px-3 py-2 text-right">Full (7d)</th>
                 <th className="px-3 py-2 text-right">Meta</th>
                 <th className="px-3 py-2 text-right">A produzir</th>
+                <th className="px-3 py-2 text-right">Peso/placa (g)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -356,6 +414,9 @@ export default function ProducaoPage() {
                     </td>
                     <td className="px-3 py-2 text-right font-semibold text-gray-900">
                       {d?.aProduzir ?? 0}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <PesoPlacaInput placa={placa} onSalvar={salvarPesoPlaca} />
                     </td>
                   </tr>
                 );
@@ -437,6 +498,80 @@ function TierBadge({ tier }: { tier: "A" | "B" | "C" }) {
     >
       {tier}
     </span>
+  );
+}
+
+// Célula editável de "peso/placa (g)" — mostra o valor cadastrado (ou um
+// aviso discreto se ainda não foi confirmado) e vira um input ao clicar,
+// pra não precisar de uma tela separada só pra esse cadastro.
+function PesoPlacaInput({
+  placa,
+  onSalvar,
+}: {
+  placa: PlacaRow;
+  onSalvar: (placaId: number, pesoPlacaGramas: number | null) => void;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState(
+    placa.pesoPlacaGramas !== null ? String(placa.pesoPlacaGramas) : ""
+  );
+  const [salvando, setSalvando] = useState(false);
+
+  if (!editando) {
+    return (
+      <button
+        onClick={() => {
+          setValor(placa.pesoPlacaGramas !== null ? String(placa.pesoPlacaGramas) : "");
+          setEditando(true);
+        }}
+        className={
+          placa.pesoPlacaGramas !== null
+            ? "text-gray-700 hover:underline"
+            : "text-amber-600 hover:underline"
+        }
+        title="Clique pra editar"
+      >
+        {placa.pesoPlacaGramas !== null ? `${placa.pesoPlacaGramas}g` : "não confirmado"}
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-1">
+      <input
+        type="number"
+        min={0}
+        autoFocus
+        value={valor}
+        onChange={(e) => setValor(e.target.value)}
+        onKeyDown={async (e) => {
+          if (e.key !== "Enter") return;
+          setSalvando(true);
+          try {
+            await onSalvar(placa.id, valor.trim() === "" ? null : Number(valor));
+            setEditando(false);
+          } finally {
+            setSalvando(false);
+          }
+        }}
+        className="w-20 rounded border border-gray-300 px-1.5 py-0.5 text-right text-xs"
+      />
+      <button
+        disabled={salvando}
+        onClick={async () => {
+          setSalvando(true);
+          try {
+            await onSalvar(placa.id, valor.trim() === "" ? null : Number(valor));
+            setEditando(false);
+          } finally {
+            setSalvando(false);
+          }
+        }}
+        className="rounded bg-gray-900 px-1.5 py-0.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
+      >
+        OK
+      </button>
+    </div>
   );
 }
 
