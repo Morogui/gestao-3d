@@ -14,19 +14,25 @@ interface LinhaFull {
   estoqueLocal: number;
   vendidoFull7d: number;
   estoqueFullAtual: number;
+  fonteEstoqueFull: "api" | "manual";
   atualizadoEm: string | null;
   recomendacaoEnvio: number;
 }
 
-// Aba Full: acompanha o estoque que você tem hoje no Full (controlado
-// manualmente aqui — a API da ML não expõe isso sem uma integração de
-// Fulfillment separada) e recomenda quanto enviar de reposição na
-// próxima segunda-feira, com base no que vendeu no Full nos últimos 7
-// dias (mesmo critério do "Lembrete Full" da aba Produção).
+// Aba Full: acompanha o estoque que você tem hoje no Full e recomenda
+// quanto enviar de reposição na próxima segunda-feira, com base no que
+// vendeu no Full nos últimos 7 dias (mesmo critério do "Lembrete Full"
+// da aba Produção).
+//
+// O estoque no Full agora é lido automaticamente da API da ML (modelo
+// User Products) sempre que possível — só cai pro valor digitado
+// manualmente quando a placa não teve venda recente (sem item pra
+// consultar) ou a leitura via API não retornou nada.
 export default function FullPage() {
   const [status, setStatus] = useState<Status>("loading");
   const [linhas, setLinhas] = useState<LinhaFull[]>([]);
   const [periodo, setPeriodo] = useState<{ inicio: string; fim: string } | null>(null);
+  const [apiDisponivel, setApiDisponivel] = useState(false);
   const [busca, setBusca] = useState("");
   const [salvando, setSalvando] = useState<Record<number, boolean>>({});
 
@@ -44,6 +50,7 @@ export default function FullPage() {
       }
       setLinhas(data.linhas);
       setPeriodo(data.periodo);
+      setApiDisponivel(Boolean(data.apiDisponivel));
       setStatus("ready");
     } catch {
       setStatus("erro");
@@ -147,11 +154,24 @@ export default function FullPage() {
           &quot;A enviar&quot; = peças vendidas no Full nos últimos 7 dias
           (período {periodo?.inicio} a {periodo?.fim}) — repor 1:1 o que
           saiu, mesmo critério já usado no lembrete de Full da aba
-          Produção. &quot;Estoque no Full&quot; é controlado manualmente
-          aqui (a API da ML ainda não está integrada com o estoque de
-          Fulfillment) — atualize esse número sempre que consultar o
-          painel de estoque Full no site da ML, pra recomendação ficar
-          mais precisa.
+          Produção. &quot;Estoque no Full&quot; agora é lido
+          automaticamente da API da ML (badge{" "}
+          <span className="rounded bg-green-100 px-1 py-0.5 font-semibold text-green-700">API</span>
+          ) pras placas que tiveram venda na semana — só cai pro valor
+          digitado manualmente (badge{" "}
+          <span className="rounded bg-gray-200 px-1 py-0.5 font-semibold text-gray-700">Manual</span>
+          ) quando não há venda recente ou a leitura da API não retornou
+          nada. O ajuste manual continua disponível como reforço/correção
+          pra esses casos.
+          {!apiDisponivel && (
+            <>
+              {" "}
+              Nenhuma placa retornou leitura via API ainda nesta consulta
+              — pode ser sessão da ML expirada, conta ainda fora do
+              modelo &quot;User Products&quot;, ou nenhuma venda no Full
+              na janela de 7 dias.
+            </>
+          )}
         </p>
       </div>
 
@@ -172,7 +192,7 @@ export default function FullPage() {
               <th className="px-3 py-2">Placa / SKU</th>
               <th className="px-3 py-2">Tier</th>
               <th className="px-3 py-2 text-right">Vendido no Full (7d)</th>
-              <th className="px-3 py-2 text-right">Estoque no Full</th>
+              <th className="px-3 py-2 text-right">Estoque no Full (fonte)</th>
               <th className="px-3 py-2">Ajustar estoque Full</th>
               <th className="px-3 py-2 text-right">A enviar</th>
             </tr>
@@ -243,8 +263,18 @@ function LinhaFullRow({
         <TierBadge tier={linha.tier} />
       </td>
       <td className="px-3 py-2 text-right text-gray-700">{linha.vendidoFull7d}</td>
-      <td className="px-3 py-2 text-right font-medium text-gray-900">
-        {linha.estoqueFullAtual}
+      <td className="px-3 py-2 text-right">
+        <span className="font-medium text-gray-900">{linha.estoqueFullAtual}</span>{" "}
+        <span
+          className={
+            "rounded px-1.5 py-0.5 text-[10px] font-semibold " +
+            (linha.fonteEstoqueFull === "api"
+              ? "bg-green-100 text-green-700"
+              : "bg-gray-200 text-gray-700")
+          }
+        >
+          {linha.fonteEstoqueFull === "api" ? "API" : "Manual"}
+        </span>
       </td>
       <td className="px-3 py-2">
         <div className="flex items-center gap-1.5">
