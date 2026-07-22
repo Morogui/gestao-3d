@@ -10,6 +10,7 @@ import { formatBRL } from "@/lib/custo";
 import { labelOrderStatus } from "@/lib/mercadolivre";
 import { todaySP, formatDiaBR, diasAtras, inicioDoMes } from "@/lib/date";
 import ItemThumbnail from "@/components/ItemThumbnail";
+import VendasTabSwitch from "@/components/VendasTabSwitch";
 
 export const dynamic = "force-dynamic";
 
@@ -268,6 +269,93 @@ function melhorDiaDeOrders(
   return melhor;
 }
 
+// Ranking dos produtos mais vendidos por QUANTIDADE dentro do período
+// filtrado na tela (mesmos pedidos já buscados pra tabela de "Pedidos" —
+// sem chamada extra à API). Agrupa por item_id da ML (cada anúncio/
+// variação conta separado, mesmo quando o título é parecido — ex: duas
+// cores do mesmo produto aparecem como linhas distintas, já que são
+// anúncios/variações diferentes na prática).
+interface RankingProduto {
+  itemId: string;
+  titulo: string;
+  sku: string;
+  quantidade: number;
+  pedidos: number;
+}
+
+function rankingPorQuantidade(orders: OrderSummary[]): RankingProduto[] {
+  const porItem = new Map<string, RankingProduto>();
+  for (const order of orders) {
+    for (const item of order.items) {
+      const chave = item.itemId || `titulo:${item.title}`;
+      const atual = porItem.get(chave) ?? {
+        itemId: item.itemId,
+        titulo: item.title,
+        sku: item.hasCustomSku ? item.sku : "",
+        quantidade: 0,
+        pedidos: 0,
+      };
+      atual.quantidade += item.quantity;
+      atual.pedidos += 1;
+      porItem.set(chave, atual);
+    }
+  }
+  return Array.from(porItem.values()).sort((a, b) => b.quantidade - a.quantidade);
+}
+
+function RankingProdutosTable({ ranking }: { ranking: RankingProduto[] }) {
+  if (ranking.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
+        Nenhum produto vendido no período selecionado.
+      </div>
+    );
+  }
+
+  const maxQuantidade = ranking[0].quantidade;
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
+          <tr>
+            <th className="px-4 py-3 w-10">#</th>
+            <th className="px-4 py-3">Produto</th>
+            <th className="px-4 py-3 text-right">Pedidos</th>
+            <th className="px-4 py-3 text-right">Qtd. vendida</th>
+            <th className="px-4 py-3 w-40">&nbsp;</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {ranking.map((r, idx) => (
+            <tr key={r.itemId + idx} className="hover:bg-gray-50">
+              <td className="px-4 py-3 text-gray-400">{idx + 1}</td>
+              <td className="px-4 py-3">
+                <p className="text-gray-900">{r.titulo}</p>
+                <p className="text-xs text-gray-400">
+                  {r.sku ? `SKU: ${r.sku}` : `ID ML: ${r.itemId}`}
+                </p>
+              </td>
+              <td className="px-4 py-3 text-right text-gray-500">{r.pedidos}</td>
+              <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                {r.quantidade}
+              </td>
+              <td className="px-4 py-3">
+                <div className="h-2 rounded bg-gray-100">
+                  <div
+                    className="h-2 rounded bg-blue-500"
+                    style={{ width: `${(r.quantidade / maxQuantidade) * 100}%` }}
+                  />
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default async function VendasPage({
   searchParams,
 }: {
@@ -396,9 +484,10 @@ export default async function VendasPage({
     );
   }
 
-  return (
+  const ranking = rankingPorQuantidade(result.orders);
+
+  const pedidosView = (
     <div className="flex flex-col gap-4">
-      {resumo}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-sm font-semibold text-gray-900">
           Pedidos — Mercado Livre — {rotuloPeriodo}
@@ -475,6 +564,30 @@ export default async function VendasPage({
           </tbody>
         </table>
       </div>
+    </div>
+  );
+
+  const rankingView = (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-sm font-semibold text-gray-900">
+          Ranking de produtos mais vendidos (quantidade) — {rotuloPeriodo}
+        </h2>
+        <div className="flex items-center gap-4">
+          <span className="text-xs text-gray-500">
+            {ranking.length} produto(s) distinto(s)
+          </span>
+          <RangeFilter de={de} ate={ate} plataforma={plataforma} />
+        </div>
+      </div>
+      <RankingProdutosTable ranking={ranking} />
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      {resumo}
+      <VendasTabSwitch pedidosView={pedidosView} rankingView={rankingView} />
     </div>
   );
 }
