@@ -80,11 +80,38 @@ function textoCorresponde(referencia: string, tituloOuSku: string): boolean {
   });
 }
 
+// Guarda de cor — bug real encontrado em 2026-07-22: um anúncio "...
+// Branco" estava contando (via casamento por texto/palavras) tanto pra
+// placa Preto quanto pra placa Branco, porque "com"/"sem" são stopwords
+// e o resto das palavras batia nas duas. Regra combinada com o usuário:
+// anúncio de placa branca só conta pro branco, anúncio de placa preta só
+// conta pro preto. Detecta a cor pelo NOME da placa (convenção "(Cor)" já
+// usada em todo o catálogo) e pelo próprio texto do anúncio — só bloqueia
+// quando os dois têm cor explícita E são diferentes; textos sem cor
+// mencionada (ex: anúncio genérico "Sem Parafusos") continuam batendo
+// normalmente, sem essa restrição.
+const CORES_CONHECIDAS = [
+  "branco", "preto", "preta", "cinza", "marrom", "prata", "bege", "laranja",
+];
+function corDoTexto(texto: string): string | null {
+  const tokens = new Set(normalize(texto).split(" "));
+  for (const cor of CORES_CONHECIDAS) {
+    if (tokens.has(cor)) return cor === "preta" ? "preto" : cor;
+  }
+  return null;
+}
+
 function correspondeAoItem(placa: PlacaRow, tituloOuSku: string): boolean {
-  return (
+  const bateu =
     textoCorresponde(placa.skuOuKit, tituloOuSku) ||
-    textoCorresponde(placa.nome, tituloOuSku)
-  );
+    textoCorresponde(placa.nome, tituloOuSku);
+  if (!bateu) return false;
+
+  const corPlaca = corDoTexto(placa.nome);
+  const corTexto = corDoTexto(tituloOuSku);
+  if (corPlaca && corTexto && corPlaca !== corTexto) return false;
+
+  return true;
 }
 
 // Mesma lógica de casamento usada dentro de calcularDemandaSemanal (SKU
