@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -6,12 +6,18 @@ export const dynamic = "force-dynamic";
 // Consumo de filamento (aba Produção): quanto já foi impresso com
 // sucesso e quanto já foi desperdiçado, em gramas, desde sempre.
 //
-// "Impresso" só consegue ser calculado pra placas com peso/placa (g) já
-// cadastrado (campo `placas.peso_placa_gramas`, editável na tela de
-// Produção) — por isso o número real tende a estar SUBESTIMADO enquanto
-// nem todas as placas tiverem esse dado confirmado. Expomos
-// `placasSemPeso`/`totalPlacas` pra deixar isso visível na tela em vez
-// de mostrar um número "completo" que na verdade não é.
+// "Impresso" tem duas fontes que se somam:
+// 1) Calculado automaticamente a partir das produções concluídas, só pra
+//    placas com peso/placa (g) já cadastrado (campo
+//    `placas.peso_placa_gramas`, editável na tela de Produção) — cresce
+//    sozinho a partir de agora, conforme mais placas ganham peso
+//    confirmado e mais produções são concluídas.
+// 2) Um valor informado manualmente (`consumo_filamento_manual`), pra
+//    cobrir tudo que já foi impresso ANTES desse cadastro de peso/placa
+//    existir — sem isso, o total ficaria zerado do zero até hoje, o que
+//    não reflete a operação real (o Guilherme já roda a operação há um
+//    tempo). Editável na tela de Produção (em kg, por ser a unidade mais
+//    prática pra declarar um total histórico).
 //
 // "Desperdiçado" já era rastreado desde a v21 (falha de placa inteira +
 // falha de peça avulsa) — aqui só somamos os dois de uma vez:
@@ -21,7 +27,7 @@ export const dynamic = "force-dynamic";
 // - `falhas_peca.gramas`: cada peça individual descartada numa placa que
 //   continuou imprimindo normalmente.
 export async function GET() {
-  const [impressoRows, desperdicoPlacaRows, desperdicoPecaRows, cobertura] =
+  const [impressoRows, desperdicoPlacaRows, desperdicoPecaRows, cobertura, manualRows] =
     await Promise.all([
       sql`
         SELECT COALESCE(SUM(pr.quantidade_placas * pl.peso_placa_gramas), 0) AS total
@@ -42,9 +48,17 @@ export async function GET() {
         FROM placas
         WHERE descontinuada = false
       `,
+      sql`
+        SELECT gramas_impressas_manual
+        FROM consumo_filamento_manual
+        ORDER BY id DESC
+        LIMIT 1
+      `,
     ]);
 
-  const gramasImpressas = Number((impressoRows as { total: string }[])[0]?.total ?? 0);
+  const gramasImpressasCalculadas = Number(
+    (impressoRows as { total: string }[])[0]?.total ?? 0
+  );
   const gramasDesperdicadasPlaca = Number(
     (desperdicoPlacaRows as { total: string }[])[0]?.total ?? 0
   );
@@ -54,13 +68,59 @@ export async function GET() {
   const { sem_peso: placasSemPeso, total: totalPlacas } = (
     cobertura as { sem_peso: string; total: string }[]
   )[0];
+  const gramasImpressasManual = Number(
+    (manualRows as { gramas_impressas_manual: string }[])[0]?.gramas_impressas_manual ?? 0
+  );
 
   return NextResponse.json({
-    gramasImpressas,
+    gramasImpressas: gramasImpressasCalculadas + gramasImpressasManual,
+    gramasImpressasCalculadas,
+    gramasImpressasManual,
     gramasDesperdicadas: gramasDesperdicadasPlaca + gramasDesperdicadasPeca,
     gramasDesperdicadasPlaca,
     gramasDesperdicadasPeca,
     placasSemPeso: Number(placasSemPeso),
     totalPlacas: Number(totalPlacas),
+  });
+}
+
+// Define (valor absoluto, não delta) o total impresso informado
+// manualmente — cobre o que já foi impresso antes do cadastro de
+// peso/placa existir. Guilherme digita o total que ele sabe que já
+// gastou até agora (ex: N kg de spools já consumidos) e o sistema soma
+// isso ao que for calculado automaticamente daqui pra frente.
+export async function PUT(request: NextRequest) {
+  const body = await request.json();
+  const { gramasImpressasManual } = body as { gramasImpressasManual: number };
+
+  if (!Number.isFinite(gramasImpressasManual) || gramasImpressasManual < 0) {
+    return NextResponse.json(
+      { error: "gramasImpressasManual precisa ser um número >= 0" },
+      { status: 400 }
+    );
+  }
+
+  const existing = (await sql`
+    SELECT id FROM consumo_filamento_manual ORDER BY id DESC LIMIT 1
+  `) as { id: number }[];
+
+  let rows: { gramas_impressas_manual: string }[];
+  if (existing.length > 0) {
+    rows = (await sql`
+      UPDATE consumo_filamento_manual
+      SET gramas_impressas_manual = ${gramasImpressasManual}, atualizado_em = now()
+      WHERE id = ${existing[0].id}
+      RETURNING gramas_impressas_manual
+    `) as { gramas_impressas_manual: string }[];
+  } else {
+    rows = (await sql`
+      INSERT INTO consumo_filamento_manual (gramas_impressas_manual)
+      VALUES (${gramasImpressasManual})
+      RETURNING gramas_impressas_manual
+    `) as { gramas_impressas_manual: string }[];
+  }
+
+  return NextResponse.json({
+    gramasImpressasManual: Number(rows[0].gramas_impressas_manual),
   });
 }
