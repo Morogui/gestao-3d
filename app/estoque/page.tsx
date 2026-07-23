@@ -6,16 +6,32 @@ import { PlacaRow } from "@/lib/placas";
 type EstoqueRow = PlacaRow & { atualizadoEm: string | null };
 type Status = "loading" | "ready" | "erro";
 
+interface SincronizacaoInfo {
+  connected: boolean;
+  pedidosVerificados?: number;
+  combosNovos?: number;
+  pecasBaixadas?: number;
+}
+
 // Aba Estoque: lista todas as placas (inclusive descontinuadas, como a
 // Taça Copa do Mundo — não produzimos mais, mas ainda vende o que
 // sobrou) com um campo de ajuste manual. O ajuste escreve direto na
 // mesma tabela estoque_placas que a aba Produção lê/credita — então as
 // duas telas ficam sempre em sincronia, sem ledger paralelo.
+//
+// Além do ajuste manual, toda vez que essa aba é aberta ela também
+// dispara a sincronização automática de vendas (pedido do Guilherme em
+// 2026-07-22: "a baixa deve acontecer assim que a api retornar o pedido
+// como enviado") — verifica pedidos recentes da ML/Shopee e desconta do
+// estoque os que já saíram pra entrega, sem precisar de ajuste manual
+// pra cada venda.
 export default function EstoquePage() {
   const [status, setStatus] = useState<Status>("loading");
   const [placas, setPlacas] = useState<EstoqueRow[]>([]);
   const [busca, setBusca] = useState("");
   const [salvando, setSalvando] = useState<Record<number, boolean>>({});
+  const [sincronizando, setSincronizando] = useState(false);
+  const [sincronizacao, setSincronizacao] = useState<SincronizacaoInfo | null>(null);
 
   async function carregar() {
     try {
@@ -28,8 +44,26 @@ export default function EstoquePage() {
     }
   }
 
+  async function sincronizarVendas() {
+    setSincronizando(true);
+    try {
+      const res = await fetch("/api/estoque/sincronizar-vendas", { method: "POST" });
+      const info = (await res.json()) as SincronizacaoInfo;
+      setSincronizacao(info);
+      if (info.connected && (info.combosNovos ?? 0) > 0) {
+        await carregar();
+      }
+    } catch {
+      setSincronizacao({ connected: false });
+    } finally {
+      setSincronizando(false);
+    }
+  }
+
   useEffect(() => {
     carregar();
+    sincronizarVendas();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const placasFiltradas = useMemo(() => {
@@ -94,6 +128,40 @@ export default function EstoquePage() {
         />
         <Card label="Total de peças em estoque" value={String(totalPecas)} />
       </div>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm">
+        <button
+          onClick={sincronizarVendas}
+          disabled={sincronizando}
+          className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
+        >
+          {sincronizando ? "Sincronizando..." : "Sincronizar vendas agora"}
+        </button>
+        {sincronizacao && !sincronizacao.connected && (
+          <span className="text-xs text-red-600">
+            Não deu pra sincronizar — ML e Shopee parecem desconectados.
+            Reconecte na aba Vendas.
+          </span>
+        )}
+        {sincronizacao && sincronizacao.connected && (
+          <span className="text-xs text-gray-500">
+            {sincronizacao.pedidosVerificados ?? 0} pedido(s) enviado(s)
+            verificado(s) (últimos {10} dias) ·{" "}
+            <span className="font-medium text-gray-700">
+              {sincronizacao.combosNovos ?? 0} baixa(s) nova(s)
+            </span>{" "}
+            · {sincronizacao.pecasBaixadas ?? 0} peça(s) descontada(s) agora.
+          </span>
+        )}
+      </div>
+      <p className="-mt-4 text-xs text-gray-400">
+        A baixa automática só desconta pedidos marcados como enviados pela
+        API (ML: envio "shipped"/"delivered"; Shopee: status "SHIPPED",
+        "TO_CONFIRM_RECEIVE" ou "COMPLETED") — pedido só pago ainda não
+        desconta nada. Ela roda sozinha sempre que essa aba é aberta, e
+        você também pode forçar com o botão acima. Cada pedido só é
+        descontado uma vez, mesmo rodando várias vezes.
+      </p>
 
       <div>
         <input
