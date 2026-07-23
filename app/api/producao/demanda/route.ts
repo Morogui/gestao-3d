@@ -100,6 +100,15 @@ export async function GET() {
     skuPlacaMap.set(chave, lista);
   }
 
+  // Itens que o Guilherme já marcou como "não precisa aparecer" no
+  // aviso de vendas não identificadas (produto descontinuado, anúncio
+  // que nunca vai ganhar uma placa própria etc.) — ver
+  // POST /api/producao/ignorar-item.
+  const ignoradosRows = (await sql`
+    SELECT chave FROM itens_demanda_ignorados
+  `) as { chave: string }[];
+  const ignorados = new Set(ignoradosRows.map((r) => r.chave));
+
   // Base de 30 dias — define o ritmo semanal e a meta de estoque (ver
   // lib/demanda.ts). aProduzir e recomendadoEstoque vêm daqui. Usa
   // todosOsPedidos (ML + Shopee mesclados) pra não subestimar a demanda
@@ -108,7 +117,8 @@ export async function GET() {
     todosOsPedidos,
     placas,
     skuPlacaMap,
-    DIAS_BASE
+    DIAS_BASE,
+    ignorados
   );
 
   // Só pra alimentar o "Vendido no Full (semana)" — reaproveita os
@@ -118,7 +128,7 @@ export async function GET() {
     (o) => new Date(o.dateCreated) >= seteDiasAtrasDate
   );
   const { porPlaca: demandaSemana, naoIdentificado: naoIdentificadoSemana } =
-    calcularDemandaSemanal(orders7d, placas, skuPlacaMap, 7);
+    calcularDemandaSemanal(orders7d, placas, skuPlacaMap, 7, ignorados);
 
   const demandaFinal = placas.map((placa) => {
     const base = demandaBase.get(placa.id)!;
