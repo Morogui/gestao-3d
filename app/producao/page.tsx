@@ -130,33 +130,55 @@ export default function ProducaoPage() {
   // "acordar" a tela — atualiza a cada minuto.
   const [horaTick, setHoraTick] = useState(() => horaAtualSP());
 
-  async function carregarTudo() {
-    const [placasRes, machinesRes, producoesRes, demandaRes, consumoRes, janelaRes] =
+  // Refresh "rápido": tudo que NÃO depende de buscar pedidos na ML/Shopee
+  // (placas, máquinas, produções, consumo, janela) — normalmente volta em
+  // menos de 1s. Separado do refresh de demanda de propósito: depois de
+  // uma ação (carregar máquina, concluir, falha etc.) só isso aqui
+  // precisa terminar pra tela e botão reagirem; não faz sentido travar o
+  // clique do usuário esperando a ML/Shopee responderem de novo.
+  async function carregarRapido() {
+    const [placasRes, machinesRes, producoesRes, consumoRes, janelaRes] =
       await Promise.all([
         fetch("/api/placas").then((r) => r.json()),
         fetch("/api/machines").then((r) => r.json()),
         fetch("/api/producoes").then((r) => r.json()),
-        fetch("/api/producao/demanda").then((r) => r.json()),
         fetch("/api/producao/consumo").then((r) => r.json()),
         fetch("/api/producao/janela").then((r) => r.json()),
       ]);
-
-    if (!demandaRes.connected) {
-      setStatus("desconectado");
-      return;
-    }
-    if (demandaRes.error) {
-      setStatus("erro");
-      return;
-    }
-
     setPlacas(placasRes);
     setMachines(machinesRes);
     setProducoes(producoesRes);
-    setDemanda(demandaRes);
     setConsumo(consumoRes);
     setJanela(janelaRes ?? JANELA_PADRAO);
-    setStatus("ready");
+  }
+
+  // Refresh "lento": busca pedidos de 30 dias na ML + Shopee (com
+  // shipment por pedido na ML) pra recalcular demanda/fila de prioridade
+  // — é o que demora (historicamente 10-15s+ dependendo do volume de
+  // pedidos). Pedido pelo Guilherme em 2026-07-23 ("sistema tá lento e
+  // adicionar estoque não tá indo"): antes disso bloqueava TODA ação
+  // (carregar máquina, concluir etc.) até terminar, sem nenhum feedback
+  // visual — parecia que o clique não tinha feito nada. Agora essa busca
+  // roda em paralelo/background depois de uma ação, sem travar o botão.
+  async function carregarDemanda(): Promise<boolean> {
+    const demandaRes = await fetch("/api/producao/demanda").then((r) => r.json());
+    if (!demandaRes.connected) {
+      setStatus("desconectado");
+      return false;
+    }
+    if (demandaRes.error) {
+      setStatus("erro");
+      return false;
+    }
+    setDemanda(demandaRes);
+    return true;
+  }
+
+  // Carga inicial da página — precisa das duas (rápida + demanda) antes
+  // de decidir se mostra a tela (conectado/erro/pronta).
+  async function carregarTudo() {
+    const [, demandaOk] = await Promise.all([carregarRapido(), carregarDemanda()]);
+    if (demandaOk) setStatus("ready");
   }
 
   async function salvarPesoPlaca(placaId: number, pesoPlacaGramas: number | null) {
@@ -165,7 +187,7 @@ export default function ProducaoPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pesoPlacaGramas }),
     });
-    await carregarTudo();
+    await carregarRapido();
   }
 
   async function salvarImpressoManualKg(kg: number) {
@@ -174,7 +196,7 @@ export default function ProducaoPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ gramasImpressasManual: Math.max(0, kg) * 1000 }),
     });
-    await carregarTudo();
+    await carregarRapido();
   }
 
   useEffect(() => {
@@ -258,6 +280,12 @@ export default function ProducaoPage() {
     );
   }, [placas, demandaPorPlaca, pertoDoFechamento]);
 
+  // Todas as ações abaixo seguem o mesmo padrão: marca a máquina como
+  // "carregando" (feedback visual imediato no botão), faz a chamada,
+  // espera só o refresh RÁPIDO (placas/produções/etc — ~1s) antes de
+  // liberar o botão, e dispara o refresh de demanda em paralelo sem
+  // esperar por ele — a fila de prioridade/aProduzir atualiza sozinha
+  // assim que a ML/Shopee responderem, sem travar a tela até lá.
   async function iniciarProducao(placaId: number, machineId: number, quantidadePlacas: number) {
     setCarregando((prev) => ({ ...prev, [machineId]: true }));
     try {
@@ -266,46 +294,71 @@ export default function ProducaoPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ machineId, placaId, quantidadePlacas }),
       });
-      await carregarTudo();
+      await carregarRapido();
+      carregarDemanda();
     } finally {
       setCarregando((prev) => ({ ...prev, [machineId]: false }));
     }
   }
 
-  async function concluirProducao(id: number) {
-    await fetch(`/api/producoes/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "concluida" }),
-    });
-    await carregarTudo();
+  async function concluirProducao(id: number, machineId: number) {
+    setCarregando((prev) => ({ ...prev, [machineId]: true }));
+    try {
+      await fetch(`/api/producoes/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "concluida" }),
+      });
+      await carregarRapido();
+      carregarDemanda();
+    } finally {
+      setCarregando((prev) => ({ ...prev, [machineId]: false }));
+    }
   }
 
-  async function cancelarProducao(id: number) {
-    await fetch(`/api/producoes/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "cancelada" }),
-    });
-    await carregarTudo();
+  async function cancelarProducao(id: number, machineId: number) {
+    setCarregando((prev) => ({ ...prev, [machineId]: true }));
+    try {
+      await fetch(`/api/producoes/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "cancelada" }),
+      });
+      await carregarRapido();
+      carregarDemanda();
+    } finally {
+      setCarregando((prev) => ({ ...prev, [machineId]: false }));
+    }
   }
 
-  async function falhaPlaca(id: number, gramas: number) {
-    await fetch(`/api/producoes/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "falha_placa", gramasDesperdicadas: gramas }),
-    });
-    await carregarTudo();
+  async function falhaPlaca(id: number, machineId: number, gramas: number) {
+    setCarregando((prev) => ({ ...prev, [machineId]: true }));
+    try {
+      await fetch(`/api/producoes/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "falha_placa", gramasDesperdicadas: gramas }),
+      });
+      await carregarRapido();
+      carregarDemanda();
+    } finally {
+      setCarregando((prev) => ({ ...prev, [machineId]: false }));
+    }
   }
 
-  async function falhaPeca(id: number, pecaDescricao: string, gramas: number) {
-    await fetch(`/api/producoes/${id}/falha-peca`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pecaDescricao, gramas }),
-    });
-    await carregarTudo();
+  async function falhaPeca(id: number, machineId: number, pecaDescricao: string, gramas: number) {
+    setCarregando((prev) => ({ ...prev, [machineId]: true }));
+    try {
+      await fetch(`/api/producoes/${id}/falha-peca`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pecaDescricao, gramas }),
+      });
+      await carregarRapido();
+      carregarDemanda();
+    } finally {
+      setCarregando((prev) => ({ ...prev, [machineId]: false }));
+    }
   }
 
   if (status === "desconectado") {
@@ -501,10 +554,10 @@ export default function ProducaoPage() {
               aberturaHora={janela.aberturaHora}
               carregando={Boolean(carregando[machine.id])}
               onIniciar={(placaId, qtd) => iniciarProducao(placaId, machine.id, qtd)}
-              onConcluir={concluirProducao}
-              onCancelar={cancelarProducao}
-              onFalhaPlaca={falhaPlaca}
-              onFalhaPeca={falhaPeca}
+              onConcluir={(id) => concluirProducao(id, machine.id)}
+              onCancelar={(id) => cancelarProducao(id, machine.id)}
+              onFalhaPlaca={(id, gramas) => falhaPlaca(id, machine.id, gramas)}
+              onFalhaPeca={(id, desc, gramas) => falhaPeca(id, machine.id, desc, gramas)}
             />
           ))}
         </div>
@@ -981,26 +1034,30 @@ function PrinterCard({
 
           <div className="flex flex-wrap gap-2">
             <button
+              disabled={carregando}
               onClick={() => onConcluir(producao.id)}
-              className="rounded bg-green-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-green-700"
+              className="rounded bg-green-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-40"
             >
-              Placa impressa com sucesso
+              {carregando ? "Salvando..." : "Placa impressa com sucesso"}
             </button>
             <button
+              disabled={carregando}
               onClick={() => setShowFalhaPeca((v) => !v)}
-              className="rounded border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+              className="rounded border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-40"
             >
               Falha em peça
             </button>
             <button
+              disabled={carregando}
               onClick={() => setShowFalhaPlaca((v) => !v)}
-              className="rounded border border-red-300 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
+              className="rounded border border-red-300 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-40"
             >
               Falha na placa
             </button>
             <button
+              disabled={carregando}
               onClick={() => onCancelar(producao.id)}
-              className="rounded px-2.5 py-1.5 text-xs text-gray-500 hover:underline"
+              className="rounded px-2.5 py-1.5 text-xs text-gray-500 hover:underline disabled:opacity-40"
             >
               Cancelar
             </button>
@@ -1028,7 +1085,7 @@ function PrinterCard({
                     className="w-28 rounded border border-gray-300 px-2 py-1 text-xs"
                   />
                   <button
-                    disabled={!pecaDescricao.trim()}
+                    disabled={!pecaDescricao.trim() || carregando}
                     onClick={() => {
                       onFalhaPeca(producao.id, pecaDescricao.trim(), Number(gramasPeca) || 0);
                       setPecaDescricao("");
@@ -1037,7 +1094,7 @@ function PrinterCard({
                     }}
                     className="rounded bg-amber-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-40"
                   >
-                    Registrar
+                    {carregando ? "Salvando..." : "Registrar"}
                   </button>
                 </div>
               </div>
@@ -1058,14 +1115,15 @@ function PrinterCard({
                   className="w-32 rounded border border-gray-300 px-2 py-1 text-xs"
                 />
                 <button
+                  disabled={carregando}
                   onClick={() => {
                     onFalhaPlaca(producao.id, Number(gramasPlaca) || 0);
                     setGramasPlaca("");
                     setShowFalhaPlaca(false);
                   }}
-                  className="rounded bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700"
+                  className="rounded bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-40"
                 >
-                  Confirmar falha
+                  {carregando ? "Salvando..." : "Confirmar falha"}
                 </button>
               </div>
             </div>
@@ -1244,7 +1302,7 @@ function CarregarPlacaForm({
           onClick={() => placaId && onIniciar(placaId, quantidade)}
           className="flex-1 rounded bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
         >
-          Carregar máquina
+          {carregando ? "Carregando..." : "Carregar máquina"}
         </button>
       </div>
     </div>
