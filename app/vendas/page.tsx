@@ -272,18 +272,25 @@ function resumoStats(orders: OrderSummary[]): {
   };
 }
 
+// "comparativo" é o mesmo dado do dia anterior ao período selecionado
+// (só calculado quando o filtro é um único dia — de === ate), mostrado
+// bem menor/apagado embaixo do número principal. Pedido do Guilherme
+// em 2026-07-23: "ali devem mostrar o do dia anterior menor pra eu ter
+// noção de diferença dos dias".
 function ResumoCard({
   label,
   pedidos,
   itensVendidos,
   faturamento,
   destaque,
+  comparativo,
 }: {
   label: string;
   pedidos: number;
   itensVendidos: number;
   faturamento: number;
   destaque?: boolean;
+  comparativo?: { label: string; faturamento: number; pedidos: number };
 }) {
   return (
     <div
@@ -297,6 +304,12 @@ function ResumoCard({
       <p className="text-xs text-gray-400">
         {pedidos} pedido(s) · {itensVendidos} produto(s) vendido(s)
       </p>
+      {comparativo && (
+        <p className="mt-1.5 border-t border-gray-100 pt-1.5 text-[11px] text-gray-400">
+          {comparativo.label}: {formatBRL(comparativo.faturamento)} ·{" "}
+          {comparativo.pedidos} pedido(s)
+        </p>
+      )}
     </div>
   );
 }
@@ -307,15 +320,60 @@ function ResumoCard({
 function TotalPedidosCard({
   label,
   pedidos,
+  comparativo,
 }: {
   label: string;
   pedidos: number;
+  comparativo?: { label: string; pedidos: number };
 }) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4">
       <p className="text-xs text-gray-500">{label}</p>
       <p className="text-xl font-semibold text-gray-900">{pedidos}</p>
       <p className="text-xs text-gray-400">pedido(s) no período</p>
+      {comparativo && (
+        <p className="mt-1.5 border-t border-gray-100 pt-1.5 text-[11px] text-gray-400">
+          {comparativo.label}: {comparativo.pedidos} pedido(s)
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Card com os produtos mais vendidos (por quantidade) do período
+// selecionado — reaproveita o mesmo ranking já calculado pra aba
+// "Ranking de produtos", só mostrando o top 5 num card compacto no
+// meio da fileira de recordes. Pedido do Guilherme em 2026-07-23.
+function TopProdutosCard({
+  ranking,
+  periodo,
+}: {
+  ranking: RankingProduto[];
+  periodo: string;
+}) {
+  const top = ranking.slice(0, 5);
+  return (
+    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+      <p className="text-xs text-blue-700">Mais vendidos — {periodo}</p>
+      {top.length === 0 ? (
+        <p className="mt-1 text-sm text-gray-400">Sem vendas no período</p>
+      ) : (
+        <ol className="mt-1.5 flex flex-col gap-1">
+          {top.map((r, idx) => (
+            <li
+              key={r.plataforma + r.itemId + idx}
+              className="flex items-center justify-between gap-2 text-xs"
+            >
+              <span className="truncate text-gray-900">
+                {idx + 1}. {r.titulo}
+              </span>
+              <span className="shrink-0 font-semibold text-gray-900">
+                {r.quantidade}x
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
     </div>
   );
 }
@@ -565,19 +623,32 @@ export default async function VendasPage({
   // sempre reflete as duas lojas juntas no modo "Todas" (pedido do
   // Guilherme em 2026-07-22: "recorde tá faltando Shopee, pode colocar"),
   // só separando quando um filtro de plataforma específico é escolhido.
-  const [semanaResult, mesResult, recorde90dML, recorde90dShopee] = await Promise.all([
-    isRangeSemana ? Promise.resolve(principal) : buscarOrders(plataforma, semanaInicio, hoje),
-    isRangeMes ? Promise.resolve(principal) : buscarOrders(plataforma, mesInicio, hoje),
-    plataforma !== "shopee"
-      ? getDailyTotalsRangeML(noventaDiasInicio, hoje)
-      : Promise.resolve({ connected: false } as DailyTotalsResult),
-    plataforma !== "ml"
-      ? getDailyTotalsRangeShopee(noventaDiasInicio, hoje)
-      : Promise.resolve({ connected: false } as DailyTotalsResult),
-  ]);
+  // Comparativo "dia anterior" pros 2 primeiros cards — só faz sentido
+  // quando o filtro atual é um único dia (de === ate); num intervalo de
+  // vários dias não existe um "dia anterior" único pra comparar. Pedido
+  // do Guilherme em 2026-07-23: mostrar o valor do dia anterior, menor,
+  // pra dar noção de diferença entre os dias.
+  const diaAnterior = de === ate ? diasAtras(de, 1) : null;
+
+  const [semanaResult, mesResult, recorde90dML, recorde90dShopee, anteriorResult] =
+    await Promise.all([
+      isRangeSemana ? Promise.resolve(principal) : buscarOrders(plataforma, semanaInicio, hoje),
+      isRangeMes ? Promise.resolve(principal) : buscarOrders(plataforma, mesInicio, hoje),
+      plataforma !== "shopee"
+        ? getDailyTotalsRangeML(noventaDiasInicio, hoje)
+        : Promise.resolve({ connected: false } as DailyTotalsResult),
+      plataforma !== "ml"
+        ? getDailyTotalsRangeShopee(noventaDiasInicio, hoje)
+        : Promise.resolve({ connected: false } as DailyTotalsResult),
+      diaAnterior
+        ? buscarOrders(plataforma, diaAnterior, diaAnterior)
+        : Promise.resolve(null),
+    ]);
   const resumoSelecionado = resumoStats(principal.orders);
   const resumoSemana = resumoStats(semanaResult.orders);
   const resumoMes = resumoStats(mesResult.orders);
+  const resumoAnterior = anteriorResult ? resumoStats(anteriorResult.orders) : null;
+  const labelDiaAnterior = diaAnterior ? formatDiaBR(diaAnterior) : null;
 
   const rotuloPeriodo =
     de === ate ? formatDiaBR(de) : `${formatDiaBR(de)} até ${formatDiaBR(ate)}`;
@@ -621,6 +692,11 @@ export default async function VendasPage({
     plataforma !== "ml" && recorde90dShopee.connected && !recorde90dShopee.error;
   const recorde90dIndisponivel = !mlDisponivelPara90d && !shopeeDisponivelPara90d;
 
+  // Calculado aqui (antes do card de resumo) porque agora também
+  // alimenta o card "Mais vendidos" na fileira de recordes, além da aba
+  // Ranking mais abaixo — mesmos pedidos já buscados, sem chamada extra.
+  const ranking = rankingPorQuantidade(principal.orders);
+
   const resumo = (
     <div className="flex flex-col gap-4">
       {avisoPlataforma && (
@@ -641,16 +717,31 @@ export default async function VendasPage({
           itensVendidos={resumoSelecionado.itensVendidos}
           faturamento={resumoSelecionado.faturamento}
           destaque
+          comparativo={
+            resumoAnterior && labelDiaAnterior
+              ? {
+                  label: labelDiaAnterior,
+                  faturamento: resumoAnterior.faturamento,
+                  pedidos: resumoAnterior.pedidos,
+                }
+              : undefined
+          }
         />
         <TotalPedidosCard
           label={`Total de pedidos em ${rotuloPeriodo}`}
           pedidos={resumoSelecionado.pedidos}
+          comparativo={
+            resumoAnterior && labelDiaAnterior
+              ? { label: labelDiaAnterior, pedidos: resumoAnterior.pedidos }
+              : undefined
+          }
         />
         <ResumoCard label="Vendas na semana (últimos 7 dias)" pedidos={resumoSemana.pedidos} itensVendidos={resumoSemana.itensVendidos} faturamento={resumoSemana.faturamento} />
         <ResumoCard label="Vendas no mês" pedidos={resumoMes.pedidos} itensVendidos={resumoMes.itensVendidos} faturamento={resumoMes.faturamento} />
       </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <RecordeDiaCard label="Recorde do mês (melhor dia)" melhorDia={melhorDiaMes} />
+        <TopProdutosCard ranking={ranking} periodo={rotuloPeriodo} />
         {!recorde90dIndisponivel ? (
           <RecordeDiaCard
             label="Recorde da loja (melhor dia, últimos 90 dias)"
@@ -666,7 +757,6 @@ export default async function VendasPage({
   );
 
   const mostrarPlataforma = plataforma === "todas";
-  const ranking = rankingPorQuantidade(principal.orders);
 
   const pedidosView = (
     <div className="flex flex-col gap-4">
