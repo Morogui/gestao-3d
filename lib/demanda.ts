@@ -186,6 +186,60 @@ export interface ResultadoDemanda {
   naoIdentificado: NaoIdentificado;
 }
 
+export interface BaixaItem {
+  placaId: number;
+  pecas: number;
+}
+
+// Quantas peças de cada placa um pedido específico deve descontar do
+// estoque físico assim que ele for marcado como enviado (ver
+// pedidoFoiEnviado em lib/ml-orders.ts e app/api/estoque/sincronizar-vendas).
+// Usa EXATAMENTE a mesma lógica de casamento de calcularDemandaSemanal
+// (SKU exato via sku_placa, com o multiplicador pecas_por_unidade, senão
+// fallback por texto contra sku_ou_kit/nome da placa) — assim o que "conta
+// como vendido" pro cálculo de demanda é sempre o mesmo item que desconta
+// do estoque real, sem os dois números poderem contradizer um ao outro.
+export function resolverBaixaDoPedido(
+  order: OrderSummary,
+  placas: PlacaRow[],
+  skuPlacaMap: SkuPlacaMap
+): BaixaItem[] {
+  const porPlaca = new Map<number, number>();
+  const somar = (placaId: number, qty: number) => {
+    porPlaca.set(placaId, (porPlaca.get(placaId) ?? 0) + qty);
+  };
+
+  for (const item of order.items) {
+    let casou = false;
+
+    if (item.hasCustomSku) {
+      const entradas = skuPlacaMap.get(normalize(item.sku));
+      if (entradas && entradas.length > 0) {
+        casou = true;
+        for (const entrada of entradas) {
+          somar(entrada.placaId, item.quantity * entrada.pecasPorUnidade);
+        }
+      }
+    }
+
+    if (!casou) {
+      for (const placa of placas) {
+        if (
+          correspondeAoItem(placa, item.title) ||
+          (item.hasCustomSku && correspondeAoItem(placa, item.sku))
+        ) {
+          somar(placa.id, item.quantity);
+        }
+      }
+    }
+  }
+
+  return Array.from(porPlaca.entries()).map(([placaId, pecas]) => ({
+    placaId,
+    pecas,
+  }));
+}
+
 export function calcularDemandaSemanal(
   orders: OrderSummary[],
   placas: PlacaRow[],

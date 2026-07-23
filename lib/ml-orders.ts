@@ -29,10 +29,31 @@ export interface OrderSummary {
   totalAmount: number;
   status: string;
   shippingMode: string;
+  // Status do ENVIO (não confundir com "status" acima, que é o status do
+  // pagamento/pedido). Usado pra saber se um pedido já foi de fato
+  // despachado, pra disparar a baixa automática de estoque (ver
+  // pedidoFoiEnviado abaixo). ML: valor cru do shipment ("pending",
+  // "handling", "ready_to_ship", "shipped", "delivered", ...). Shopee: o
+  // "order_status" já É o status de fulfillment (a Shopee não separa
+  // pagamento de envio como a ML), então aqui repete o mesmo valor de
+  // "status".
+  shippingStatus: string;
   // De qual plataforma veio esse pedido — usado pela aba Vendas pra
   // mesclar Mercado Livre + Shopee num só painel (modo "Todas") sem
   // perder a rastreabilidade de qual pedido é de qual loja.
   plataforma: "ml" | "shopee";
+}
+
+// Pedido já foi despachado de fato (saiu fisicamente pra transportadora)?
+// Usado pela sincronização de estoque (app/api/estoque/sincronizar-vendas)
+// pra só dar baixa em peças que realmente já saíram — pedido só pago mas
+// ainda não enviado não desconta nada.
+const ENVIADO_ML = new Set(["shipped", "delivered"]);
+const ENVIADO_SHOPEE = new Set(["SHIPPED", "TO_CONFIRM_RECEIVE", "COMPLETED"]);
+
+export function pedidoFoiEnviado(order: OrderSummary): boolean {
+  if (order.plataforma === "ml") return ENVIADO_ML.has(order.shippingStatus);
+  return ENVIADO_SHOPEE.has(order.shippingStatus);
 }
 
 export type OrdersResult =
@@ -371,6 +392,10 @@ async function fetchOrdersInRange(
       });
 
       let shippingMode = "Mercado Envios";
+      // Status cru do envio (ver comentário em OrderSummary.shippingStatus)
+      // — usado só pra decidir a baixa automática de estoque, não muda o
+      // que já era mostrado na tela (shippingMode continua igual).
+      let shippingStatus = "—";
       const shippingId = order.shipping?.id;
       if (shippingId) {
         try {
@@ -391,6 +416,7 @@ async function fetchOrdersInRange(
               // o logistic_type (ajuda a diagnosticar casos não mapeados)
               shippingMode = `Mercado Envios (${shipData.mode})`;
             }
+            shippingStatus = shipData?.status ?? "—";
           } else {
             console.error(
               `[ML orders] shipment ${shippingId} respondeu ${shipResp.status}`
@@ -411,6 +437,7 @@ async function fetchOrdersInRange(
         totalAmount: order.total_amount ?? 0,
         status: order.status ?? "—",
         shippingMode,
+        shippingStatus,
         plataforma: "ml",
       };
     })
