@@ -170,10 +170,12 @@ function RangeFilter({
   const hoje = todaySP();
   const ontem = diasAtras(hoje, 1);
   const semanaInicio = diasAtras(hoje, 6);
+  const mesInicio = inicioDoMes(hoje);
 
   const isHoje = de === hoje && ate === hoje;
   const isOntem = de === ontem && ate === ontem;
   const isSemana = de === semanaInicio && ate === hoje;
+  const isMes = de === mesInicio && ate === hoje;
 
   const hrefAtalho = (deQ: string, ateQ: string) =>
     `/vendas?de=${deQ}&ate=${ateQ}&plataforma=${plataforma}`;
@@ -192,6 +194,9 @@ function RangeFilter({
           className={quickBtnClass(isSemana)}
         >
           Semana
+        </Link>
+        <Link href={hrefAtalho(mesInicio, hoje)} className={quickBtnClass(isMes)}>
+          Mês
         </Link>
       </div>
       <form className="flex flex-wrap items-center gap-2" method="GET">
