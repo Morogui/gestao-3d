@@ -186,6 +186,17 @@ export interface ResultadoDemanda {
   naoIdentificado: NaoIdentificado;
 }
 
+// Chave usada pra "silenciar" um item que nunca vai bater com o
+// catálogo (ex: anúncio de um produto que a Multiplique/Morolar não
+// vende mais) — SKU tem prioridade sobre o título por ser mais estável
+// entre pedidos; cai pro título normalizado só quando o pedido não tem
+// SKU customizado. Usada tanto ao gravar em itens_demanda_ignorados
+// quanto ao checar o item aqui dentro, então as duas pontas têm que
+// usar exatamente essa mesma função.
+export function chaveItemIgnorado(sku: string, titulo: string): string {
+  return normalize(sku) || normalize(titulo);
+}
+
 export interface BaixaItem {
   placaId: number;
   pecas: number;
@@ -244,7 +255,8 @@ export function calcularDemandaSemanal(
   orders: OrderSummary[],
   placas: PlacaRow[],
   skuPlacaMap: SkuPlacaMap = new Map(),
-  diasNoPeriodo: number = 7
+  diasNoPeriodo: number = 7,
+  ignorados: Set<string> = new Set()
 ): ResultadoDemanda {
   const vendidoPorPlaca = new Map<number, number>();
   const vendidoFullPorPlaca = new Map<number, number>();
@@ -303,17 +315,26 @@ export function calcularDemandaSemanal(
       }
 
       // 3) Nada bateu — registra como não identificado em vez de
-      // simplesmente sumir da conta.
+      // simplesmente sumir da conta, a menos que o Guilherme já tenha
+      // marcado esse item pra ignorar (produto que não vende mais e
+      // nunca vai ganhar uma placa no catálogo — ver
+      // itens_demanda_ignorados / POST /api/producao/ignorar-item).
       if (!casou) {
-        naoIdentificado.qtyPeriodo += item.quantity;
-        if (isFull) naoIdentificado.qtyFull += item.quantity;
-        if (naoIdentificado.amostras.length < 20) {
-          naoIdentificado.amostras.push({
-            titulo: item.title,
-            sku: item.hasCustomSku ? item.sku : "",
-            quantity: item.quantity,
-            isFull,
-          });
+        const chave = chaveItemIgnorado(
+          item.hasCustomSku ? item.sku : "",
+          item.title
+        );
+        if (!ignorados.has(chave)) {
+          naoIdentificado.qtyPeriodo += item.quantity;
+          if (isFull) naoIdentificado.qtyFull += item.quantity;
+          if (naoIdentificado.amostras.length < 20) {
+            naoIdentificado.amostras.push({
+              titulo: item.title,
+              sku: item.hasCustomSku ? item.sku : "",
+              quantity: item.quantity,
+              isFull,
+            });
+          }
         }
       }
     }
