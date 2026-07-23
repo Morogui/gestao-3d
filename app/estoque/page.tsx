@@ -247,8 +247,13 @@ function LinhaEstoque({
   return (
     <tr className="hover:bg-gray-50">
       <td className="px-3 py-2">
+        {/* SKU em cima (negrito) — é o código/descrição real do produto
+            (ex: "STAM-01 BEGE | Suporte Organizador..."), o que o
+            Guilherme usa pra identificar o item de verdade. O nome
+            "amigável" vira legenda embaixo (pedido 2026-07-23: "aqui
+            sempre temos que ter a sku nao o nome"). */}
         <p className="font-medium text-gray-900">
-          {placa.nome}
+          {placa.skuOuKit}
           {placa.descontinuada && (
             <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-normal text-gray-500">
               Descontinuada
@@ -256,7 +261,8 @@ function LinhaEstoque({
           )}
         </p>
         <p className="text-xs text-gray-400">
-          {placa.tipo === "composto" ? `${placa.papel} de ${placa.grupoComposto}` : "peça direta"}
+          {placa.nome}
+          {placa.tipo === "composto" ? ` · ${placa.papel} de ${placa.grupoComposto}` : ""}
         </p>
       </td>
       <td className="px-3 py-2">
