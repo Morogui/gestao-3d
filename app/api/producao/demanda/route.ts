@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { getOrdersRange } from "@/lib/ml-orders";
+import { getOrdersRange as getOrdersRangeML, OrderSummary } from "@/lib/ml-orders";
+import { getOrdersRange as getOrdersRangeShopee } from "@/lib/shopee-orders";
 import { DbPlacaRow, toPlacaRow } from "@/lib/placas";
 import { calcularDemandaSemanal, SkuPlacaMap } from "@/lib/demanda";
 import { todaySP } from "@/lib/date";
@@ -34,7 +35,18 @@ export async function GET() {
   const seteDiasAtrasDate = new Date(`${hoje}T12:00:00-03:00`);
   seteDiasAtrasDate.setDate(seteDiasAtrasDate.getDate() - 6);
 
-  const result = await getOrdersRange(inicio, hoje);
+  // Busca ML + Shopee em paralelo e mescla os pedidos antes de calcular a
+  // demanda — antes desse fix, a produção só enxergava vendas da ML, então
+  // qualquer SKU vendido também na Shopee tinha sua meta de estoque/"a
+  // produzir" subestimada (a Shopee ficava invisível pro cálculo). ML
+  // continua sendo obrigatória pra essa tela funcionar (é a conexão
+  // principal, testada há mais tempo); Shopee entra "de bônus" quando
+  // conectada — se não estiver, a demanda cai de volta pro que já
+  // funcionava (só ML), sem quebrar a tela.
+  const [result, resultShopee] = await Promise.all([
+    getOrdersRangeML(inicio, hoje),
+    getOrdersRangeShopee(inicio, hoje),
+  ]);
 
   if (!result.connected) {
     return NextResponse.json({ connected: false });
@@ -42,6 +54,11 @@ export async function GET() {
   if (result.error) {
     return NextResponse.json({ connected: true, error: true });
   }
+
+  const shopeeOrders: OrderSummary[] =
+    resultShopee.connected && !resultShopee.error ? resultShopee.orders : [];
+  const shopeeConectada = resultShopee.connected && !resultShopee.error;
+  const todosOsPedidos: OrderSummary[] = [...result.orders, ...shopeeOrders];
 
   // IMPORTANTE: inclui placas descontinuadas aqui (sem WHERE
   // descontinuada = false) — senão as vendas de um produto descontinuado
@@ -84,9 +101,11 @@ export async function GET() {
   }
 
   // Base de 30 dias — define o ritmo semanal e a meta de estoque (ver
-  // lib/demanda.ts). aProduzir e recomendadoEstoque vêm daqui.
+  // lib/demanda.ts). aProduzir e recomendadoEstoque vêm daqui. Usa
+  // todosOsPedidos (ML + Shopee mesclados) pra não subestimar a demanda
+  // real de quem vende nas duas plataformas.
   const { porPlaca: demandaBase, naoIdentificado } = calcularDemandaSemanal(
-    result.orders,
+    todosOsPedidos,
     placas,
     skuPlacaMap,
     DIAS_BASE
@@ -95,7 +114,7 @@ export async function GET() {
   // Só pra alimentar o "Vendido no Full (semana)" — reaproveita os
   // pedidos já buscados (sem nova chamada à ML), filtrando pros últimos
   // 7 dias. Não altera aProduzir/recomendadoEstoque.
-  const orders7d = result.orders.filter(
+  const orders7d = todosOsPedidos.filter(
     (o) => new Date(o.dateCreated) >= seteDiasAtrasDate
   );
   const { porPlaca: demandaSemana, naoIdentificado: naoIdentificadoSemana } =
@@ -111,7 +130,11 @@ export async function GET() {
     connected: true,
     error: false,
     periodo: { inicio, fim: hoje },
-    totalPedidos: result.orders.length,
+    totalPedidos: todosOsPedidos.length,
+    // Se a Shopee não estiver conectada (ou a sessão expirou), a demanda
+    // segue calculada só com ML — isso avisa a tela que o número está
+    // parcial, sem travar a página inteira por causa da Shopee.
+    shopeeConectada,
     demanda: demandaFinal,
     // Vendas (30 dias) que não bateram com nenhuma placa do catálogo —
     // produto ainda não cadastrado em Produção ou SKU sem
