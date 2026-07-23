@@ -181,6 +181,37 @@ export default function ProducaoPage() {
     if (demandaOk) setStatus("ready");
   }
 
+  // Marca um item do aviso de "venda não identificada" pra parar de
+  // aparecer ali — usado pra produtos que a Multiplique/Morolar não
+  // vende mais e nunca vão ganhar uma placa própria no catálogo (ver
+  // app/api/producao/ignorar-item). Some da lista na hora (otimista,
+  // sem esperar a ML/Shopee responderem de novo — isso pode levar
+  // 10s+) e ainda assim dispara o refresh de demanda completo em
+  // segundo plano pra confirmar/recalcular os totais direito.
+  async function ignorarItem(titulo: string, sku: string) {
+    setDemanda((prev) => {
+      if (!prev) return prev;
+      const remove = (n: typeof prev.naoIdentificadoSemana) =>
+        n && {
+          ...n,
+          amostras: n.amostras.filter(
+            (a) => !(a.titulo === titulo && a.sku === sku)
+          ),
+        };
+      return {
+        ...prev,
+        naoIdentificado: remove(prev.naoIdentificado),
+        naoIdentificadoSemana: remove(prev.naoIdentificadoSemana),
+      };
+    });
+    await fetch("/api/producao/ignorar-item", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ titulo, sku }),
+    });
+    carregarDemanda();
+  }
+
   async function salvarPesoPlaca(placaId: number, pesoPlacaGramas: number | null) {
     await fetch(`/api/placas/${placaId}`, {
       method: "PATCH",
@@ -529,11 +560,20 @@ export default function ProducaoPage() {
             ML não tem um SKU customizado que bata com o catálogo. Esses itens
             NÃO entram nas contas de demanda/Full acima. Exemplos:
           </p>
-          <ul className="mt-2 list-disc space-y-0.5 pl-5">
+          <ul className="mt-2 space-y-1 pl-0">
             {demanda?.naoIdentificadoSemana?.amostras.slice(0, 8).map((a, i) => (
-              <li key={i}>
-                {a.titulo} {a.sku && `(SKU: ${a.sku})`} — {a.quantity}x
-                {a.isFull ? " · Full" : ""}
+              <li key={i} className="flex items-start justify-between gap-3">
+                <span className="list-disc before:mr-1.5 before:content-['•']">
+                  {a.titulo} {a.sku && `(SKU: ${a.sku})`} — {a.quantity}x
+                  {a.isFull ? " · Full" : ""}
+                </span>
+                <button
+                  onClick={() => ignorarItem(a.titulo, a.sku)}
+                  className="shrink-0 rounded border border-red-300 px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
+                  title="Não vendemos mais esse produto — parar de mostrar esse aviso"
+                >
+                  Não vendemos mais
+                </button>
               </li>
             ))}
           </ul>
