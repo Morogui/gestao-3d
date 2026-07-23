@@ -45,23 +45,20 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Toda placa já ganha uma linha em estoque_placas quando é cadastrada
-  // (mesmo padrão usado ao registrar a Taça Copa do Mundo), então um
-  // UPDATE direto é suficiente — mesma abordagem usada em
-  // /api/producoes/[id] ao creditar estoque de uma produção concluída.
+  // Nem toda placa necessariamente já tem uma linha em estoque_placas
+  // (placas novas cadastradas depois podem ficar sem — foi o caso do
+  // Suporte Secador de Cabelo Preto, cujo ajuste manual não gravava nada
+  // e falhava em silêncio porque o UPDATE não achava linha nenhuma pra
+  // atualizar). Por isso usamos INSERT ... ON CONFLICT (upsert): cria a
+  // linha na hora se não existir, ou soma no delta se já existir —
+  // funciona nos dois casos sem precisar de uma migração de backfill.
   const rows = (await sql`
-    UPDATE estoque_placas
-    SET quantidade_pecas = GREATEST(0, quantidade_pecas + ${delta}), atualizado_em = now()
-    WHERE placa_id = ${placaId}
+    INSERT INTO estoque_placas (placa_id, quantidade_pecas, atualizado_em)
+    VALUES (${placaId}, GREATEST(0, ${delta}), now())
+    ON CONFLICT (placa_id) DO UPDATE
+    SET quantidade_pecas = GREATEST(0, estoque_placas.quantidade_pecas + ${delta}), atualizado_em = now()
     RETURNING placa_id, quantidade_pecas, atualizado_em
   `) as { placa_id: number; quantidade_pecas: number; atualizado_em: string }[];
-
-  if (rows.length === 0) {
-    return NextResponse.json(
-      { error: "Placa sem linha de estoque cadastrada — avise o suporte." },
-      { status: 404 }
-    );
-  }
 
   return NextResponse.json(rows[0]);
 }
