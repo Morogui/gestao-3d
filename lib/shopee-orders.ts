@@ -12,7 +12,13 @@
 // em ml-orders.ts: um Server Component não consegue reescrever cookies).
 import { cookies } from "next/headers";
 import { signAuthenticatedRequest } from "./shopee";
-import { OrderItemSummary, OrderSummary, OrdersResult } from "./ml-orders";
+import {
+  OrderItemSummary,
+  OrderSummary,
+  OrdersResult,
+  DiaTotal,
+  DailyTotalsResult,
+} from "./ml-orders";
 
 interface ShopeeOrderListEntry {
   order_sn: string;
@@ -166,6 +172,84 @@ async function fetchItemImages(
     }
   }
   return map;
+}
+
+// Versão "leve" de fetchOrderDetails — pede só total_amount/create_time
+// (sem item_list, buyer, shipping) — usada só pra somar faturamento por
+// dia (recorde de melhor dia da loja em até 90 dias). Mesmo espírito da
+// getDailyTotalsRange da ML em lib/ml-orders.ts: evita o custo de buscar
+// item_list + foto de cada pedido quando só precisamos do total do dia.
+async function fetchOrderTotalsOnly(
+  orderSns: string[],
+  accessToken: string,
+  shopId: number
+): Promise<{ create_time?: number; total_amount?: number }[]> {
+  const details: { create_time?: number; total_amount?: number }[] = [];
+  for (let i = 0; i < orderSns.length; i += 50) {
+    const batch = orderSns.slice(i, i + 50);
+    const url = new URL(
+      signAuthenticatedRequest("/api/v2/order/get_order_detail", accessToken, shopId)
+    );
+    url.searchParams.set("order_sn_list", batch.join(","));
+    url.searchParams.set("response_optional_fields", "total_amount,create_time");
+    const resp = await fetch(url.toString(), { cache: "no-store" });
+    if (!resp.ok) continue;
+    const data = await resp.json();
+    const list: { create_time?: number; total_amount?: number }[] =
+      data?.response?.order_list ?? [];
+    details.push(...list);
+  }
+  return details;
+}
+
+// Recorde da loja (melhor dia, até 90 dias) — equivalente Shopee de
+// getDailyTotalsRange (ml-orders.ts), pedido pelo Guilherme em
+// 2026-07-22 pra o card de "Recorde da loja" parar de ser só Mercado
+// Livre. Reaproveita a paginação de order_sn já existente
+// (fetchOrderSnsInRange) e só busca total/data de cada pedido — sem
+// item_list nem foto — pra não pesar a página.
+export async function getDailyTotalsRange(
+  fromDay: string,
+  toDay: string
+): Promise<DailyTotalsResult> {
+  const cookieStore = cookies();
+  const accessToken = cookieStore.get("shopee_access_token")?.value;
+  const shopIdStr = cookieStore.get("shopee_shop_id")?.value;
+
+  if (!accessToken || !shopIdStr) {
+    return { connected: false };
+  }
+  const shopId = Number(shopIdStr);
+
+  try {
+    const orderSns = await fetchOrderSnsInRange(accessToken, shopId, fromDay, toDay);
+    if (orderSns.length === 0) {
+      return { connected: true, error: false, porDia: [] };
+    }
+
+    const totals = await fetchOrderTotalsOnly(orderSns, accessToken, shopId);
+    const porDiaMap = new Map<string, { faturamento: number; pedidos: number }>();
+    for (const o of totals) {
+      if (!o.create_time) continue;
+      const diaKey = new Date(
+        o.create_time * 1000 - 3 * 60 * 60 * 1000
+      )
+        .toISOString()
+        .slice(0, 10);
+      const atual = porDiaMap.get(diaKey) ?? { faturamento: 0, pedidos: 0 };
+      atual.faturamento += o.total_amount ?? 0;
+      atual.pedidos += 1;
+      porDiaMap.set(diaKey, atual);
+    }
+
+    const porDia: DiaTotal[] = Array.from(porDiaMap.entries()).map(
+      ([dia, v]) => ({ dia, faturamento: v.faturamento, pedidos: v.pedidos })
+    );
+    return { connected: true, error: false, porDia };
+  } catch (err) {
+    console.error("[Shopee orders] erro ao buscar totais por dia:", err);
+    return { connected: true, error: true };
+  }
 }
 
 export async function getOrdersRange(
