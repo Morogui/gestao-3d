@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { PlacaRow, estoqueVendavel } from "@/lib/placas";
+import { horaAtualSP, horasAteProximaAbertura } from "@/lib/date";
 import {
   MachineRow,
   ProducaoRow,
@@ -10,6 +11,28 @@ import {
   DemandaPlacaRow,
   ConsumoResult,
 } from "@/lib/producao-types";
+
+// Dias de estoque restante no ritmo de venda atual (estoque ÷ venda
+// média diária). É a métrica usada pra ordenar a fila de prioridade a
+// pedido do Guilherme: "priorizar quem mais vende e não dar quebra de
+// estoque" — um SKU que vende muito naturalmente tem menos dias de
+// estoque pra um mesmo volume parado, então essa conta já favorece
+// bestsellers automaticamente, sem precisar de um critério separado de
+// volume. Infinity quando não há venda média (não deveria entrar na fila
+// de prioridade de qualquer forma, já que aProduzir só é > 0 quando há
+// mediaSemanal > 0).
+function diasDeEstoque(estoque: number, mediaSemanal: number): number {
+  if (mediaSemanal <= 0) return Infinity;
+  return (estoque / mediaSemanal) * 7;
+}
+
+// Quantas placas carregar de uma vez pra cobrir o horário sem ninguém pra
+// trocar (por padrão, 9h-23h de operação — fora isso, a máquina roda
+// sozinha). Sempre ao menos 1 placa.
+function qtdParaVirarNoite(tempoPlacaHoras: number): number {
+  if (!tempoPlacaHoras || tempoPlacaHoras <= 0) return 1;
+  return Math.max(1, Math.ceil(horasAteProximaAbertura(9) / tempoPlacaHoras));
+}
 
 // Formata gramas como "X,X kg" (ou "Xg" pra valores pequenos) — os
 // totais acumulados de filamento tendem a passar de 1kg rapidinho.
@@ -114,13 +137,20 @@ export default function ProducaoPage() {
     0
   );
 
-  // Fila de prioridade: placas com algo a produzir, ordenadas do maior
-  // pro menor "a produzir" — é o que o operador deve carregar a seguir.
+  // Fila de prioridade: placas com algo a produzir, ordenadas por "dias
+  // de estoque restante" (crescente) — quem vai ficar sem estoque
+  // primeiro entra na frente, o que já prioriza bestsellers (eles gastam
+  // estoque mais rápido) sem deixar de pegar um produto de venda baixa
+  // que também esteja prestes a zerar. Ver diasDeEstoque() acima.
   const filaPrioridade = useMemo(() => {
     return placas
       .map((placa) => ({ placa, demanda: demandaPorPlaca.get(placa.id) }))
       .filter((item) => (item.demanda?.aProduzir ?? 0) > 0)
-      .sort((a, b) => (b.demanda?.aProduzir ?? 0) - (a.demanda?.aProduzir ?? 0));
+      .sort(
+        (a, b) =>
+          diasDeEstoque(a.placa.estoque, a.demanda?.mediaSemanal ?? 0) -
+          diasDeEstoque(b.placa.estoque, b.demanda?.mediaSemanal ?? 0)
+      );
   }, [placas, demandaPorPlaca]);
 
   async function iniciarProducao(placaId: number, machineId: number, quantidadePlacas: number) {
@@ -276,6 +306,19 @@ export default function ProducaoPage() {
         </p>
       </section>
 
+      <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900">
+        <p className="font-semibold">Janela de operação: 9h às 23h</p>
+        <p className="mt-1">
+          A fila de prioridade abaixo ordena por &quot;dias de estoque
+          restante&quot;, priorizando quem mais vende e está perto de zerar.
+          Fora do horário de troca (depois das 23h até as 9h), ninguém troca
+          placa — por isso, perto do fechamento, o formulário de cada
+          impressora já sugere carregar várias placas de uma vez (coluna
+          &quot;Qtd p/ virar a noite&quot;), suficiente pra rodar sozinha até
+          a reabertura, em vez de terminar e ficar parada de madrugada.
+        </p>
+      </div>
+
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         <p className="font-semibold">Lembrete Full</p>
         <p className="mt-1">
@@ -284,6 +327,22 @@ export default function ProducaoPage() {
           incluir no próximo envio (você monta o Full toda segunda-feira).
         </p>
       </div>
+
+      {demanda?.shopeeConectada === false && (
+        <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900">
+          <p className="font-semibold">Shopee não conectada</p>
+          <p className="mt-1">
+            A demanda e a fila de prioridade abaixo estão calculadas só com as
+            vendas do Mercado Livre — a Shopee não está conectada (ou a sessão
+            expirou). &quot;A produzir&quot; pode estar subestimado pra
+            produtos que também vendem lá. Reconecte na aba{" "}
+            <Link href="/vendas?plataforma=shopee" className="underline">
+              Vendas
+            </Link>
+            .
+          </p>
+        </div>
+      )}
 
       {(demanda?.naoIdentificadoSemana?.qtyPeriodo ?? 0) > 0 && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">
@@ -336,11 +395,15 @@ export default function ProducaoPage() {
           Fila de prioridade ({filaPrioridade.length})
         </h2>
         <p className="mb-3 text-xs text-gray-500">
-          Ordenada pelo que mais falta produzir (meta de estoque − estoque
-          atual). Meta = 1 semana no ritmo atual de venda + 1 semana extra de
-          reforço, calculada a partir da média dos últimos 30 dias. Use o
-          campo de busca por SKU em cada impressora se quiser carregar um
-          produto fora dessa ordem.
+          Ordenada por &quot;dias de estoque restante&quot; (estoque ÷ venda
+          média diária), do menor pro maior — quem vai zerar primeiro entra na
+          frente. Isso já prioriza os produtos que mais vendem (eles gastam
+          estoque mais rápido) sem deixar de pegar um produto de venda baixa
+          que também esteja perto de faltar. A coluna &quot;Qtd p/ virar a
+          noite&quot; é quantas placas carregar de uma vez pra cobrir até a
+          próxima abertura (9h) sem ninguém pra trocar — use esse número no
+          último carregamento do dia. Use o campo de busca por SKU em cada
+          impressora se quiser carregar um produto fora dessa ordem.
         </p>
         {filaPrioridade.length === 0 ? (
           <div className="rounded-lg border border-dashed border-gray-300 bg-white p-4 text-center text-sm text-gray-500">
@@ -355,27 +418,49 @@ export default function ProducaoPage() {
                   <th className="px-3 py-2">Placa</th>
                   <th className="px-3 py-2">Tier</th>
                   <th className="px-3 py-2 text-right">Estoque</th>
+                  <th className="px-3 py-2 text-right">Dias de estoque</th>
                   <th className="px-3 py-2 text-right">Meta</th>
                   <th className="px-3 py-2 text-right">A produzir</th>
+                  <th className="px-3 py-2 text-right">Qtd p/ virar a noite</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filaPrioridade.map((item, idx) => (
-                  <tr key={item.placa.id}>
-                    <td className="px-3 py-2 text-gray-400">{idx + 1}</td>
-                    <td className="px-3 py-2 font-medium text-gray-900">{item.placa.nome}</td>
-                    <td className="px-3 py-2">
-                      <TierBadge tier={item.placa.tier} />
-                    </td>
-                    <td className="px-3 py-2 text-right">{item.placa.estoque}</td>
-                    <td className="px-3 py-2 text-right text-gray-500">
-                      {item.demanda?.recomendadoEstoque ?? 0}
-                    </td>
-                    <td className="px-3 py-2 text-right font-semibold text-gray-900">
-                      {item.demanda?.aProduzir ?? 0}
-                    </td>
-                  </tr>
-                ))}
+                {filaPrioridade.map((item, idx) => {
+                  const dias = diasDeEstoque(
+                    item.placa.estoque,
+                    item.demanda?.mediaSemanal ?? 0
+                  );
+                  return (
+                    <tr key={item.placa.id}>
+                      <td className="px-3 py-2 text-gray-400">{idx + 1}</td>
+                      <td className="px-3 py-2 font-medium text-gray-900">{item.placa.nome}</td>
+                      <td className="px-3 py-2">
+                        <TierBadge tier={item.placa.tier} />
+                      </td>
+                      <td className="px-3 py-2 text-right">{item.placa.estoque}</td>
+                      <td className="px-3 py-2 text-right">
+                        <span
+                          className={
+                            Number.isFinite(dias) && dias <= 3
+                              ? "font-semibold text-red-600"
+                              : "text-gray-700"
+                          }
+                        >
+                          {Number.isFinite(dias) ? dias.toFixed(1) : "—"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right text-gray-500">
+                        {item.demanda?.recomendadoEstoque ?? 0}
+                      </td>
+                      <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                        {item.demanda?.aProduzir ?? 0}
+                      </td>
+                      <td className="px-3 py-2 text-right text-gray-500">
+                        {qtdParaVirarNoite(item.placa.tempoPlacaHoras)}x
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -851,6 +936,7 @@ function PrinterCard({
       ) : (
         <CarregarPlacaForm
           filaPrioridade={filaPrioridade}
+          placaPorId={placaPorId}
           carregando={carregando}
           onIniciar={onIniciar}
         />
@@ -861,10 +947,12 @@ function PrinterCard({
 
 function CarregarPlacaForm({
   filaPrioridade,
+  placaPorId,
   carregando,
   onIniciar,
 }: {
   filaPrioridade: { placa: PlacaRow; demanda?: DemandaPlacaRow }[];
+  placaPorId: Map<number, PlacaRow>;
   carregando: boolean;
   onIniciar: (placaId: number, quantidadePlacas: number) => void;
 }) {
@@ -874,6 +962,24 @@ function CarregarPlacaForm({
   const [resultados, setResultados] = useState<SkuResult[]>([]);
   const [placaSelecionadaNome, setPlacaSelecionadaNome] = useState<string | null>(null);
   const [buscando, setBuscando] = useState(false);
+
+  // Sugestão de quantidade pra cobrir até a reabertura (9h) sem ninguém
+  // pra trocar a placa — só faz sentido mostrar/aplicar perto do horário
+  // de fechamento (pedido do Guilherme: "no último horário sempre estar
+  // mandando placas onde vire a noite rodando"). Fora desse período, o
+  // padrão continua sendo 1 placa por vez (mais responsivo à fila).
+  const pertoDoFechamento = horaAtualSP() >= 20 || horaAtualSP() < 9;
+  const placaSelecionada = placaId ? placaPorId.get(placaId) : undefined;
+  const sugestaoNoturna = placaSelecionada
+    ? qtdParaVirarNoite(placaSelecionada.tempoPlacaHoras)
+    : null;
+
+  useEffect(() => {
+    if (pertoDoFechamento && sugestaoNoturna) {
+      setQuantidade(sugestaoNoturna);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placaId]);
 
   useEffect(() => {
     if (buscaSku.trim().length < 2) {
@@ -955,6 +1061,28 @@ function CarregarPlacaForm({
       {placaSelecionadaNome && (
         <p className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-800">
           Selecionado via busca: {placaSelecionadaNome}
+        </p>
+      )}
+
+      {sugestaoNoturna && sugestaoNoturna > 1 && (
+        <p
+          className={
+            "rounded px-2 py-1 text-xs " +
+            (pertoDoFechamento
+              ? "bg-indigo-50 text-indigo-800"
+              : "bg-gray-50 text-gray-500")
+          }
+        >
+          {pertoDoFechamento ? "Perto do fechamento — " : ""}
+          Carregar {sugestaoNoturna}x cobre até a reabertura (9h) sem troca.{" "}
+          {quantidade !== sugestaoNoturna && (
+            <button
+              onClick={() => setQuantidade(sugestaoNoturna)}
+              className="font-medium text-indigo-700 underline hover:no-underline"
+            >
+              usar {sugestaoNoturna}x
+            </button>
+          )}
         </p>
       )}
 
