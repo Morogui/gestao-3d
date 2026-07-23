@@ -29,6 +29,10 @@ export interface OrderSummary {
   totalAmount: number;
   status: string;
   shippingMode: string;
+  // De qual plataforma veio esse pedido — usado pela aba Vendas pra
+  // mesclar Mercado Livre + Shopee num só painel (modo "Todas") sem
+  // perder a rastreabilidade de qual pedido é de qual loja.
+  plataforma: "ml" | "shopee";
 }
 
 export type OrdersResult =
@@ -407,6 +411,7 @@ async function fetchOrdersInRange(
         totalAmount: order.total_amount ?? 0,
         status: order.status ?? "—",
         shippingMode,
+        plataforma: "ml",
       };
     })
   );

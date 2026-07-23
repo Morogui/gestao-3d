@@ -229,6 +229,7 @@ export async function getOrdersRange(
         // labelOrderStatus() da ML.
         status: d.order_status ?? "—",
         shippingMode,
+        plataforma: "shopee",
       };
     });
 
