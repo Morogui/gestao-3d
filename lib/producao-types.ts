@@ -50,6 +50,10 @@ export interface DemandaResult {
   error?: boolean;
   periodo?: { inicio: string; fim: string };
   totalPedidos?: number;
+  // false quando a Shopee não está conectada (ou sessão expirada) — nesse
+  // caso a demanda calculada é só com base na ML, então "a produzir" pode
+  // estar subestimado pra SKUs que também vendem na Shopee.
+  shopeeConectada?: boolean;
   demanda?: DemandaPlacaRow[];
   naoIdentificado?: NaoIdentificadoRow;
   naoIdentificadoSemana?: NaoIdentificadoRow;
