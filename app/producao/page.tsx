@@ -27,11 +27,73 @@ function diasDeEstoque(estoque: number, mediaSemanal: number): number {
 }
 
 // Quantas placas carregar de uma vez pra cobrir o horário sem ninguém pra
-// trocar (por padrão, 9h-23h de operação — fora isso, a máquina roda
-// sozinha). Sempre ao menos 1 placa.
-function qtdParaVirarNoite(tempoPlacaHoras: number): number {
+// trocar (janela de operação aprendida — ver /api/producao/janela). Sempre
+// ao menos 1 placa.
+function qtdParaVirarNoite(tempoPlacaHoras: number, aberturaHora: number): number {
   if (!tempoPlacaHoras || tempoPlacaHoras <= 0) return 1;
-  return Math.max(1, Math.ceil(horasAteProximaAbertura(9) / tempoPlacaHoras));
+  return Math.max(1, Math.ceil(horasAteProximaAbertura(aberturaHora) / tempoPlacaHoras));
+}
+
+// Formata uma hora fracionária (ex: 9.5) como "9h30".
+function formatHora(hora: number): string {
+  const inteiro = Math.floor(hora);
+  const minutos = Math.round((hora - inteiro) * 60);
+  return minutos === 0 ? `${inteiro}h` : `${inteiro}h${String(minutos).padStart(2, "0")}`;
+}
+
+interface Janela {
+  aberturaHora: number;
+  fechamentoHora: number;
+  amostras: number;
+  aprendido: boolean;
+}
+
+const JANELA_PADRAO: Janela = {
+  aberturaHora: 9,
+  fechamentoHora: 23,
+  amostras: 0,
+  aprendido: false,
+};
+
+// Relógio de São Paulo ao vivo (atualiza a cada segundo) + status
+// Aberto/Fechado com base na janela de operação aprendida — pedido do
+// Guilherme depois de mexer no sistema às 23h57 sem ter como saber, só
+// olhando a tela, que já tinha passado do horário de troca.
+function RelogioOperacao({ janela }: { janela: Janela }) {
+  const [agora, setAgora] = useState(() => new Date());
+
+  useEffect(() => {
+    const t = setInterval(() => setAgora(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const sp = new Date(agora.getTime() - 3 * 60 * 60 * 1000);
+  const hh = String(sp.getUTCHours()).padStart(2, "0");
+  const mm = String(sp.getUTCMinutes()).padStart(2, "0");
+  const ss = String(sp.getUTCSeconds()).padStart(2, "0");
+  const horaAtual = sp.getUTCHours() + sp.getUTCMinutes() / 60;
+  const aberto = horaAtual >= janela.aberturaHora && horaAtual < janela.fechamentoHora;
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-2.5">
+      <span className="font-mono text-xl font-semibold tabular-nums text-gray-900">
+        {hh}:{mm}:{ss}
+      </span>
+      <span
+        className={
+          "rounded-full px-2 py-0.5 text-xs font-medium " +
+          (aberto ? "bg-green-100 text-green-700" : "bg-gray-800 text-white")
+        }
+      >
+        {aberto ? "Aberto — pode trocar placa" : "Fechado — máquinas rodando sozinhas"}
+      </span>
+      <span className="text-xs text-gray-400">
+        Janela {janela.aprendido ? "aprendida" : "padrão"}: {formatHora(janela.aberturaHora)} –{" "}
+        {formatHora(janela.fechamentoHora)}
+        {janela.aprendido && ` (a partir de ${janela.amostras} carregamentos)`}
+      </span>
+    </div>
+  );
 }
 
 // Formata gramas como "X,X kg" (ou "Xg" pra valores pequenos) — os
@@ -61,16 +123,23 @@ export default function ProducaoPage() {
   const [producoes, setProducoes] = useState<ProducaoRow[]>([]);
   const [demanda, setDemanda] = useState<DemandaResult | null>(null);
   const [consumo, setConsumo] = useState<ConsumoResult | null>(null);
+  const [janela, setJanela] = useState<Janela>(JANELA_PADRAO);
   const [carregando, setCarregando] = useState<Record<number, boolean>>({});
+  // Só pra fazer a fila/sugestões reagirem sozinhas quando o relógio
+  // cruza o horário de fechamento, sem precisar de uma ação manual pra
+  // "acordar" a tela — atualiza a cada minuto.
+  const [horaTick, setHoraTick] = useState(() => horaAtualSP());
 
   async function carregarTudo() {
-    const [placasRes, machinesRes, producoesRes, demandaRes, consumoRes] = await Promise.all([
-      fetch("/api/placas").then((r) => r.json()),
-      fetch("/api/machines").then((r) => r.json()),
-      fetch("/api/producoes").then((r) => r.json()),
-      fetch("/api/producao/demanda").then((r) => r.json()),
-      fetch("/api/producao/consumo").then((r) => r.json()),
-    ]);
+    const [placasRes, machinesRes, producoesRes, demandaRes, consumoRes, janelaRes] =
+      await Promise.all([
+        fetch("/api/placas").then((r) => r.json()),
+        fetch("/api/machines").then((r) => r.json()),
+        fetch("/api/producoes").then((r) => r.json()),
+        fetch("/api/producao/demanda").then((r) => r.json()),
+        fetch("/api/producao/consumo").then((r) => r.json()),
+        fetch("/api/producao/janela").then((r) => r.json()),
+      ]);
 
     if (!demandaRes.connected) {
       setStatus("desconectado");
@@ -86,6 +155,7 @@ export default function ProducaoPage() {
     setProducoes(producoesRes);
     setDemanda(demandaRes);
     setConsumo(consumoRes);
+    setJanela(janelaRes ?? JANELA_PADRAO);
     setStatus("ready");
   }
 
@@ -110,6 +180,20 @@ export default function ProducaoPage() {
   useEffect(() => {
     carregarTudo();
   }, []);
+
+  useEffect(() => {
+    const t = setInterval(() => setHoraTick(horaAtualSP()), 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  // "Perto do fechamento" = já fechado (fora da janela aprendida) OU
+  // dentro das últimas ~3h antes de fechar. Nesse período ninguém troca
+  // placa até a próxima abertura, então o que for carregado agora precisa
+  // durar até lá.
+  const pertoDoFechamento =
+    horaTick < janela.aberturaHora ||
+    horaTick >= janela.fechamentoHora ||
+    horaTick >= janela.fechamentoHora - 3;
 
   const placaPorId = useMemo(() => {
     const map = new Map<number, PlacaRow>();
@@ -137,21 +221,42 @@ export default function ProducaoPage() {
     0
   );
 
-  // Fila de prioridade: placas com algo a produzir, ordenadas por "dias
-  // de estoque restante" (crescente) — quem vai ficar sem estoque
-  // primeiro entra na frente, o que já prioriza bestsellers (eles gastam
-  // estoque mais rápido) sem deixar de pegar um produto de venda baixa
-  // que também esteja prestes a zerar. Ver diasDeEstoque() acima.
+  // Fila de prioridade: placas com algo a produzir.
+  //
+  // Em horário normal, ordena por "dias de estoque restante" (crescente)
+  // — quem vai ficar sem estoque primeiro entra na frente, o que já
+  // prioriza bestsellers (eles gastam estoque mais rápido) sem deixar de
+  // pegar um produto de venda baixa que também esteja prestes a zerar.
+  //
+  // Perto do fechamento (ou já fechado), a lógica muda: carregar uma
+  // placa rápida agora não adianta — ela termina e a máquina fica parada
+  // até alguém voltar. Nesse período, ordena por tempo/placa
+  // DECRESCENTE (a placa mais demorada primeiro), pra quem carregar por
+  // último escolher algo que sozinho já cobre a madrugada; entre placas
+  // de tempo parecido, desempata pela urgência de estoque. Ver
+  // diasDeEstoque() e qtdParaVirarNoite() acima.
   const filaPrioridade = useMemo(() => {
-    return placas
+    const itens = placas
       .map((placa) => ({ placa, demanda: demandaPorPlaca.get(placa.id) }))
-      .filter((item) => (item.demanda?.aProduzir ?? 0) > 0)
-      .sort(
-        (a, b) =>
+      .filter((item) => (item.demanda?.aProduzir ?? 0) > 0);
+
+    if (pertoDoFechamento) {
+      return itens.sort((a, b) => {
+        const porTempo = b.placa.tempoPlacaHoras - a.placa.tempoPlacaHoras;
+        if (porTempo !== 0) return porTempo;
+        return (
           diasDeEstoque(a.placa.estoque, a.demanda?.mediaSemanal ?? 0) -
           diasDeEstoque(b.placa.estoque, b.demanda?.mediaSemanal ?? 0)
-      );
-  }, [placas, demandaPorPlaca]);
+        );
+      });
+    }
+
+    return itens.sort(
+      (a, b) =>
+        diasDeEstoque(a.placa.estoque, a.demanda?.mediaSemanal ?? 0) -
+        diasDeEstoque(b.placa.estoque, b.demanda?.mediaSemanal ?? 0)
+    );
+  }, [placas, demandaPorPlaca, pertoDoFechamento]);
 
   async function iniciarProducao(placaId: number, machineId: number, quantidadePlacas: number) {
     setCarregando((prev) => ({ ...prev, [machineId]: true }));
@@ -240,6 +345,8 @@ export default function ProducaoPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      <RelogioOperacao janela={janela} />
+
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Card label="Pedidos (últimos 30 dias)" value={String(demanda?.totalPedidos ?? 0)} />
         <Card label="Máquinas rodando" value={`${producoesEmAndamento.length}/${machines.length}`} />
@@ -307,16 +414,27 @@ export default function ProducaoPage() {
       </section>
 
       <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900">
-        <p className="font-semibold">Janela de operação: 9h às 23h</p>
-        <p className="mt-1">
-          A fila de prioridade abaixo ordena por &quot;dias de estoque
-          restante&quot;, priorizando quem mais vende e está perto de zerar.
-          Fora do horário de troca (depois das 23h até as 9h), ninguém troca
-          placa — por isso, perto do fechamento, o formulário de cada
-          impressora já sugere carregar várias placas de uma vez (coluna
-          &quot;Qtd p/ virar a noite&quot;), suficiente pra rodar sozinha até
-          a reabertura, em vez de terminar e ficar parada de madrugada.
+        <p className="font-semibold">
+          Janela de operação: {formatHora(janela.aberturaHora)} às{" "}
+          {formatHora(janela.fechamentoHora)}
+          {janela.aprendido ? " (aprendida)" : " (padrão — ainda sem carregamentos suficientes pra aprender)"}
         </p>
+        <p className="mt-1">
+          Em horário normal, a fila de prioridade abaixo ordena por &quot;dias
+          de estoque restante&quot;, priorizando quem mais vende e está perto
+          de zerar. Perto do fechamento (ou já fechado) ninguém troca placa
+          até a reabertura — por isso a fila muda de critério e passa a
+          priorizar a placa de tempo de produção mais longo, pra quem
+          carregar por último escolher algo que sozinho já cobre a
+          madrugada, em vez de um produto rápido que termina e fica parado
+          até alguém voltar.
+        </p>
+        {pertoDoFechamento && (
+          <p className="mt-1 font-medium">
+            Estamos nesse período agora — a fila abaixo já está ordenada por
+            tempo de produção.
+          </p>
+        )}
       </div>
 
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -379,6 +497,8 @@ export default function ProducaoPage() {
               producao={producaoPorMachine.get(machine.id)}
               placaPorId={placaPorId}
               filaPrioridade={filaPrioridade}
+              pertoDoFechamento={pertoDoFechamento}
+              aberturaHora={janela.aberturaHora}
               carregando={Boolean(carregando[machine.id])}
               onIniciar={(placaId, qtd) => iniciarProducao(placaId, machine.id, qtd)}
               onConcluir={concluirProducao}
@@ -395,15 +515,29 @@ export default function ProducaoPage() {
           Fila de prioridade ({filaPrioridade.length})
         </h2>
         <p className="mb-3 text-xs text-gray-500">
-          Ordenada por &quot;dias de estoque restante&quot; (estoque ÷ venda
-          média diária), do menor pro maior — quem vai zerar primeiro entra na
-          frente. Isso já prioriza os produtos que mais vendem (eles gastam
-          estoque mais rápido) sem deixar de pegar um produto de venda baixa
-          que também esteja perto de faltar. A coluna &quot;Qtd p/ virar a
-          noite&quot; é quantas placas carregar de uma vez pra cobrir até a
-          próxima abertura (9h) sem ninguém pra trocar — use esse número no
-          último carregamento do dia. Use o campo de busca por SKU em cada
-          impressora se quiser carregar um produto fora dessa ordem.
+          {pertoDoFechamento ? (
+            <>
+              Perto do fechamento (ou já fechado): ordenada por tempo de
+              produção, do mais longo pro mais curto — carregar algo rápido
+              agora só deixa a máquina parada até alguém voltar. Empate de
+              tempo desempata por &quot;dias de estoque restante&quot;.
+            </>
+          ) : (
+            <>
+              Ordenada por &quot;dias de estoque restante&quot; (estoque ÷
+              venda média diária), do menor pro maior — quem vai zerar
+              primeiro entra na frente. Isso já prioriza os produtos que mais
+              vendem (eles gastam estoque mais rápido) sem deixar de pegar um
+              produto de venda baixa que também esteja perto de faltar.
+            </>
+          )}{" "}
+          A coluna &quot;Qtd p/ virar a noite&quot; é quantas vezes essa placa
+          precisaria ser recarregada pra cobrir até a próxima abertura (
+          {formatHora(janela.aberturaHora)}) sem ninguém pra trocar — valores
+          altos (ex: 9x) indicam produto rápido demais pro último
+          carregamento do dia; valores baixos (1x-2x) indicam que uma única
+          carga já seguraria a madrugada. Use o campo de busca por SKU em
+          cada impressora se quiser carregar um produto fora dessa ordem.
         </p>
         {filaPrioridade.length === 0 ? (
           <div className="rounded-lg border border-dashed border-gray-300 bg-white p-4 text-center text-sm text-gray-500">
@@ -456,7 +590,7 @@ export default function ProducaoPage() {
                         {item.demanda?.aProduzir ?? 0}
                       </td>
                       <td className="px-3 py-2 text-right text-gray-500">
-                        {qtdParaVirarNoite(item.placa.tempoPlacaHoras)}x
+                        {qtdParaVirarNoite(item.placa.tempoPlacaHoras, janela.aberturaHora)}x
                       </td>
                     </tr>
                   );
@@ -781,6 +915,8 @@ function PrinterCard({
   producao,
   placaPorId,
   filaPrioridade,
+  pertoDoFechamento,
+  aberturaHora,
   carregando,
   onIniciar,
   onConcluir,
@@ -792,6 +928,8 @@ function PrinterCard({
   producao?: ProducaoRow;
   placaPorId: Map<number, PlacaRow>;
   filaPrioridade: { placa: PlacaRow; demanda?: DemandaPlacaRow }[];
+  pertoDoFechamento: boolean;
+  aberturaHora: number;
   carregando: boolean;
   onIniciar: (placaId: number, quantidadePlacas: number) => void;
   onConcluir: (id: number) => void;
@@ -937,6 +1075,8 @@ function PrinterCard({
         <CarregarPlacaForm
           filaPrioridade={filaPrioridade}
           placaPorId={placaPorId}
+          pertoDoFechamento={pertoDoFechamento}
+          aberturaHora={aberturaHora}
           carregando={carregando}
           onIniciar={onIniciar}
         />
@@ -948,11 +1088,15 @@ function PrinterCard({
 function CarregarPlacaForm({
   filaPrioridade,
   placaPorId,
+  pertoDoFechamento,
+  aberturaHora,
   carregando,
   onIniciar,
 }: {
   filaPrioridade: { placa: PlacaRow; demanda?: DemandaPlacaRow }[];
   placaPorId: Map<number, PlacaRow>;
+  pertoDoFechamento: boolean;
+  aberturaHora: number;
   carregando: boolean;
   onIniciar: (placaId: number, quantidadePlacas: number) => void;
 }) {
@@ -963,15 +1107,16 @@ function CarregarPlacaForm({
   const [placaSelecionadaNome, setPlacaSelecionadaNome] = useState<string | null>(null);
   const [buscando, setBuscando] = useState(false);
 
-  // Sugestão de quantidade pra cobrir até a reabertura (9h) sem ninguém
-  // pra trocar a placa — só faz sentido mostrar/aplicar perto do horário
-  // de fechamento (pedido do Guilherme: "no último horário sempre estar
+  // Sugestão de quantidade pra cobrir até a reabertura sem ninguém pra
+  // trocar a placa — só faz sentido mostrar/aplicar perto do horário de
+  // fechamento (pedido do Guilherme: "no último horário sempre estar
   // mandando placas onde vire a noite rodando"). Fora desse período, o
   // padrão continua sendo 1 placa por vez (mais responsivo à fila).
-  const pertoDoFechamento = horaAtualSP() >= 20 || horaAtualSP() < 9;
+  // pertoDoFechamento e aberturaHora vêm do pai, calculados a partir da
+  // janela de operação aprendida (ver RelogioOperacao/JANELA_PADRAO).
   const placaSelecionada = placaId ? placaPorId.get(placaId) : undefined;
   const sugestaoNoturna = placaSelecionada
-    ? qtdParaVirarNoite(placaSelecionada.tempoPlacaHoras)
+    ? qtdParaVirarNoite(placaSelecionada.tempoPlacaHoras, aberturaHora)
     : null;
 
   useEffect(() => {
@@ -1074,7 +1219,7 @@ function CarregarPlacaForm({
           }
         >
           {pertoDoFechamento ? "Perto do fechamento — " : ""}
-          Carregar {sugestaoNoturna}x cobre até a reabertura (9h) sem troca.{" "}
+          Carregar {sugestaoNoturna}x cobre até a reabertura ({formatHora(aberturaHora)}) sem troca.{" "}
           {quantidade !== sugestaoNoturna && (
             <button
               onClick={() => setQuantidade(sugestaoNoturna)}
