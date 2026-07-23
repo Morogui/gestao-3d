@@ -48,6 +48,24 @@ interface Janela {
   aprendido: boolean;
 }
 
+// Item da fila de prioridade — além da placa/demanda "crua", já traz o
+// quanto dessa placa está sendo produzido AGORA em alguma impressora
+// (emProducao), o estoque projetado (estoque atual + emProducao) e o
+// "a produzir" já descontando isso (aProduzirEfetivo). Existe pra
+// resolver um bug real: sem isso, quando uma impressora começa a
+// produzir uma placa, as OUTRAS impressoras livres continuavam vendo
+// a mesma placa como prioridade máxima (porque o estoque no banco só
+// aumenta quando a produção é CONCLUÍDA) e acabavam sendo carregadas
+// com o mesmo produto — 3 máquinas rodando "Suporte Secador de Cabelo
+// (Branco)" ao mesmo tempo, por exemplo. Ver pecasEmProducaoPorPlaca.
+interface FilaPrioridadeItem {
+  placa: PlacaRow;
+  demanda?: DemandaPlacaRow;
+  emProducao: number;
+  estoqueProjetado: number;
+  aProduzirEfetivo: number;
+}
+
 const JANELA_PADRAO: Janela = {
   aberturaHora: 9,
   fechamentoHora: 23,
@@ -269,6 +287,22 @@ export default function ProducaoPage() {
   }, [producoesEmAndamento]);
   const producoesRecentes = producoes.filter((p) => p.status !== "em_andamento").slice(0, 15);
 
+  // Quantas peças de cada placa já estão "a caminho" — sendo produzidas
+  // AGORA em alguma impressora rodando. Somado por placa porque mais de
+  // uma máquina pode estar rodando a mesma placa ao mesmo tempo. Isso é
+  // o que faltava pra evitar carregar duas impressoras com o mesmo
+  // produto: antes, o estoque só contava o que já tinha sido CONCLUÍDO,
+  // então uma impressora livre não "via" que outra já estava resolvendo
+  // aquela demanda.
+  const pecasEmProducaoPorPlaca = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const p of producoesEmAndamento) {
+      const pecas = Number(p.quantidade_placas) * Number(p.pecas_por_placa);
+      map.set(p.placa_id, (map.get(p.placa_id) ?? 0) + pecas);
+    }
+    return map;
+  }, [producoesEmAndamento]);
+
   const totalFullSemana = (demanda?.demanda ?? []).reduce(
     (soma, d) => soma + d.qtyVendidaFull,
     0
@@ -288,28 +322,38 @@ export default function ProducaoPage() {
   // último escolher algo que sozinho já cobre a madrugada; entre placas
   // de tempo parecido, desempata pela urgência de estoque. Ver
   // diasDeEstoque() e qtdParaVirarNoite() acima.
-  const filaPrioridade = useMemo(() => {
+  const filaPrioridade: FilaPrioridadeItem[] = useMemo(() => {
     const itens = placas
-      .map((placa) => ({ placa, demanda: demandaPorPlaca.get(placa.id) }))
-      .filter((item) => (item.demanda?.aProduzir ?? 0) > 0);
+      .map((placa) => {
+        const demanda = demandaPorPlaca.get(placa.id);
+        const emProducao = pecasEmProducaoPorPlaca.get(placa.id) ?? 0;
+        const estoqueProjetado = placa.estoque + emProducao;
+        const aProduzirEfetivo = Math.max(0, (demanda?.aProduzir ?? 0) - emProducao);
+        return { placa, demanda, emProducao, estoqueProjetado, aProduzirEfetivo };
+      })
+      // Usa aProduzirEfetivo (já descontando o que está sendo produzido
+      // agora) em vez do aProduzir "cru" — senão uma placa que já tem
+      // uma impressora rodando pra ela continua aparecendo com a mesma
+      // urgência pras outras impressoras livres.
+      .filter((item) => item.aProduzirEfetivo > 0);
 
     if (pertoDoFechamento) {
       return itens.sort((a, b) => {
         const porTempo = b.placa.tempoPlacaHoras - a.placa.tempoPlacaHoras;
         if (porTempo !== 0) return porTempo;
         return (
-          diasDeEstoque(a.placa.estoque, a.demanda?.mediaSemanal ?? 0) -
-          diasDeEstoque(b.placa.estoque, b.demanda?.mediaSemanal ?? 0)
+          diasDeEstoque(a.estoqueProjetado, a.demanda?.mediaSemanal ?? 0) -
+          diasDeEstoque(b.estoqueProjetado, b.demanda?.mediaSemanal ?? 0)
         );
       });
     }
 
     return itens.sort(
       (a, b) =>
-        diasDeEstoque(a.placa.estoque, a.demanda?.mediaSemanal ?? 0) -
-        diasDeEstoque(b.placa.estoque, b.demanda?.mediaSemanal ?? 0)
+        diasDeEstoque(a.estoqueProjetado, a.demanda?.mediaSemanal ?? 0) -
+        diasDeEstoque(b.estoqueProjetado, b.demanda?.mediaSemanal ?? 0)
     );
-  }, [placas, demandaPorPlaca, pertoDoFechamento]);
+  }, [placas, demandaPorPlaca, pertoDoFechamento, pecasEmProducaoPorPlaca]);
 
   // Todas as ações abaixo seguem o mesmo padrão: marca a máquina como
   // "carregando" (feedback visual imediato no botão), faz a chamada,
@@ -654,7 +698,7 @@ export default function ProducaoPage() {
               <tbody className="divide-y divide-gray-100">
                 {filaPrioridade.map((item, idx) => {
                   const dias = diasDeEstoque(
-                    item.placa.estoque,
+                    item.estoqueProjetado,
                     item.demanda?.mediaSemanal ?? 0
                   );
                   return (
@@ -664,7 +708,17 @@ export default function ProducaoPage() {
                       <td className="px-3 py-2">
                         <TierBadge tier={item.placa.tier} />
                       </td>
-                      <td className="px-3 py-2 text-right">{item.placa.estoque}</td>
+                      <td className="px-3 py-2 text-right">
+                        {item.placa.estoque}
+                        {item.emProducao > 0 && (
+                          <span
+                            className="ml-1 text-xs font-normal text-blue-600"
+                            title="Já sendo produzido agora em outra impressora"
+                          >
+                            +{item.emProducao} em produção
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-right">
                         <span
                           className={
@@ -680,7 +734,7 @@ export default function ProducaoPage() {
                         {item.demanda?.recomendadoEstoque ?? 0}
                       </td>
                       <td className="px-3 py-2 text-right font-semibold text-gray-900">
-                        {item.demanda?.aProduzir ?? 0}
+                        {item.aProduzirEfetivo}
                       </td>
                       <td className="px-3 py-2 text-right text-gray-500">
                         {qtdParaVirarNoite(item.placa.tempoPlacaHoras, janela.aberturaHora)}x
@@ -1020,7 +1074,7 @@ function PrinterCard({
   machine: MachineRow;
   producao?: ProducaoRow;
   placaPorId: Map<number, PlacaRow>;
-  filaPrioridade: { placa: PlacaRow; demanda?: DemandaPlacaRow }[];
+  filaPrioridade: FilaPrioridadeItem[];
   pertoDoFechamento: boolean;
   aberturaHora: number;
   carregando: boolean;
@@ -1191,7 +1245,7 @@ function CarregarPlacaForm({
   carregando,
   onIniciar,
 }: {
-  filaPrioridade: { placa: PlacaRow; demanda?: DemandaPlacaRow }[];
+  filaPrioridade: FilaPrioridadeItem[];
   placaPorId: Map<number, PlacaRow>;
   pertoDoFechamento: boolean;
   aberturaHora: number;
@@ -1295,7 +1349,8 @@ function CarregarPlacaForm({
           <option value="">Selecione uma placa</option>
           {filaPrioridade.map((item) => (
             <option key={item.placa.id} value={item.placa.id}>
-              {item.placa.nome} — a produzir: {item.demanda?.aProduzir ?? 0}
+              {item.placa.nome} — a produzir: {item.aProduzirEfetivo}
+              {item.emProducao > 0 ? ` (${item.emProducao} já em produção)` : ""}
             </option>
           ))}
         </select>
