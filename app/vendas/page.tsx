@@ -1,12 +1,15 @@
 import Link from "next/link";
 import {
   getOrdersRange as getOrdersRangeML,
-  getDailyTotalsRange,
+  getDailyTotalsRange as getDailyTotalsRangeML,
   OrdersResult,
   OrderSummary,
   DailyTotalsResult,
 } from "@/lib/ml-orders";
-import { getOrdersRange as getOrdersRangeShopee } from "@/lib/shopee-orders";
+import {
+  getOrdersRange as getOrdersRangeShopee,
+  getDailyTotalsRange as getDailyTotalsRangeShopee,
+} from "@/lib/shopee-orders";
 import { formatBRL } from "@/lib/custo";
 import { labelOrderStatus } from "@/lib/mercadolivre";
 import { labelShopeeOrderStatus } from "@/lib/shopee";
@@ -180,6 +183,11 @@ function RangeFilter({
   const hrefAtalho = (deQ: string, ateQ: string) =>
     `/vendas?de=${deQ}&ate=${ateQ}&plataforma=${plataforma}`;
 
+  // Plataforma agora é botão de atalho (igual Hoje/Ontem/Semana/Mês), não
+  // dropdown — troca na hora, sem precisar submeter formulário. Mantém o
+  // de/até atual ao trocar de plataforma.
+  const hrefPlataforma = (p: Plataforma) => `/vendas?de=${de}&ate=${ate}&plataforma=${p}`;
+
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
       <div className="flex gap-1.5">
@@ -199,7 +207,21 @@ function RangeFilter({
           Mês
         </Link>
       </div>
+      <div className="flex gap-1.5">
+        <Link href={hrefPlataforma("todas")} className={quickBtnClass(plataforma === "todas")}>
+          Todas
+        </Link>
+        <Link href={hrefPlataforma("shopee")} className={quickBtnClass(plataforma === "shopee")}>
+          Shopee
+        </Link>
+        <Link href={hrefPlataforma("ml")} className={quickBtnClass(plataforma === "ml")}>
+          Mercado Livre
+        </Link>
+      </div>
       <form className="flex flex-wrap items-center gap-2" method="GET">
+        {/* Preserva a plataforma escolhida quando o formulário de data é
+            submetido — só os campos de/até vêm do usuário aqui. */}
+        <input type="hidden" name="plataforma" value={plataforma} />
         <label htmlFor="de" className="text-xs font-medium text-gray-500">
           De
         </label>
@@ -222,19 +244,6 @@ function RangeFilter({
           max={hoje}
           className="rounded-md border border-gray-300 px-2 py-1 text-sm"
         />
-        <label htmlFor="plataforma" className="text-xs font-medium text-gray-500">
-          Plataforma
-        </label>
-        <select
-          id="plataforma"
-          name="plataforma"
-          defaultValue={plataforma}
-          className="rounded-md border border-gray-300 px-2 py-1 text-sm"
-        >
-          <option value="todas">Todas as plataformas</option>
-          <option value="ml">Mercado Livre</option>
-          <option value="shopee">Shopee</option>
-        </select>
         <button
           type="submit"
           className="rounded-md bg-gray-900 px-3 py-1 text-sm font-medium text-white hover:bg-gray-700"
@@ -516,16 +525,26 @@ export default async function VendasPage({
     );
   }
 
-  // Aviso discreto quando, no modo "Todas", uma das duas plataformas não
-  // entrou na conta (não conectada ou sessão expirada) — os números
-  // seguem em frente com o que deu pra buscar, só avisando que não é a
-  // soma completa das duas lojas.
+  // Aviso quando, no modo "Todas", uma das duas plataformas não entrou na
+  // conta (não conectada ou sessão expirada) — os números seguem em
+  // frente com o que deu pra buscar, mas agora com um botão de reconectar
+  // direto (pedido do Guilherme em 2026-07-22: "coloque um botão pra
+  // quando o ML ou Shopee expirar a conexão ele aparecer pra eu logar"),
+  // em vez de só um aviso em texto sem ação.
   const avisoPlataforma =
     plataforma === "todas"
       ? principal.mlStatus !== "ok"
-        ? "Mercado Livre não conectado ou sessão expirada — mostrando só Shopee."
+        ? {
+            texto: "Mercado Livre não conectado ou sessão expirada — mostrando só Shopee.",
+            href: "/api/mercadolivre/authorize",
+            label: "Reconectar Mercado Livre",
+          }
         : principal.shopeeStatus !== "ok"
-        ? "Shopee não conectada ou sessão expirada — mostrando só Mercado Livre."
+        ? {
+            texto: "Shopee não conectada ou sessão expirada — mostrando só Mercado Livre.",
+            href: "/api/shopee/authorize",
+            label: "Reconectar Shopee",
+          }
         : null
       : null;
 
@@ -540,16 +559,20 @@ export default async function VendasPage({
   const noventaDiasInicio = diasAtras(hoje, 89);
   const isRangeSemana = de === semanaInicio && ate === hoje;
   const isRangeMes = de === mesInicio && ate === hoje;
-  // Recorde da loja (90 dias) usa uma busca leve dedicada
-  // (getDailyTotalsRange) que só existe pra ML por enquanto — no modo
-  // Shopee esse card fica indisponível; no modo Todas, mostra só o
-  // recorde do Mercado Livre (rotulado assim), já que a Shopee ainda não
-  // tem esse atalho leve.
-  const [semanaResult, mesResult, recorde90d] = await Promise.all([
+  // Recorde da loja (90 dias) usa buscas leves dedicadas (getDailyTotalsRange,
+  // sem multiget de itens/foto nem chamada de shipments por pedido) pra
+  // cada plataforma conectada, e depois soma dia a dia — assim o recorde
+  // sempre reflete as duas lojas juntas no modo "Todas" (pedido do
+  // Guilherme em 2026-07-22: "recorde tá faltando Shopee, pode colocar"),
+  // só separando quando um filtro de plataforma específico é escolhido.
+  const [semanaResult, mesResult, recorde90dML, recorde90dShopee] = await Promise.all([
     isRangeSemana ? Promise.resolve(principal) : buscarOrders(plataforma, semanaInicio, hoje),
     isRangeMes ? Promise.resolve(principal) : buscarOrders(plataforma, mesInicio, hoje),
     plataforma !== "shopee"
-      ? getDailyTotalsRange(noventaDiasInicio, hoje)
+      ? getDailyTotalsRangeML(noventaDiasInicio, hoje)
+      : Promise.resolve({ connected: false } as DailyTotalsResult),
+    plataforma !== "ml"
+      ? getDailyTotalsRangeShopee(noventaDiasInicio, hoje)
       : Promise.resolve({ connected: false } as DailyTotalsResult),
   ]);
   const resumoSelecionado = resumoStats(principal.orders);
@@ -570,21 +593,45 @@ export default async function VendasPage({
   // "Vendas no mês" (mesResult), sem chamada extra à API.
   const melhorDiaMes = melhorDiaDeOrders(mesResult.orders);
 
-  // Recorde da loja (últimos 90 dias): busca leve dedicada (getDailyTotalsRange),
-  // sem multiget de itens nem chamada de shipments por pedido — por isso
-  // consegue cobrir uma janela maior sem pesar no carregamento da página.
+  // Recorde da loja (últimos 90 dias): soma dia a dia o que veio de cada
+  // plataforma conectada (buscas leves, sem multiget de itens nem chamada
+  // de shipments por pedido — por isso conseguem cobrir uma janela maior
+  // sem pesar no carregamento da página) antes de achar o melhor dia.
+  const porDia90dCombinado = new Map<string, { faturamento: number; pedidos: number }>();
+  const acumularPorDia = (result: DailyTotalsResult) => {
+    if (!result.connected || result.error) return;
+    for (const d of result.porDia) {
+      const atual = porDia90dCombinado.get(d.dia) ?? { faturamento: 0, pedidos: 0 };
+      atual.faturamento += d.faturamento;
+      atual.pedidos += d.pedidos;
+      porDia90dCombinado.set(d.dia, atual);
+    }
+  };
+  acumularPorDia(recorde90dML);
+  acumularPorDia(recorde90dShopee);
   let melhorDia90d: { dia: string; faturamento: number; pedidos: number } | null = null;
-  if (recorde90d.connected && !recorde90d.error) {
-    for (const d of recorde90d.porDia) {
-      if (!melhorDia90d || d.faturamento > melhorDia90d.faturamento) melhorDia90d = d;
+  for (const [dia, v] of porDia90dCombinado) {
+    if (!melhorDia90d || v.faturamento > melhorDia90d.faturamento) {
+      melhorDia90d = { dia, ...v };
     }
   }
+  const mlDisponivelPara90d =
+    plataforma !== "shopee" && recorde90dML.connected && !recorde90dML.error;
+  const shopeeDisponivelPara90d =
+    plataforma !== "ml" && recorde90dShopee.connected && !recorde90dShopee.error;
+  const recorde90dIndisponivel = !mlDisponivelPara90d && !shopeeDisponivelPara90d;
 
   const resumo = (
     <div className="flex flex-col gap-4">
       {avisoPlataforma && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-          {avisoPlataforma}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          <span>{avisoPlataforma.texto}</span>
+          <a
+            href={avisoPlataforma.href}
+            className="shrink-0 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700"
+          >
+            {avisoPlataforma.label}
+          </a>
         </div>
       )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
@@ -604,18 +651,14 @@ export default async function VendasPage({
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <RecordeDiaCard label="Recorde do mês (melhor dia)" melhorDia={melhorDiaMes} />
-        {plataforma !== "shopee" ? (
+        {!recorde90dIndisponivel ? (
           <RecordeDiaCard
-            label={
-              plataforma === "todas"
-                ? "Recorde do Mercado Livre (melhor dia, 90 dias) — Shopee ainda não entra aqui"
-                : "Recorde da loja (melhor dia, últimos 90 dias)"
-            }
+            label="Recorde da loja (melhor dia, últimos 90 dias)"
             melhorDia={melhorDia90d}
           />
         ) : (
           <div className="rounded-lg border border-dashed border-gray-300 bg-white p-4 text-xs text-gray-400">
-            Recorde de 90 dias ainda não disponível pra Shopee.
+            Recorde de 90 dias indisponível agora — reconecte a(s) plataforma(s) acima.
           </div>
         )}
       </div>
