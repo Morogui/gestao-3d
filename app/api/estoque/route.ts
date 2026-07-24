@@ -60,5 +60,18 @@ export async function POST(req: NextRequest) {
     RETURNING placa_id, quantidade_pecas, atualizado_em
   `) as { placa_id: number; quantidade_pecas: number; atualizado_em: string }[];
 
+  // Registra o ajuste em ajustes_manuais_estoque — pedido do Guilherme em
+  // 2026-07-24 depois de perguntar "de onde tirou esses 37" sobre um
+  // número de estoque: antes disso não existia NENHUM histórico de ajuste
+  // manual (só o valor atual + "atualizado em"), então não dava pra saber
+  // se um número veio de venda, produção ou de um ajuste manual, nem
+  // quando. Guarda o delta aplicado e o total resultante, pra aparecer
+  // junto com vendas (baixas_estoque_vendas) e produção (producoes) na
+  // aba "Ver histórico" de cada placa.
+  await sql`
+    INSERT INTO ajustes_manuais_estoque (placa_id, delta, resultante)
+    VALUES (${placaId}, ${delta}, ${rows[0].quantidade_pecas})
+  `;
+
   return NextResponse.json(rows[0]);
 }
