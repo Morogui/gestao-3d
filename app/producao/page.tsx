@@ -316,10 +316,9 @@ export default function ProducaoPage() {
   // Guilherme em 2026-07-23 e reafirmado em 2026-07-24 ("todo produto
   // vendido tem que ter estoque; se não tiver, prioridade máxima") — isso
   // NUNCA muda, nem de dia nem de noite. A meta usada por trás dessa conta
-  // (recomendadoEstoque, em lib/demanda.ts) já é 2 semanas de venda no
-  // ritmo atual (1 semana + 1 de reforço), somando venda normal E Full —
-  // exatamente a regra nº2 do Guilherme ("estoque tem que cobrir 2
-  // semanas de venda, normal e Full").
+  // (recomendadoEstoque, em lib/demanda.ts) é 1 mês de venda × 1.3, somando
+  // venda normal E Full — regra do Guilherme em 2026-07-24 ("o estoque que
+  // precisamos criar é de 1 mês de venda do produto... x1.3").
   //
   // Critério nº2 (desempate, SÓ À NOITE/perto do fechamento — restrição
   // operacional REAL, não preferência): viabilidade de virar a madrugada
@@ -719,7 +718,7 @@ export default function ProducaoPage() {
           Sempre ordenada, primeiro, por &quot;dias de estoque restante&quot;
           (estoque ÷ venda média diária) — produto com venda real e sem
           estoque é nível 1 de prioridade, em qualquer horário; isso nunca
-          muda (a meta usada aqui já é 2 semanas de venda, somando venda
+          muda (a meta usada aqui é 1 mês de venda × 1.3, somando venda
           normal e Full; placa descontinuada nunca entra aqui, mesmo com
           alguma venda residual detectada). Depois disso, perto do
           fechamento (ou já fechado) entra primeiro quantas recargas a placa
@@ -731,14 +730,14 @@ export default function ProducaoPage() {
           isso vem antes do volume de venda. Em qualquer outro horário (e
           sempre, depois da regra acima), quem vende mais por semana entra na
           frente — isso nunca perde pra tempo de placa. Só quando o volume de
-          venda também empata é que placas curtas (1 a 4h, fáceis de trocar
+          venda também empata é que placas curtas (1 a 5h, fáceis de trocar
           durante o expediente) desempatam por último. Use o campo de busca
           por SKU em cada impressora se quiser carregar um produto fora dessa
           ordem.
         </p>
         {filaPrioridade.length === 0 ? (
           <div className="rounded-lg border border-dashed border-gray-300 bg-white p-4 text-center text-sm text-gray-500">
-            Nada pendente — estoque cobre a meta das próximas 2 semanas.
+            Nada pendente — estoque cobre a meta de 1 mês de venda (×1.3).
           </div>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
@@ -813,10 +812,10 @@ export default function ProducaoPage() {
           Estoque de placas e recomendação de produção
         </h2>
         <p className="mb-3 text-xs text-gray-500">
-          &quot;Meta&quot; = 1 semana no ritmo atual de venda + 1 semana extra
-          de reforço (2× a média semanal, calculada a partir dos últimos 30
-          dias — vendas locais e Full somadas). &quot;A produzir&quot; = meta
-          − estoque atual. Pra placas compostas (corpo+gancho), o estoque
+          &quot;Meta&quot; = 1 mês de venda estimado × 1.3 (a partir dos
+          últimos 30 dias — vendas locais e Full somadas). &quot;A
+          produzir&quot; = meta − estoque atual. Pra placas compostas
+          (corpo+gancho), o estoque
           &quot;vendável&quot; do produto final é o menor entre as duas
           metades do par. &quot;Peso/placa (g)&quot; é o peso de filamento
           gasto pra imprimir 1 placa inteira (não o peso da peça pronta) —
