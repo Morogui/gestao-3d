@@ -347,7 +347,18 @@ export function calcularDemandaSemanal(
     const mediaSemanal = (qtyVendidaPeriodo / diasNoPeriodo) * 7;
     // Meta = 1 semana no ritmo atual + 1 semana extra de reforço (2x).
     const recomendadoEstoque = Math.ceil(mediaSemanal * 2);
-    const aProduzir = Math.max(0, recomendadoEstoque - placa.estoque);
+    // Placa descontinuada NUNCA entra na recomendação de produção, mesmo
+    // que o casamento de texto ainda detecte alguma venda residual dentro
+    // do período (ex: pedido antigo de antes de parar de vender, ou um
+    // falso-positivo do casamento por palavras). Pedido do Guilherme em
+    // 2026-07-24, depois de ver "Porta Copo Taça do Mundo" e "Troféu Copa
+    // do Mundo" (produtos que não vende mais) no topo da fila de
+    // prioridade: "só desconsidera as vendas dele pra linha de produção".
+    // qtyVendidaPeriodo/mediaSemanal continuam calculados normalmente (são
+    // informativos), só aProduzir é zerado.
+    const aProduzir = placa.descontinuada
+      ? 0
+      : Math.max(0, recomendadoEstoque - placa.estoque);
     porPlaca.set(placa.id, {
       placaId: placa.id,
       qtyVendidaPeriodo,
