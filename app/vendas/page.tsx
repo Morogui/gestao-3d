@@ -1,15 +1,19 @@
 import Link from "next/link";
+import { OrdersResult, OrderSummary, DailyTotalsResult } from "@/lib/ml-orders";
+// Lê do registro local (pedidos_cache) em vez de bater na API da ML/Shopee
+// ao vivo a cada carregamento da tela — pedido do Guilherme em 2026-07-24
+// pra Vendas mostrar dados "quase em tempo real" sem depender de uma
+// chamada ao vivo por visita. O registro é mantido pelo cron de 1 em 1
+// minuto em /api/pedidos/sincronizar (ver lib/pedidos-cache.ts). Mesma
+// assinatura/retorno de antes (OrdersResult/DailyTotalsResult), só troca a
+// fonte dos dados — o resto da tela (buscarOrders, resumoStats,
+// melhorDiaDeOrders etc.) não precisa mudar.
 import {
-  getOrdersRange as getOrdersRangeML,
-  getDailyTotalsRange as getDailyTotalsRangeML,
-  OrdersResult,
-  OrderSummary,
-  DailyTotalsResult,
-} from "@/lib/ml-orders";
-import {
-  getOrdersRange as getOrdersRangeShopee,
-  getDailyTotalsRange as getDailyTotalsRangeShopee,
-} from "@/lib/shopee-orders";
+  getOrdersRangeML,
+  getOrdersRangeShopee,
+  getDailyTotalsRangeML,
+  getDailyTotalsRangeShopee,
+} from "@/lib/pedidos-cache";
 import { formatBRL } from "@/lib/custo";
 import { labelOrderStatus } from "@/lib/mercadolivre";
 import { labelShopeeOrderStatus } from "@/lib/shopee";
