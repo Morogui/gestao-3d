@@ -6,6 +6,13 @@ import { PlacaRow } from "@/lib/placas";
 type EstoqueRow = PlacaRow & { atualizadoEm: string | null };
 type Status = "loading" | "ready" | "erro";
 
+interface Movimento {
+  data: string;
+  tipo: "venda" | "producao" | "manual";
+  quantidade: number;
+  detalhe: string;
+}
+
 interface SincronizacaoInfo {
   connected: boolean;
   pedidosVerificados?: number;
@@ -208,6 +215,7 @@ export default function EstoquePage() {
               <th className="px-3 py-2 text-right">Estoque atual</th>
               <th className="px-3 py-2">Ajuste manual</th>
               <th className="px-3 py-2">Atualizado em</th>
+              <th className="px-3 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -262,56 +270,172 @@ function LinhaEstoque({
   onAjustar: (delta: number) => void;
 }) {
   const [valor, setValor] = useState("");
+  const [aberto, setAberto] = useState(false);
+  const [historico, setHistorico] = useState<Movimento[] | "loading" | "erro" | null>(
+    null
+  );
+
+  async function alternarHistorico() {
+    if (aberto) {
+      setAberto(false);
+      return;
+    }
+    setAberto(true);
+    if (historico === null) {
+      setHistorico("loading");
+      try {
+        const res = await fetch(`/api/estoque/${placa.id}/historico`);
+        if (!res.ok) throw new Error("falha");
+        const data = await res.json();
+        setHistorico(data.movimentos);
+      } catch {
+        setHistorico("erro");
+      }
+    }
+  }
 
   return (
-    <tr className="hover:bg-gray-50">
-      <td className="px-3 py-2">
-        {/* SKU em cima (negrito) — é o código/descrição real do produto
-            (ex: "STAM-01 BEGE | Suporte Organizador..."), o que o
-            Guilherme usa pra identificar o item de verdade. O nome
-            "amigável" vira legenda embaixo (pedido 2026-07-23: "aqui
-            sempre temos que ter a sku nao o nome"). */}
-        <p className="font-medium text-gray-900">
-          {placa.skuOuKit}
-          {placa.descontinuada && (
-            <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-normal text-gray-500">
-              Descontinuada
-            </span>
-          )}
-        </p>
-        <p className="text-xs text-gray-400">
-          {placa.nome}
-          {placa.tipo === "composto" ? ` · ${placa.papel} de ${placa.grupoComposto}` : ""}
-        </p>
-      </td>
-      <td className="px-3 py-2">
-        <TierBadge tier={placa.tier} />
-      </td>
-      <td className="px-3 py-2 text-right font-semibold text-gray-900">{placa.estoque}</td>
-      <td className="px-3 py-2">
-        <div className="flex items-center gap-1.5">
-          <input
-            type="number"
-            placeholder="+/- qtd"
-            value={valor}
-            onChange={(e) => setValor(e.target.value)}
-            className="w-24 rounded border border-gray-300 px-2 py-1 text-xs"
-          />
+    <>
+      <tr className="hover:bg-gray-50">
+        <td className="px-3 py-2">
+          {/* SKU em cima (negrito) — é o código/descrição real do produto
+              (ex: "STAM-01 BEGE | Suporte Organizador..."), o que o
+              Guilherme usa pra identificar o item de verdade. O nome
+              "amigável" vira legenda embaixo (pedido 2026-07-23: "aqui
+              sempre temos que ter a sku nao o nome"). */}
+          <p className="font-medium text-gray-900">
+            {placa.skuOuKit}
+            {placa.descontinuada && (
+              <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-normal text-gray-500">
+                Descontinuada
+              </span>
+            )}
+          </p>
+          <p className="text-xs text-gray-400">
+            {placa.nome}
+            {placa.tipo === "composto" ? ` · ${placa.papel} de ${placa.grupoComposto}` : ""}
+          </p>
+        </td>
+        <td className="px-3 py-2">
+          <TierBadge tier={placa.tier} />
+        </td>
+        <td className="px-3 py-2 text-right font-semibold text-gray-900">{placa.estoque}</td>
+        <td className="px-3 py-2">
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              placeholder="+/- qtd"
+              value={valor}
+              onChange={(e) => setValor(e.target.value)}
+              className="w-24 rounded border border-gray-300 px-2 py-1 text-xs"
+            />
+            <button
+              disabled={salvando || !valor || Number(valor) === 0}
+              onClick={() => {
+                onAjustar(Number(valor));
+                setValor("");
+              }}
+              className="rounded bg-gray-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
+            >
+              Aplicar
+            </button>
+          </div>
+        </td>
+        <td className="px-3 py-2 text-xs text-gray-400">
+          {placa.atualizadoEm ? new Date(placa.atualizadoEm).toLocaleString("pt-BR") : "—"}
+        </td>
+        <td className="px-3 py-2 text-right">
           <button
-            disabled={salvando || !valor || Number(valor) === 0}
-            onClick={() => {
-              onAjustar(Number(valor));
-              setValor("");
-            }}
-            className="rounded bg-gray-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
+            onClick={alternarHistorico}
+            className="whitespace-nowrap text-xs font-medium text-blue-600 hover:underline"
           >
-            Aplicar
+            {aberto ? "Fechar" : "Ver histórico"}
           </button>
-        </div>
-      </td>
-      <td className="px-3 py-2 text-xs text-gray-400">
-        {placa.atualizadoEm ? new Date(placa.atualizadoEm).toLocaleString("pt-BR") : "—"}
-      </td>
-    </tr>
+        </td>
+      </tr>
+      {aberto && (
+        <tr>
+          <td colSpan={6} className="bg-gray-50 px-3 py-3">
+            <HistoricoMovimentacao historico={historico} />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+// Histórico de movimentação — pedido do Guilherme em 2026-07-24: ele
+// perguntou "de onde tirou esses 37" sobre um número de estoque, e não
+// tinha como responder além de "é o total atual". Junta as 3 fontes que
+// mexem no estoque (venda automática, produção concluída, ajuste manual)
+// numa única linha do tempo por placa — ver /api/estoque/[placaId]/historico.
+function HistoricoMovimentacao({
+  historico,
+}: {
+  historico: Movimento[] | "loading" | "erro" | null;
+}) {
+  if (historico === "loading" || historico === null) {
+    return <p className="text-xs text-gray-400">Carregando histórico...</p>;
+  }
+  if (historico === "erro") {
+    return <p className="text-xs text-red-600">Não deu pra carregar o histórico.</p>;
+  }
+  if (historico.length === 0) {
+    return (
+      <p className="text-xs text-gray-400">
+        Nenhuma movimentação registrada ainda pra essa placa (o valor atual pode vir de
+        antes desse histórico existir).
+      </p>
+    );
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full max-w-2xl text-xs">
+        <thead className="text-left uppercase text-gray-400">
+          <tr>
+            <th className="py-1 pr-3">Quando</th>
+            <th className="py-1 pr-3">Origem</th>
+            <th className="py-1 pr-3 text-right">Qtd</th>
+            <th className="py-1">Detalhe</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          {historico.map((m, i) => (
+            <tr key={i}>
+              <td className="py-1 pr-3 whitespace-nowrap text-gray-500">
+                {new Date(m.data).toLocaleString("pt-BR")}
+              </td>
+              <td className="py-1 pr-3">
+                <OrigemBadge tipo={m.tipo} />
+              </td>
+              <td
+                className={
+                  "py-1 pr-3 text-right font-medium " +
+                  (m.quantidade > 0 ? "text-green-700" : "text-red-600")
+                }
+              >
+                {m.quantidade > 0 ? `+${m.quantidade}` : m.quantidade}
+              </td>
+              <td className="py-1 text-gray-600">{m.detalhe}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function OrigemBadge({ tipo }: { tipo: Movimento["tipo"] }) {
+  const estilos =
+    tipo === "venda"
+      ? "bg-red-100 text-red-700"
+      : tipo === "producao"
+      ? "bg-green-100 text-green-700"
+      : "bg-amber-100 text-amber-700";
+  const rotulo = tipo === "venda" ? "Venda" : tipo === "producao" ? "Produção" : "Manual";
+  return (
+    <span className={"rounded px-1.5 py-0.5 text-xs font-semibold " + estilos}>
+      {rotulo}
+    </span>
   );
 }
