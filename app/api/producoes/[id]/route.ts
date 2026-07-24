@@ -67,9 +67,18 @@ export async function PATCH(
 
     const { placa_id: placaId, quantidade_placas: quantidadePlacas } = rows[0];
     const placaRows = (await sql`
-      SELECT pecas_por_placa FROM placas WHERE id = ${placaId}
-    `) as { pecas_por_placa: string }[];
+      SELECT pecas_por_placa, saida_extra_placa_id, saida_extra_pecas
+      FROM placas WHERE id = ${placaId}
+    `) as {
+      pecas_por_placa: string;
+      saida_extra_placa_id: number | null;
+      saida_extra_pecas: string | null;
+    }[];
     const pecasPorPlaca = Number(placaRows[0]?.pecas_por_placa ?? 0);
+    const saidaExtraPlacaId = placaRows[0]?.saida_extra_placa_id ?? null;
+    const saidaExtraPecas = placaRows[0]?.saida_extra_pecas
+      ? Number(placaRows[0].saida_extra_pecas)
+      : 0;
 
     // Peças perdidas em falhas pontuais (a impressão continuou, só essas
     // peças específicas foram descartadas) são descontadas do total
@@ -90,7 +99,29 @@ export async function PATCH(
       WHERE placa_id = ${placaId}
     `;
 
-    return NextResponse.json({ ok: true, pecasProduzidas, pecasComFalha });
+    // Placa "mista" (ex: Suporte Carro - Mista): cada impressão também
+    // rende peças de uma OUTRA placa (saida_extra_placa_id), além da
+    // sua própria. Credita esse extra também — sem descontar falhas
+    // pontuais aqui, porque falhas_peca não distingue qual tipo de peça
+    // (do papel principal ou da saída extra) foi perdida na placa mista;
+    // simplificação aceitável dado o baixo volume desse caso (pedido
+    // 2026-07-24).
+    let pecasExtraProduzidas = 0;
+    if (saidaExtraPlacaId && saidaExtraPecas > 0) {
+      pecasExtraProduzidas = Number(quantidadePlacas) * saidaExtraPecas;
+      await sql`
+        UPDATE estoque_placas
+        SET quantidade_pecas = quantidade_pecas + ${pecasExtraProduzidas}, atualizado_em = now()
+        WHERE placa_id = ${saidaExtraPlacaId}
+      `;
+    }
+
+    return NextResponse.json({
+      ok: true,
+      pecasProduzidas,
+      pecasComFalha,
+      pecasExtraProduzidas,
+    });
   }
 
   return NextResponse.json({ error: "status inválido" }, { status: 400 });
