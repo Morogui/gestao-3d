@@ -30,13 +30,13 @@ export interface OrderSummary {
   status: string;
   shippingMode: string;
   // Status do ENVIO (não confundir com "status" acima, que é o status do
-  // pagamento/pedido). Usado pra saber se um pedido já foi de fato
-  // despachado, pra disparar a baixa automática de estoque (ver
-  // pedidoFoiEnviado abaixo). ML: valor cru do shipment ("pending",
-  // "handling", "ready_to_ship", "shipped", "delivered", ...). Shopee: o
-  // "order_status" já É o status de fulfillment (a Shopee não separa
-  // pagamento de envio como a ML), então aqui repete o mesmo valor de
-  // "status".
+  // pagamento/pedido — esse sim é o usado por pedidoFoiVendido() abaixo
+  // pra disparar a baixa automática de estoque). Esse campo aqui só é
+  // exibido na aba Vendas como informação complementar. ML: valor cru do
+  // shipment ("pending", "handling", "ready_to_ship", "shipped",
+  // "delivered", ...). Shopee: o "order_status" já É o status de
+  // fulfillment (a Shopee não separa pagamento de envio como a ML), então
+  // aqui repete o mesmo valor de "status".
   shippingStatus: string;
   // De qual plataforma veio esse pedido — usado pela aba Vendas pra
   // mesclar Mercado Livre + Shopee num só painel (modo "Todas") sem
@@ -44,16 +44,36 @@ export interface OrderSummary {
   plataforma: "ml" | "shopee";
 }
 
-// Pedido já foi despachado de fato (saiu fisicamente pra transportadora)?
-// Usado pela sincronização de estoque (app/api/estoque/sincronizar-vendas)
-// pra só dar baixa em peças que realmente já saíram — pedido só pago mas
-// ainda não enviado não desconta nada.
-const ENVIADO_ML = new Set(["shipped", "delivered"]);
-const ENVIADO_SHOPEE = new Set(["SHIPPED", "TO_CONFIRM_RECEIVE", "COMPLETED"]);
+// Pedido já conta como "vendido" pra dar baixa no estoque? Mudou em
+// 2026-07-24 a pedido do Guilherme: antes a baixa só acontecia quando o
+// pedido aparecia como ENVIADO (despachado de fato) — isso deixava o
+// estoque do sistema "atrasado" em relação à realidade (peça já vendida
+// e reservada, mas o número ainda mostrava disponível até a transportadora
+// coletar), o que estava confundindo a produção. Regra nova: "produto
+// vendido tem que ter em estoque e ser dado baixa quando aparecer em
+// vendido" — ou seja, no pagamento, não no envio.
+//
+// ML: usa o campo "status" (status do PAGAMENTO/pedido, não do envio) —
+// conta como vendido a partir de "paid"/"partially_paid". Fica de fora:
+// payment_required/payment_in_process (ainda não pagou),
+// cancelled/invalidated/pending_cancel (não vale).
+//
+// Shopee: não separa pagamento de envio — o "status" aqui já É o
+// order_status. Conta como vendido qualquer status EXCETO os que
+// significam "ainda não é uma venda de verdade": UNPAID (não pagou),
+// CANCELLED (cancelado) e IN_CANCEL (cancelamento em andamento — enquanto
+// não finaliza, mais seguro não contar).
+//
+// Se um pedido que já tinha dado baixa deixar de ser "vendido" numa
+// sincronização seguinte (ex: comprador cancelou/estornou depois de
+// pago), app/api/estoque/sincronizar-vendas devolve a peça pro estoque
+// sozinho — ver a lógica de reversão lá.
+const VENDIDO_ML = new Set(["paid", "partially_paid"]);
+const NAO_VENDIDO_SHOPEE = new Set(["UNPAID", "CANCELLED", "IN_CANCEL"]);
 
-export function pedidoFoiEnviado(order: OrderSummary): boolean {
-  if (order.plataforma === "ml") return ENVIADO_ML.has(order.shippingStatus);
-  return ENVIADO_SHOPEE.has(order.shippingStatus);
+export function pedidoFoiVendido(order: OrderSummary): boolean {
+  if (order.plataforma === "ml") return VENDIDO_ML.has(order.status);
+  return Boolean(order.status) && !NAO_VENDIDO_SHOPEE.has(order.status);
 }
 
 export type OrdersResult =

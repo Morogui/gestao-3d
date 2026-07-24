@@ -203,8 +203,8 @@ export interface BaixaItem {
 }
 
 // Quantas peças de cada placa um pedido específico deve descontar do
-// estoque físico assim que ele for marcado como enviado (ver
-// pedidoFoiEnviado em lib/ml-orders.ts e app/api/estoque/sincronizar-vendas).
+// estoque físico assim que ele contar como vendido/pago (ver
+// pedidoFoiVendido em lib/ml-orders.ts e app/api/estoque/sincronizar-vendas).
 // Usa EXATAMENTE a mesma lógica de casamento de calcularDemandaSemanal
 // (SKU exato via sku_placa, com o multiplicador pecas_por_unidade, senão
 // fallback por texto contra sku_ou_kit/nome da placa) — assim o que "conta

@@ -346,8 +346,8 @@ export async function getOrdersRange(
         status: d.order_status ?? "—",
         shippingMode,
         // Shopee não separa status de pagamento de status de envio — o
-        // mesmo order_status já diz se foi despachado (ver
-        // pedidoFoiEnviado em lib/ml-orders.ts).
+        // mesmo order_status já diz se foi vendido/despachado (ver
+        // pedidoFoiVendido em lib/ml-orders.ts).
         shippingStatus: d.order_status ?? "—",
         plataforma: "shopee",
       };
