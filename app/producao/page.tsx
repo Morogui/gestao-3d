@@ -576,16 +576,16 @@ export default function ProducaoPage() {
           Em horário normal, a fila de prioridade abaixo ordena por &quot;dias
           de estoque restante&quot;, priorizando quem mais vende e está perto
           de zerar. Perto do fechamento (ou já fechado) ninguém troca placa
-          até a reabertura — por isso a fila muda de critério e passa a
-          priorizar a placa de tempo de produção mais longo, pra quem
-          carregar por último escolher algo que sozinho já cobre a
-          madrugada, em vez de um produto rápido que termina e fica parado
-          até alguém voltar.
+          até a reabertura — por isso, entre produtos igualmente urgentes, a
+          fila passa a dar preferência a quem cobre a madrugada sozinho
+          (poucas recargas), em vez de uma placa rápida que termina e fica
+          parada até alguém voltar. Só depois disso é que o volume de venda
+          desempata.
         </p>
         {pertoDoFechamento && (
           <p className="mt-1 font-medium">
-            Estamos nesse período agora — a fila abaixo já está ordenada por
-            tempo de produção.
+            Estamos nesse período agora — a fila abaixo já está priorizando
+            quem cobre a madrugada sem precisar de recarga.
           </p>
         )}
       </div>
