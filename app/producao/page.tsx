@@ -315,13 +315,24 @@ export default function ProducaoPage() {
   // prioriza bestsellers (eles gastam estoque mais rápido) sem deixar de
   // pegar um produto de venda baixa que também esteja prestes a zerar.
   //
+  // Desempate por volume de venda (mediaSemanal, decrescente) — bug real
+  // reportado pelo Guilherme em 2026-07-23: com VÁRIAS placas zeradas ao
+  // mesmo tempo (bem comum), diasDeEstoque(0, qualquerMedia) dá sempre 0
+  // pra todas elas — um empate que, sem critério de desempate, caía pra
+  // ordem de cadastro (campo "numero"), não pra urgência real. Resultado:
+  // um produto de venda baixíssima tipo "Suporte Carro (Branco)" (numero
+  // baixo, cadastrado cedo) aparecia ANTES de produtos que vendem muito
+  // mais (ex: "6X3 15 FATIAS", meta 48 vs meta 4), só por coincidência de
+  // posição no catálogo. Agora, entre placas empatadas em dias de
+  // estoque, quem vende mais por semana entra na frente.
+  //
   // Perto do fechamento (ou já fechado), a lógica muda: carregar uma
   // placa rápida agora não adianta — ela termina e a máquina fica parada
   // até alguém voltar. Nesse período, ordena por tempo/placa
   // DECRESCENTE (a placa mais demorada primeiro), pra quem carregar por
   // último escolher algo que sozinho já cobre a madrugada; entre placas
-  // de tempo parecido, desempata pela urgência de estoque. Ver
-  // diasDeEstoque() e qtdParaVirarNoite() acima.
+  // de tempo parecido, desempata pela urgência de estoque e depois pelo
+  // volume de venda. Ver diasDeEstoque() e qtdParaVirarNoite() acima.
   const filaPrioridade: FilaPrioridadeItem[] = useMemo(() => {
     const itens = placas
       .map((placa) => {
@@ -337,22 +348,27 @@ export default function ProducaoPage() {
       // urgência pras outras impressoras livres.
       .filter((item) => item.aProduzirEfetivo > 0);
 
+    const porDiasDeEstoque = (a: FilaPrioridadeItem, b: FilaPrioridadeItem) =>
+      diasDeEstoque(a.estoqueProjetado, a.demanda?.mediaSemanal ?? 0) -
+      diasDeEstoque(b.estoqueProjetado, b.demanda?.mediaSemanal ?? 0);
+    const porVolumeDeVenda = (a: FilaPrioridadeItem, b: FilaPrioridadeItem) =>
+      (b.demanda?.mediaSemanal ?? 0) - (a.demanda?.mediaSemanal ?? 0);
+
     if (pertoDoFechamento) {
       return itens.sort((a, b) => {
         const porTempo = b.placa.tempoPlacaHoras - a.placa.tempoPlacaHoras;
         if (porTempo !== 0) return porTempo;
-        return (
-          diasDeEstoque(a.estoqueProjetado, a.demanda?.mediaSemanal ?? 0) -
-          diasDeEstoque(b.estoqueProjetado, b.demanda?.mediaSemanal ?? 0)
-        );
+        const porDias = porDiasDeEstoque(a, b);
+        if (porDias !== 0) return porDias;
+        return porVolumeDeVenda(a, b);
       });
     }
 
-    return itens.sort(
-      (a, b) =>
-        diasDeEstoque(a.estoqueProjetado, a.demanda?.mediaSemanal ?? 0) -
-        diasDeEstoque(b.estoqueProjetado, b.demanda?.mediaSemanal ?? 0)
-    );
+    return itens.sort((a, b) => {
+      const porDias = porDiasDeEstoque(a, b);
+      if (porDias !== 0) return porDias;
+      return porVolumeDeVenda(a, b);
+    });
   }, [placas, demandaPorPlaca, pertoDoFechamento, pecasEmProducaoPorPlaca]);
 
   // Todas as ações abaixo seguem o mesmo padrão: marca a máquina como
