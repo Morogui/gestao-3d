@@ -321,37 +321,49 @@ export default function ProducaoPage() {
   // exatamente a regra nº2 do Guilherme ("estoque tem que cobrir 2
   // semanas de venda, normal e Full").
   //
-  // Critério nº2 (desempate por horário — cada metade do dia com sua
-  // própria lógica de viabilidade operacional):
-  //   • À NOITE/perto do fechamento (>= fechamentoHora - 3, ou já fora da
-  //     janela): viabilidade de virar a madrugada sozinha —
-  //     qtdParaVirarNoite() crescente (quem precisa de menos recargas pra
-  //     cobrir até a reabertura entra na frente). Adicionado em
-  //     2026-07-24 depois do Guilherme mostrar o "6X3 18 FATIAS" (placa de
-  //     ~1h13, precisaria de 8 recargas) sugerido como nº1 às 00h30 —
-  //     ninguém troca placa 8x de madrugada.
-  //   • DE DIA (horário comercial, ex: 9h–20h): o espelho do critério
-  //     acima — trocabilidade, tempoPlacaHoras crescente (placas curtas,
-  //     de 1 a 4h, entram na frente). Pedido do Guilherme em 2026-07-24:
-  //     "de manhã das nove até as vinte horas, priorizar placas que dê pra
-  //     trocar" — tem gente pra recarregar a máquina o dia todo, então uma
-  //     placa curta permite reagir mais vezes à fila em vez de prender a
-  //     impressora numa placa longa que rodaria sozinha sem necessidade.
-  // Em ambos os casos isso é DIFERENTE do teste de "tempo de placa" que
-  // fizemos antes (e que o Guilherme rejeitou): aquele colocava um produto
-  // de venda BAIXA acima de produtos que vendem muito mais só por causa do
-  // tempo. Este aqui só reordena dentro do mesmo empate de urgência (dias
-  // de estoque), olhando pra viabilidade operacional do horário, não pra
-  // "qual placa demora mais" isoladamente.
+  // Critério nº2 (desempate, SÓ À NOITE/perto do fechamento — restrição
+  // operacional REAL, não preferência): viabilidade de virar a madrugada
+  // sozinha — qtdParaVirarNoite() crescente (quem precisa de menos
+  // recargas pra cobrir até a reabertura entra na frente). Adicionado em
+  // 2026-07-24 depois do Guilherme mostrar o "6X3 18 FATIAS" (placa de
+  // ~1h13, precisaria de 8 recargas) sugerido como nº1 às 00h30 — ninguém
+  // troca placa 8x de madrugada, isso é uma restrição física real, não
+  // uma preferência. Por isso entra ANTES do volume de venda abaixo — de
+  // nada adianta priorizar o maior vendedor se a placa dele vai ficar
+  // parada a noite toda depois de terminar sozinha.
   //
-  // Critério nº3 (desempate, SEMPRE): volume de venda (mediaSemanal,
-  // decrescente) — entre itens igualmente urgentes E igualmente viáveis
-  // pro horário atual, quem vende mais entra na frente.
+  // Critério nº3 (desempate, SEMPRE, em qualquer horário): volume de
+  // venda (mediaSemanal, decrescente) — entre itens igualmente urgentes
+  // (e igualmente viáveis pra madrugada, à noite), quem vende mais entra
+  // na frente. ESSENCIAL: isso vem ANTES do critério de trocabilidade
+  // diurna abaixo. Bug corrigido em 2026-07-24 (v92 tinha isso invertido):
+  // o Guilherme viu "Porta Copo Taça do Mundo" e "Troféu Copa do Mundo"
+  // (tempoPlacaHoras = 1h, quase sem venda real) na frente de "Suporte
+  // para Garrafa Coração" (venda real, mas placa de ~1h55) só por causa
+  // do tempo de placa curto — "a gente precisa priorizar produtos com
+  // venda e produtos que mais vendem". Isso é EXATAMENTE o erro que já
+  // tínhamos corrigido antes (v85→v86: "volume de venda sempre desempata,
+  // sem exceção") — só que dessa vez reintroduzido pro período diurno.
+  // Volume de venda vem antes de qualquer critério de tempo de placa,
+  // sempre, exceto a viabilidade noturna acima (que é restrição física,
+  // não preferência).
   //
-  // Critério nº4 (desempate final residual, só entre placas de volume
-  // idêntico): tempo de placa decrescente. A coluna "Qtd p/ virar a
-  // noite" continua mostrando esse dado por linha pra decisão manual. Ver
-  // diasDeEstoque() e qtdParaVirarNoite() acima.
+  // Critério nº4 (desempate diurno residual — SÓ entre placas de volume
+  // de venda EMPATADO, em horário comercial): trocabilidade — tempo de
+  // placa crescente (placas curtas, de 1 a 4h, que dá pra trocar e
+  // reabastecer ao longo do dia, entram na frente). Pedido do Guilherme
+  // em 2026-07-24: "de manhã até as vinte horas, priorizar placas que dê
+  // pra trocar" — mas só como desempate residual, nunca acima do volume
+  // de venda (ver nº3).
+  //
+  // Critério nº5 (desempate final residual, só entre placas de volume E
+  // trocabilidade idênticos): tempo de placa decrescente. A coluna "Qtd
+  // p/ virar a noite" continua mostrando esse dado por linha pra decisão
+  // manual. Ver diasDeEstoque() e qtdParaVirarNoite() acima.
+  //
+  // Nota: placas descontinuadas nunca entram aqui — aProduzir já vem
+  // zerado de calcularDemandaSemanal (lib/demanda.ts) pra elas, mesmo que
+  // o casamento de texto detecte alguma venda residual.
   const filaPrioridade: FilaPrioridadeItem[] = useMemo(() => {
     const itens = placas
       .map((placa) => {
@@ -388,12 +400,13 @@ export default function ProducaoPage() {
       if (pertoDoFechamento) {
         const porViabilidade = porViabilidadeNoturna(a, b);
         if (porViabilidade !== 0) return porViabilidade;
-      } else {
-        const porTrocabilidade = porTrocabilidadeDiurna(a, b);
-        if (porTrocabilidade !== 0) return porTrocabilidade;
       }
       const porVolume = porVolumeDeVenda(a, b);
       if (porVolume !== 0) return porVolume;
+      if (!pertoDoFechamento) {
+        const porTrocabilidade = porTrocabilidadeDiurna(a, b);
+        if (porTrocabilidade !== 0) return porTrocabilidade;
+      }
       return porTempoDePlaca(a, b);
     });
   }, [placas, demandaPorPlaca, pecasEmProducaoPorPlaca, pertoDoFechamento, janela.aberturaHora]);
@@ -593,14 +606,15 @@ export default function ProducaoPage() {
         <p className="mt-1">
           A fila de prioridade abaixo sempre ordena primeiro por &quot;dias de
           estoque restante&quot; — produto vendido sem estoque é prioridade
-          máxima, em qualquer horário. Durante o expediente (até ~3h antes do
-          fechamento), entre produtos igualmente urgentes a fila prefere
-          placas curtas (dá pra trocar e reabastecer ao longo do dia). Perto
-          do fechamento (ou já fechado) ninguém troca placa até a
-          reabertura — por isso, nesse período, a fila passa a dar preferência
-          a quem cobre a madrugada sozinho (poucas recargas), em vez de uma
-          placa rápida que termina e fica parada até alguém voltar. Só depois
-          disso é que o volume de venda desempata.
+          máxima, em qualquer horário. Perto do fechamento (ou já fechado)
+          ninguém troca placa até a reabertura — por isso, nesse período, a
+          fila dá preferência a quem cobre a madrugada sozinho (poucas
+          recargas), em vez de uma placa rápida que termina e fica parada até
+          alguém voltar; essa é uma restrição operacional real, por isso entra
+          antes do volume de venda. Fora desse período, é sempre o volume de
+          venda (quem vende mais por semana) que desempata primeiro — placas
+          curtas (fáceis de trocar durante o expediente) só entram como
+          desempate residual entre produtos de volume igual.
         </p>
         {pertoDoFechamento ? (
           <p className="mt-1 font-medium">
@@ -609,9 +623,8 @@ export default function ProducaoPage() {
           </p>
         ) : (
           <p className="mt-1 font-medium">
-            Estamos em horário de expediente — a fila abaixo já está
-            priorizando placas curtas (fáceis de trocar) entre produtos
-            igualmente urgentes.
+            Estamos em horário de expediente — a fila abaixo está ordenada por
+            volume de venda entre produtos igualmente urgentes.
           </p>
         )}
       </div>
@@ -707,19 +720,21 @@ export default function ProducaoPage() {
           (estoque ÷ venda média diária) — produto com venda real e sem
           estoque é nível 1 de prioridade, em qualquer horário; isso nunca
           muda (a meta usada aqui já é 2 semanas de venda, somando venda
-          normal e Full). Depois disso, o desempate muda com o horário:
-          durante o expediente, quem empata em dias de estoque desempata
-          primeiro por tempo de placa crescente — placas curtas (1 a 4h,
-          fáceis de trocar e reabastecer) entram na frente. Perto do
-          fechamento (ou já fechado), o desempate vira o oposto: quantas
-          recargas a placa precisaria pra cobrir a madrugada sozinha (coluna
-          &quot;Qtd p/ virar a noite&quot;) — uma placa que precisaria de 8
-          recargas (ex: 9x) perde pra outra igualmente urgente que uma única
-          carga já segura até a reabertura ({formatHora(janela.aberturaHora)}),
-          já que ninguém troca placa de madrugada. Só depois disso é que
-          entra o volume de venda (quem vende mais por semana) como
-          desempate. Use o campo de busca por SKU em cada impressora se
-          quiser carregar um produto fora dessa ordem.
+          normal e Full; placa descontinuada nunca entra aqui, mesmo com
+          alguma venda residual detectada). Depois disso, perto do
+          fechamento (ou já fechado) entra primeiro quantas recargas a placa
+          precisaria pra cobrir a madrugada sozinha (coluna &quot;Qtd p/
+          virar a noite&quot;) — uma placa que precisaria de 8 recargas (ex:
+          9x) perde pra outra igualmente urgente que uma única carga já
+          segura até a reabertura ({formatHora(janela.aberturaHora)}), já que
+          ninguém troca placa de madrugada; essa é uma restrição real, por
+          isso vem antes do volume de venda. Em qualquer outro horário (e
+          sempre, depois da regra acima), quem vende mais por semana entra na
+          frente — isso nunca perde pra tempo de placa. Só quando o volume de
+          venda também empata é que placas curtas (1 a 4h, fáceis de trocar
+          durante o expediente) desempatam por último. Use o campo de busca
+          por SKU em cada impressora se quiser carregar um produto fora dessa
+          ordem.
         </p>
         {filaPrioridade.length === 0 ? (
           <div className="rounded-lg border border-dashed border-gray-300 bg-white p-4 text-center text-sm text-gray-500">
