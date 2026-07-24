@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import {
   getOrdersRange as getOrdersRangeML,
-  pedidoFoiEnviado,
+  pedidoFoiVendido,
   OrderSummary,
 } from "@/lib/ml-orders";
 import { getOrdersRange as getOrdersRangeShopee } from "@/lib/shopee-orders";
@@ -35,6 +35,11 @@ interface SincronizarResult {
   pedidosVerificados?: number;
   combosNovos?: number;
   pecasBaixadas?: number;
+  // Pedidos que já tinham dado baixa e deixaram de ser "vendido" (ex:
+  // cancelado/estornado depois de pago) — a peça volta pro estoque
+  // sozinha, sem precisar de ajuste manual.
+  combosRevertidos?: number;
+  pecasDevolvidas?: number;
   detalhes?: { plataforma: string; pedidoId: string; placaId: number; pecas: number }[];
 }
 
@@ -86,52 +91,87 @@ export async function POST() {
     skuPlacaMap.set(chave, lista);
   }
 
-  const pedidosEnviados = todosOsPedidos.filter(pedidoFoiEnviado);
-
+  // Mudou em 2026-07-24: antes só considerava pedidos ENVIADOS. Agora a
+  // baixa acontece assim que o pedido é "vendido" (pago) — ver
+  // pedidoFoiVendido() em lib/ml-orders.ts pro motivo. Isso significa que
+  // um pedido pode "desvender" numa sincronização futura (cancelado,
+  // estornado) — pra esses, devolvemos a peça pro estoque em vez de só
+  // ignorar, senão a peça ficaria descontada pra sempre por uma venda que
+  // não se concretizou.
   let combosNovos = 0;
   let pecasBaixadas = 0;
+  let combosRevertidos = 0;
+  let pecasDevolvidas = 0;
   const detalhes: SincronizarResult["detalhes"] = [];
+  const pedidosVendidos = todosOsPedidos.filter(pedidoFoiVendido);
 
-  for (const pedido of pedidosEnviados) {
-    const baixas = resolverBaixaDoPedido(pedido, placas, skuPlacaMap);
-    for (const { placaId, pecas } of baixas) {
-      if (pecas <= 0) continue;
+  for (const pedido of todosOsPedidos) {
+    const vendido = pedidoFoiVendido(pedido);
 
-      // INSERT ... ON CONFLICT DO NOTHING é o que garante idempotência:
-      // só se a linha for realmente inserida (pedido+placa ainda não
-      // processado antes) é que aplicamos o desconto no estoque —
-      // rodar essa sincronização várias vezes (ex: toda vez que a aba
-      // Estoque é aberta) nunca desconta a mesma venda duas vezes.
-      const inseridos = (await sql`
-        INSERT INTO baixas_estoque_vendas (plataforma, pedido_id, placa_id, pecas)
-        VALUES (${pedido.plataforma}, ${String(pedido.id)}, ${placaId}, ${pecas})
-        ON CONFLICT (plataforma, pedido_id, placa_id) DO NOTHING
-        RETURNING id
-      `) as { id: number }[];
+    if (vendido) {
+      const baixas = resolverBaixaDoPedido(pedido, placas, skuPlacaMap);
+      for (const { placaId, pecas } of baixas) {
+        if (pecas <= 0) continue;
 
-      if (inseridos.length > 0) {
+        // INSERT ... ON CONFLICT DO NOTHING é o que garante idempotência:
+        // só se a linha for realmente inserida (pedido+placa ainda não
+        // processado antes) é que aplicamos o desconto no estoque —
+        // rodar essa sincronização várias vezes (ex: toda vez que a aba
+        // Estoque é aberta) nunca desconta a mesma venda duas vezes.
+        const inseridos = (await sql`
+          INSERT INTO baixas_estoque_vendas (plataforma, pedido_id, placa_id, pecas)
+          VALUES (${pedido.plataforma}, ${String(pedido.id)}, ${placaId}, ${pecas})
+          ON CONFLICT (plataforma, pedido_id, placa_id) DO NOTHING
+          RETURNING id
+        `) as { id: number }[];
+
+        if (inseridos.length > 0) {
+          await sql`
+            UPDATE estoque_placas
+            SET quantidade_pecas = GREATEST(0, quantidade_pecas - ${pecas}), atualizado_em = now()
+            WHERE placa_id = ${placaId}
+          `;
+          combosNovos += 1;
+          pecasBaixadas += pecas;
+          detalhes.push({
+            plataforma: pedido.plataforma,
+            pedidoId: String(pedido.id),
+            placaId,
+            pecas,
+          });
+        }
+      }
+    } else {
+      // Pedido não (mais) vendido — se alguma sincronização anterior já
+      // tinha dado baixa nele (era pago, agora foi cancelado/estornado),
+      // devolve a peça e apaga o registro, pra ele poder ser processado
+      // de novo caso volte a ficar vendido no futuro (raro, mas o ON
+      // CONFLICT DO NOTHING acima depende de a linha não existir mais).
+      const existentes = (await sql`
+        SELECT id, placa_id, pecas FROM baixas_estoque_vendas
+        WHERE plataforma = ${pedido.plataforma} AND pedido_id = ${String(pedido.id)}
+      `) as { id: number; placa_id: number; pecas: number }[];
+
+      for (const row of existentes) {
         await sql`
           UPDATE estoque_placas
-          SET quantidade_pecas = GREATEST(0, quantidade_pecas - ${pecas}), atualizado_em = now()
-          WHERE placa_id = ${placaId}
+          SET quantidade_pecas = quantidade_pecas + ${row.pecas}, atualizado_em = now()
+          WHERE placa_id = ${row.placa_id}
         `;
-        combosNovos += 1;
-        pecasBaixadas += pecas;
-        detalhes.push({
-          plataforma: pedido.plataforma,
-          pedidoId: String(pedido.id),
-          placaId,
-          pecas,
-        });
+        await sql`DELETE FROM baixas_estoque_vendas WHERE id = ${row.id}`;
+        combosRevertidos += 1;
+        pecasDevolvidas += row.pecas;
       }
     }
   }
 
   const resultado: SincronizarResult = {
     connected: true,
-    pedidosVerificados: pedidosEnviados.length,
+    pedidosVerificados: pedidosVendidos.length,
     combosNovos,
     pecasBaixadas,
+    combosRevertidos,
+    pecasDevolvidas,
     detalhes: detalhes.slice(0, 20),
   };
   return NextResponse.json(resultado);
