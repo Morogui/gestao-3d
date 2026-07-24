@@ -6,9 +6,13 @@
 // 1) A base de cálculo é o volume vendido num período maior (30 dias,
 //    passado pela rota /api/producao/demanda), convertido pra uma
 //    média semanal (qtyVendidaPeriodo / diasNoPeriodo × 7).
-// 2) A meta de estoque é sempre "1 semana de venda no ritmo atual + 1
-//    semana extra de reforço" — ou seja, 2× a média semanal — igual
-//    pra todas as placas, sem distinção por Tier.
+// 2) Meta de estoque — mudou em 2026-07-24 (pedido do Guilherme): "o
+//    estoque que precisamos criar é de 1 mês de venda do produto...
+//    sempre use como base a quantidade vendida do produto no mês
+//    anterior x1.3". Ou seja, meta = venda estimada de 30 dias × 1.3 —
+//    igual pra todas as placas, sem distinção por Tier. Antes era 2
+//    semanas (1 semana no ritmo atual + 1 de reforço); a meta mais que
+//    dobrou.
 // 3) Vendas Full entram na mesma conta de "vendido" (produção serve
 //    tanto pra reposição local quanto pra reposição do Full) — o
 //    campo qtyVendidaFull é só informativo, não altera a meta.
@@ -345,8 +349,15 @@ export function calcularDemandaSemanal(
     const qtyVendidaPeriodo = vendidoPorPlaca.get(placa.id) ?? 0;
     const qtyVendidaFull = vendidoFullPorPlaca.get(placa.id) ?? 0;
     const mediaSemanal = (qtyVendidaPeriodo / diasNoPeriodo) * 7;
-    // Meta = 1 semana no ritmo atual + 1 semana extra de reforço (2x).
-    const recomendadoEstoque = Math.ceil(mediaSemanal * 2);
+    // Meta mudou em 2026-07-24 (pedido do Guilherme): antes era 2 semanas
+    // (1 semana no ritmo atual + 1 de reforço). Agora é 1 MÊS de venda ×
+    // 1.3 — "sempre use como base a quantidade vendida do produto no mês
+    // anterior x1.3". Escala mediaSemanal pra uma estimativa mensal (em
+    // vez de usar qtyVendidaPeriodo direto) pra continuar correto mesmo
+    // quando essa função é chamada com um período diferente de 30 dias
+    // (ex: a versão de 7 dias usada só pro card do Full).
+    const mediaMensal = (qtyVendidaPeriodo / diasNoPeriodo) * 30;
+    const recomendadoEstoque = Math.ceil(mediaMensal * 1.3);
     // Placa descontinuada NUNCA entra na recomendação de produção, mesmo
     // que o casamento de texto ainda detecte alguma venda residual dentro
     // do período (ex: pedido antigo de antes de parar de vender, ou um
