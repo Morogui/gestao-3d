@@ -79,8 +79,33 @@ function textoCorresponde(referencia: string, tituloOuSku: string): boolean {
 
     const palavrasRef = palavrasSignificativas(frase);
     if (palavrasRef.length === 0) return false;
-    const tokensAlvo = new Set(alvo.split(" "));
-    return palavrasRef.every((p) => tokensAlvo.has(p));
+    const tokensAlvoArr = alvo.split(" ");
+    const tokensAlvo = new Set(tokensAlvoArr);
+    if (!palavrasRef.every((p) => tokensAlvo.has(p))) return false;
+
+    // Guarda de especificidade — bug real 2026-07-24: "Suporte Universal
+    // Branco" (skuOuKit com só 3 palavras significativas: suporte,
+    // universal, branco) estava casando com o pedido "Suporte Organizador
+    // Universal Parede Para Secador De Cabelo Branco Sem Parafuso" — um
+    // produto completamente diferente (suporte de secador de cabelo, não
+    // cadastrado no catálogo) que só por coincidência contém essas mesmas
+    // 3 palavras genéricas dentro de um título bem mais longo. Quando a
+    // referência é curta e o alvo é bem mais genérico/longo, "todas as
+    // palavras da referência presentes" deixa de ser um sinal confiável.
+    // Exige que a referência represente pelo menos 40% das palavras
+    // significativas do alvo — suficiente pra continuar tolerando
+    // reordenação/marketing (ex: "Suporte Universal" batendo em anúncios
+    // com só mais 1-2 palavras extras), mas rejeita casos onde a
+    // referência é só uma pequena fração perdida dentro de um título de
+    // um produto não relacionado.
+    const palavrasAlvoSignificativas = new Set(
+      tokensAlvoArr.filter((w) => w.length >= 3 && !STOPWORDS.has(w))
+    );
+    if (palavrasRef.length / palavrasAlvoSignificativas.size < 0.4) {
+      return false;
+    }
+
+    return true;
   });
 }
 
