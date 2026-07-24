@@ -1,7 +1,16 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { getOrdersRange as getOrdersRangeML, OrderSummary } from "@/lib/ml-orders";
-import { getOrdersRange as getOrdersRangeShopee } from "@/lib/shopee-orders";
+import { OrderSummary } from "@/lib/ml-orders";
+// Lê do registro local (pedidos_cache) em vez de bater na API da ML/Shopee
+// ao vivo a cada carregamento da tela — pedido do Guilherme em 2026-07-24
+// pra Produção não ficar tão dependente de API. Quem mantém esse registro
+// atualizado é o cron de 1 em 1 minuto em /api/pedidos/sincronizar (ver
+// lib/pedidos-cache.ts). Mesma assinatura/retorno de antes, só troca a
+// fonte dos dados.
+import {
+  getOrdersRangeML,
+  getOrdersRangeShopee,
+} from "@/lib/pedidos-cache";
 import { DbPlacaRow, toPlacaRow } from "@/lib/placas";
 import { calcularDemandaSemanal, SkuPlacaMap } from "@/lib/demanda";
 import { todaySP } from "@/lib/date";
