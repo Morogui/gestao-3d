@@ -310,43 +310,33 @@ export default function ProducaoPage() {
 
   // Fila de prioridade: placas com algo a produzir.
   //
-  // Critério nº1, SEMPRE, em qualquer horário: urgência real de venda —
-  // "dias de estoque restante" (estoque ÷ venda média diária), crescente.
-  // Quem tem venda de verdade e vai ficar sem estoque primeiro entra na
-  // frente. Pedido explícito do Guilherme em 2026-07-23: "primeiro
-  // quesito para produção, saiu venda, tenho estoque desse produto? Se
-  // não tiver ela é de extrema prioridade" — ou seja, o horário do dia
-  // NÃO pode derrubar um item que está zerado e vendendo pra trás de um
-  // item que tem estoque só porque o segundo "parece" melhor de imprimir
-  // agora (bug real: o "Suporte Orelha", com venda real e estoque
-  // zerado, ficava enterrado atrás de placas mais longas). Isso nunca
-  // muda, dia ou noite.
+  // Critério nº1, SEMPRE, em qualquer horário, sem exceção: produto com
+  // venda real e sem estoque é nível 1 de prioridade — "dias de estoque
+  // restante" (estoque ÷ venda média diária), crescente. Confirmado pelo
+  // Guilherme em 2026-07-23 depois de ver o "Gancho Simples" (baixa
+  // venda) no topo por causa do tempo de placa: "Produto com venda que
+  // não tem em estoque, sempre vai ser nível 1 prioridade!" — ou seja,
+  // NADA (nem tempo de placa, nem horário do dia) pode furar essa fila
+  // além da própria urgência de venda.
   //
-  // A PARTIR DAQUI o horário decide como desempatar entre itens
-  // IGUALMENTE urgentes (mesmo dias de estoque, tipicamente vários
-  // zerados ao mesmo tempo em 0.0):
+  // Critério nº2 (desempate, SEMPRE, dia ou noite): volume de venda
+  // (mediaSemanal, decrescente) — entre itens igualmente urgentes (várias
+  // placas zeradas ao mesmo tempo é comum, todas empatando em 0.0 dias de
+  // estoque), quem vende mais entra na frente. Chegamos a testar
+  // desempatar por tempo de placa perto do fechamento (pra favorecer
+  // quem cobre a madrugada sozinho), mas isso colocava um produto de
+  // venda baixa acima de produtos que vendem muito mais só porque a
+  // placa dele é mais demorada — o Guilherme confirmou que isso está
+  // errado: volume de venda manda sempre, sem essa exceção noturna.
   //
-  // - Em horário normal (peças rápidas ficam pro turno da manhã, onde
-  //   tem gente pra trocar direto): desempata por volume de venda
-  //   (mediaSemanal decrescente) — sem isso a ordem caía pra cadastro no
-  //   catálogo, não pra quem realmente vende mais (ex: "Suporte Carro
-  //   (Branco)", venda baixa, aparecendo antes de produtos que vendem
-  //   muito mais só por coincidência de posição).
-  //
-  // - Perto do fechamento (ou já fechado): pedido do Guilherme em
-  //   2026-07-23 — carregar uma placa RÁPIDA agora não serve pra nada,
-  //   porque não tem ninguém pra trocar de novo até reabrir; entre itens
-  //   igualmente urgentes, desempata primeiro por tempo de placa
-  //   decrescente (a mais demorada, que sozinha cobre a madrugada), e só
-  //   entre placas de tempo parecido cai pro volume de venda. Ou seja: a
-  //   urgência de venda continua mandando em quem ENTRA na fila, mas à
-  //   noite ela escolhe entre os urgentes aquele que também aguenta até
-  //   a próxima abertura — não o de maior volume isolado, que pode ser
-  //   uma placa de virar 9x sem ninguém pra trocar.
-  //
-  // Com 4 impressoras, ainda dá pra reservar uma pra uma placa grande de
-  // alta demanda e atender o resto pelas outras três. Ver diasDeEstoque()
-  // e qtdParaVirarNoite() acima.
+  // Critério nº3 (desempate final, só entre placas de volume idêntico):
+  // tempo de placa decrescente — só entra em jogo quando dias de estoque
+  // E volume de venda empatam também, como critério de desempate
+  // residual (não como regra de horário). A coluna "Qtd p/ virar a
+  // noite" continua mostrando esse dado por linha pra decisão manual: com
+  // 4 impressoras, dá pra escolher reservar uma pra uma placa longa perto
+  // do fechamento mesmo que ela não seja a nº1 da fila. Ver
+  // diasDeEstoque() e qtdParaVirarNoite() acima.
   const filaPrioridade: FilaPrioridadeItem[] = useMemo(() => {
     const itens = placas
       .map((placa) => {
@@ -373,16 +363,11 @@ export default function ProducaoPage() {
     return itens.sort((a, b) => {
       const porDias = porDiasDeEstoque(a, b);
       if (porDias !== 0) return porDias;
-
-      if (pertoDoFechamento) {
-        const porTempo = porTempoDePlaca(a, b);
-        if (porTempo !== 0) return porTempo;
-        return porVolumeDeVenda(a, b);
-      }
-
-      return porVolumeDeVenda(a, b);
+      const porVolume = porVolumeDeVenda(a, b);
+      if (porVolume !== 0) return porVolume;
+      return porTempoDePlaca(a, b);
     });
-  }, [placas, demandaPorPlaca, pertoDoFechamento, pecasEmProducaoPorPlaca]);
+  }, [placas, demandaPorPlaca, pecasEmProducaoPorPlaca]);
 
   // Todas as ações abaixo seguem o mesmo padrão: marca a máquina como
   // "carregando" (feedback visual imediato no botão), faz a chamada,
@@ -682,33 +667,21 @@ export default function ProducaoPage() {
         </h2>
         <p className="mb-3 text-xs text-gray-500">
           Sempre ordenada, primeiro, por &quot;dias de estoque restante&quot;
-          (estoque ÷ venda média diária) — quem tem venda real e vai zerar
-          primeiro entra na frente, em qualquer horário; isso nunca muda.
-          {pertoDoFechamento ? (
-            <>
-              {" "}Perto do fechamento (ou já fechado), entre itens
-              igualmente urgentes o desempate prefere a placa de impressão
-              mais longa (que sozinha cobre a madrugada sem precisar de
-              troca) em vez de uma placa rápida que ninguém vai trocar 9x
-              — placa rápida fica pro turno da manhã, com alguém por
-              perto. Só entre placas de tempo parecido cai pro volume de
-              venda.
-            </>
-          ) : (
-            <>
-              {" "}Empate desempata por volume de venda (quem vende mais
-              por semana).
-            </>
-          )}{" "}
+          (estoque ÷ venda média diária) — produto com venda real e sem
+          estoque é nível 1 de prioridade, em qualquer horário; isso nunca
+          muda. Empate desempata por volume de venda (quem vende mais por
+          semana) — sempre, dia ou noite, sem exceção pro relógio.
           A coluna &quot;Qtd p/ virar a noite&quot; é quantas vezes essa placa
           precisaria ser recarregada pra cobrir até a próxima abertura (
           {formatHora(janela.aberturaHora)}) sem ninguém pra trocar — valores
           altos (ex: 9x) indicam produto rápido demais pro último
           carregamento do dia; valores baixos (1x-2x) indicam que uma única
-          carga já seguraria a madrugada. Com 4 impressoras, dá pra reservar
-          uma pra uma placa grande de alta demanda sem abrir mão da urgência
-          nas outras. Use o campo de busca por SKU em cada impressora se
-          quiser carregar um produto fora dessa ordem.
+          carga já seguraria a madrugada. Use essa coluna pra decidir na mão
+          se compensa reservar uma das 4 impressoras pra uma placa mais
+          longa perto do fechamento, mesmo que ela não seja a nº1 da lista
+          — a lista em si continua sempre por urgência de venda + volume.
+          Use o campo de busca por SKU em cada impressora se quiser
+          carregar um produto fora dessa ordem.
         </p>
         {filaPrioridade.length === 0 ? (
           <div className="rounded-lg border border-dashed border-gray-300 bg-white p-4 text-center text-sm text-gray-500">
