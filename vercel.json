@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/pedidos/sincronizar?dias=5",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/pedidos/sincronizar?dias=100",
+      "schedule": "17 6 * * *"
+    }
+  ]
+}
