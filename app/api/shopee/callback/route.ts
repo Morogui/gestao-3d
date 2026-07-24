@@ -7,8 +7,10 @@ import { exchangeCodeForToken } from "@/lib/shopee";
 // padrão usado no /api/mercadolivre/callback.
 //
 // IMPORTANTE: o access_token da Shopee dura só 4h (bem menos que o da
-// ML). A renovação automática via refresh_token fica pra uma próxima
-// etapa, junto com a busca de pedidos de verdade.
+// ML) — mas o refresh_token salvo aqui embaixo dura 30 dias, e é usado
+// por getValidShopeeAccessToken() (lib/shopee-orders.ts) pra renovar o
+// access_token sozinho quando ele expira, sem passar por essa tela de
+// novo.
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
   const shopIdParam = req.nextUrl.searchParams.get("shop_id");
