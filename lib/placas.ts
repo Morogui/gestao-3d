@@ -20,6 +20,15 @@ export interface PlacaRow {
   // confirmado" já usado pra tempo/placa e peças/placa nas 14 placas
   // novas do catálogo).
   pesoPlacaGramas: number | null;
+  // Placa "mista": além das pecasPorPlaca do seu próprio papel, cada
+  // impressão TAMBÉM rende saidaExtraPecas unidades de uma placa
+  // DIFERENTE (saidaExtraPlacaId) na mesma mesa. Caso real (2026-07-24):
+  // "Suporte Carro - Mista" é uma placa de gancho que sai 3
+  // ganchos + 2 corpos por impressão — o corpo extra tem que creditar no
+  // estoque da placa "Suporte Carro - Corpos" quando a produção conclui.
+  // Null pras placas normais (a grande maioria).
+  saidaExtraPlacaId: number | null;
+  saidaExtraPecas: number | null;
 }
 
 export interface DbPlacaRow {
@@ -36,6 +45,8 @@ export interface DbPlacaRow {
   descontinuada: boolean;
   estoque: string;
   peso_placa_gramas: string | null;
+  saida_extra_placa_id?: number | null;
+  saida_extra_pecas?: number | string | null;
 }
 
 export function toPlacaRow(row: DbPlacaRow): PlacaRow {
@@ -56,6 +67,11 @@ export function toPlacaRow(row: DbPlacaRow): PlacaRow {
       row.peso_placa_gramas === null || row.peso_placa_gramas === undefined
         ? null
         : Number(row.peso_placa_gramas),
+    saidaExtraPlacaId: row.saida_extra_placa_id ?? null,
+    saidaExtraPecas:
+      row.saida_extra_pecas === null || row.saida_extra_pecas === undefined
+        ? null
+        : Number(row.saida_extra_pecas),
   };
 }
 
