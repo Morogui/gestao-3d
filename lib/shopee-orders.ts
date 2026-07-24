@@ -6,12 +6,13 @@
 //
 // Igual à ML, a Shopee guarda o access_token em cookie httpOnly (setado
 // no /api/shopee/callback). Diferente da ML, o access_token da Shopee
-// dura só 4h — se tiver expirado, a chamada falha e devolvemos
-// { connected: true, error: true } (renovação automática via
-// refresh_token fica pra uma próxima etapa, mesma limitação já registrada
-// em ml-orders.ts: um Server Component não consegue reescrever cookies).
+// dura só 4h — mas agora, se tiver expirado, getValidShopeeAccessToken()
+// (abaixo) renova ele na hora usando o refresh_token (válido por 30
+// dias), sem precisar que o usuário reautorize o app do zero. Só cai de
+// volta pro fluxo de "Conectar com Shopee" se o refresh_token também já
+// tiver expirado.
 import { cookies } from "next/headers";
-import { signAuthenticatedRequest } from "./shopee";
+import { refreshAccessToken, signAuthenticatedRequest } from "./shopee";
 import {
   OrderItemSummary,
   OrderSummary,
@@ -50,6 +51,43 @@ interface ShopeeOrderDetail {
 interface ShopeeItemBaseInfo {
   item_id: number;
   image?: { image_url_list?: string[] };
+}
+
+// Sessão válida da Shopee pra fazer uma chamada autenticada. O
+// access_token dura só 4h — bem menos que o refresh_token, que dura 30
+// dias. Antes desse fix, assim que o cookie de access_token expirava
+// (ou seja, toda vez que passavam 4h desde o último login), a tela caía
+// direto pro fluxo de "Conectar com Shopee" — que abre a MESMA tela de
+// autorização de primeira vez, mesmo a conexão real (a autorização da
+// conta) ainda estando totalmente válida por até 30 dias. Reclamação do
+// Guilherme em 2026-07-24: "toda vez que a Shopee precisa reconectar,
+// fica parecendo que é a primeira vez". O refresh_token já era salvo em
+// cookie desde o /api/shopee/callback, mas nunca era usado — essa função
+// troca ele silenciosamente por um access_token novo sempre que o antigo
+// já tiver expirado, então o usuário só cai na tela de autorização de
+// verdade se o PRÓPRIO refresh_token também tiver expirado (só depois de
+// 30 dias sem nenhum acesso). Como Server Components não conseguem
+// reescrever cookies, o token renovado aqui não fica salvo de volta no
+// cookie — a próxima carga de página renova de novo se precisar. Um
+// pouco redundante, mas sem custo perceptível e sem precisar reautorizar
+// à toa.
+async function getValidShopeeAccessToken(): Promise<
+  { accessToken: string; shopId: number } | null
+> {
+  const cookieStore = cookies();
+  const shopIdStr = cookieStore.get("shopee_shop_id")?.value;
+  if (!shopIdStr) return null;
+  const shopId = Number(shopIdStr);
+
+  const accessToken = cookieStore.get("shopee_access_token")?.value;
+  if (accessToken) return { accessToken, shopId };
+
+  const refreshToken = cookieStore.get("shopee_refresh_token")?.value;
+  if (!refreshToken) return null;
+
+  const renovado = await refreshAccessToken(refreshToken, shopId);
+  if (!renovado) return null;
+  return { accessToken: renovado.access_token, shopId };
 }
 
 function toEpochSeconds(day: string, endOfDay: boolean): number {
@@ -212,14 +250,11 @@ export async function getDailyTotalsRange(
   fromDay: string,
   toDay: string
 ): Promise<DailyTotalsResult> {
-  const cookieStore = cookies();
-  const accessToken = cookieStore.get("shopee_access_token")?.value;
-  const shopIdStr = cookieStore.get("shopee_shop_id")?.value;
-
-  if (!accessToken || !shopIdStr) {
+  const sessao = await getValidShopeeAccessToken();
+  if (!sessao) {
     return { connected: false };
   }
-  const shopId = Number(shopIdStr);
+  const { accessToken, shopId } = sessao;
 
   try {
     const orderSns = await fetchOrderSnsInRange(accessToken, shopId, fromDay, toDay);
@@ -256,14 +291,11 @@ export async function getOrdersRange(
   fromDay: string,
   toDay: string
 ): Promise<OrdersResult> {
-  const cookieStore = cookies();
-  const accessToken = cookieStore.get("shopee_access_token")?.value;
-  const shopIdStr = cookieStore.get("shopee_shop_id")?.value;
-
-  if (!accessToken || !shopIdStr) {
+  const sessao = await getValidShopeeAccessToken();
+  if (!sessao) {
     return { connected: false };
   }
-  const shopId = Number(shopIdStr);
+  const { accessToken, shopId } = sessao;
 
   try {
     const orderSns = await fetchOrderSnsInRange(accessToken, shopId, fromDay, toDay);
