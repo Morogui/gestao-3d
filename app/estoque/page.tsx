@@ -11,6 +11,8 @@ interface SincronizacaoInfo {
   pedidosVerificados?: number;
   combosNovos?: number;
   pecasBaixadas?: number;
+  combosRevertidos?: number;
+  pecasDevolvidas?: number;
 }
 
 // Aba Estoque: lista todas as placas (inclusive descontinuadas, como a
@@ -20,11 +22,15 @@ interface SincronizacaoInfo {
 // duas telas ficam sempre em sincronia, sem ledger paralelo.
 //
 // Além do ajuste manual, toda vez que essa aba é aberta ela também
-// dispara a sincronização automática de vendas (pedido do Guilherme em
-// 2026-07-22: "a baixa deve acontecer assim que a api retornar o pedido
-// como enviado") — verifica pedidos recentes da ML/Shopee e desconta do
-// estoque os que já saíram pra entrega, sem precisar de ajuste manual
-// pra cada venda.
+// dispara a sincronização automática de vendas — verifica pedidos
+// recentes da ML/Shopee e desconta do estoque os que já contam como
+// "vendido" (pago), sem precisar de ajuste manual pra cada venda. Mudou
+// em 2026-07-24 (pedido do Guilherme: "produto vendido tem que ter em
+// estoque e ser dado baixa quando aparecer em vendido") — antes só
+// descontava quando o pedido aparecia como ENVIADO, o que atrasava o
+// número em relação à realidade e confundia a produção. Se um pedido já
+// descontado for cancelado/estornado depois, a peça volta sozinha (ver
+// combosRevertidos/pecasDevolvidas abaixo).
 export default function EstoquePage() {
   const [status, setStatus] = useState<Status>("loading");
   const [placas, setPlacas] = useState<EstoqueRow[]>([]);
@@ -50,7 +56,7 @@ export default function EstoquePage() {
       const res = await fetch("/api/estoque/sincronizar-vendas", { method: "POST" });
       const info = (await res.json()) as SincronizacaoInfo;
       setSincronizacao(info);
-      if (info.connected && (info.combosNovos ?? 0) > 0) {
+      if (info.connected && ((info.combosNovos ?? 0) > 0 || (info.combosRevertidos ?? 0) > 0)) {
         await carregar();
       }
     } catch {
@@ -145,22 +151,35 @@ export default function EstoquePage() {
         )}
         {sincronizacao && sincronizacao.connected && (
           <span className="text-xs text-gray-500">
-            {sincronizacao.pedidosVerificados ?? 0} pedido(s) enviado(s)
+            {sincronizacao.pedidosVerificados ?? 0} pedido(s) vendido(s)
             verificado(s) (últimos {10} dias) ·{" "}
             <span className="font-medium text-gray-700">
               {sincronizacao.combosNovos ?? 0} baixa(s) nova(s)
             </span>{" "}
-            · {sincronizacao.pecasBaixadas ?? 0} peça(s) descontada(s) agora.
+            · {sincronizacao.pecasBaixadas ?? 0} peça(s) descontada(s) agora
+            {(sincronizacao.combosRevertidos ?? 0) > 0 && (
+              <>
+                {" "}
+                ·{" "}
+                <span className="font-medium text-amber-700">
+                  {sincronizacao.combosRevertidos} pedido(s) cancelado(s)/estornado(s)
+                </span>{" "}
+                devolveram {sincronizacao.pecasDevolvidas ?? 0} peça(s) ao estoque
+              </>
+            )}
+            .
           </span>
         )}
       </div>
       <p className="-mt-4 text-xs text-gray-400">
-        A baixa automática só desconta pedidos marcados como enviados pela
-        API (ML: envio "shipped"/"delivered"; Shopee: status "SHIPPED",
-        "TO_CONFIRM_RECEIVE" ou "COMPLETED") — pedido só pago ainda não
-        desconta nada. Ela roda sozinha sempre que essa aba é aberta, e
-        você também pode forçar com o botão acima. Cada pedido só é
-        descontado uma vez, mesmo rodando várias vezes.
+        A baixa automática desconta pedidos assim que contam como
+        &quot;vendido&quot; pela API (ML: pago/parcialmente pago; Shopee:
+        qualquer status exceto não pago/cancelado) — não espera o envio.
+        Se um pedido já descontado for cancelado ou estornado depois, a
+        peça volta pro estoque sozinha na próxima sincronização. Ela roda
+        sozinha sempre que essa aba é aberta, e você também pode forçar
+        com o botão acima. Cada pedido só é descontado uma vez, mesmo
+        rodando várias vezes.
       </p>
 
       <div>
