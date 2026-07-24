@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
+import { pedidoFoiVendido, OrderSummary } from "@/lib/ml-orders";
+// Lê do registro local (pedidos_cache) em vez de bater na API ao vivo —
+// ver lib/pedidos-cache.ts. Antes de ler, chama sincronizarPedidos() pra
+// atualizar o registro na hora: essa rota já rodava sozinha toda vez que
+// a aba Estoque é aberta (ver useEffect em app/estoque/page.tsx), então
+// vira um reforço de atualização extra além do cron de 1 em 1 minuto —
+// útil pra quem abre a aba entre um tick e outro do cron.
 import {
-  getOrdersRange as getOrdersRangeML,
-  pedidoFoiVendido,
-  OrderSummary,
-} from "@/lib/ml-orders";
-import { getOrdersRange as getOrdersRangeShopee } from "@/lib/shopee-orders";
+  getOrdersRangeML,
+  getOrdersRangeShopee,
+  sincronizarPedidos,
+} from "@/lib/pedidos-cache";
 import { DbPlacaRow, toPlacaRow } from "@/lib/placas";
 import { resolverBaixaDoPedido, SkuPlacaMap } from "@/lib/demanda";
 import { todaySP, diasAtras } from "@/lib/date";
@@ -46,6 +52,12 @@ interface SincronizarResult {
 export async function POST() {
   const hoje = todaySP();
   const inicio = diasAtras(hoje, DIAS_JANELA - 1);
+
+  // Atualiza o registro de pedidos ANTES de ler dele — pega a mesma
+  // janela usada aqui embaixo, pra garantir que a baixa de estoque sempre
+  // enxergue os pedidos mais recentes mesmo se o cron de 1 em 1 minuto
+  // ainda não rodou desde a última mudança de status.
+  await sincronizarPedidos(DIAS_JANELA);
 
   const [resultML, resultShopee] = await Promise.all([
     getOrdersRangeML(inicio, hoje),
