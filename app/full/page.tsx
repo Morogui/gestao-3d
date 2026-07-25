@@ -2,44 +2,59 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { formatDiaBR, todaySP } from "@/lib/date";
 
 type Status = "loading" | "ready" | "erro" | "desconectado";
 
-interface VarianteFull {
-  label: string;
-  vendidoFull7d: number;
-  estoqueFullAtual: number | null;
-}
-
+// Uma linha por SKU real vendido no Full na semana (pedido do Guilherme
+// em 2026-07-25: "deve mostrar por sku... precisamos por sku certinho").
+// Placas sem venda no Full na semana aparecem com 1 linha usando o SKU
+// cadastrado no catálogo, já que não tem venda recente pra descobrir o
+// SKU real da ML.
 interface LinhaFull {
+  chave: string;
   placaId: number;
   numero: number;
   nome: string;
   tier: "A" | "B" | "C";
-  skuOuKit: string;
+  sku: string;
+  titulo: string;
   estoqueLocal: number;
   vendidoFull7d: number;
   estoqueFullAtual: number;
   fonteEstoqueFull: "api" | "manual";
   atualizadoEm: string | null;
   recomendacaoEnvio: number;
-  anuncios: { titulo: string; sku: string }[];
-  // Quebra por SKU real da ML (ex: Com Parafuso x Sem Parafuso) — só vem
-  // preenchido quando a placa (cor) teve mais de 1 SKU distinto vendido
-  // no Full na semana. A produção/estoque local continua só por cor;
-  // isso é só pra bater o número com o painel nativo da ML por anúncio.
-  variantes: VarianteFull[];
 }
 
-// Aba Full: acompanha o estoque que você tem hoje no Full e recomenda
-// quanto enviar de reposição na próxima segunda-feira, com base no que
-// vendeu no Full nos últimos 7 dias (mesmo critério do "Lembrete Full"
-// da aba Produção).
-//
-// O estoque no Full agora é lido automaticamente da API da ML (modelo
-// User Products) sempre que possível — só cai pro valor digitado
-// manualmente quando a placa não teve venda recente (sem item pra
-// consultar) ou a leitura via API não retornou nada.
+interface SkuResult {
+  sku: string;
+  placa_id: number;
+  pecas_por_unidade: string;
+  placa_nome: string;
+  placa_numero: number;
+  variacoes: number;
+}
+
+// Envio planejado do Full — data limite pra enviar + SKU + quantidade.
+// Pedido do Guilherme em 2026-07-25: "uma aba onde vou subir meu envio
+// e a data que eu tenho para enviar esse produto... valida em estoque
+// se tenho a quantidade... se não tiver, gera uma ordem de produção
+// extraordinária de prioridade". faltantePlaca > 0 é exatamente esse
+// alerta — e é o mesmo valor que a aba Produção usa pra furar a fila.
+interface EnvioFull {
+  id: number;
+  sku: string;
+  placaId: number;
+  placaNome: string;
+  quantidade: number;
+  dataLimite: string;
+  status: "pendente" | "confirmado" | "cancelado";
+  criadoEm: string;
+  confirmadoEm: string | null;
+  faltantePlaca: number;
+}
+
 export default function FullPage() {
   const [status, setStatus] = useState<Status>("loading");
   const [linhas, setLinhas] = useState<LinhaFull[]>([]);
@@ -47,11 +62,15 @@ export default function FullPage() {
   const [apiDisponivel, setApiDisponivel] = useState(false);
   const [userProductSeller, setUserProductSeller] = useState<boolean | null>(null);
   const [busca, setBusca] = useState("");
-  const [salvando, setSalvando] = useState<Record<number, boolean>>({});
+  const [salvando, setSalvando] = useState<Record<string, boolean>>({});
+  const [envios, setEnvios] = useState<EnvioFull[]>([]);
 
   async function carregar() {
     try {
-      const res = await fetch("/api/estoque-full");
+      const [res, enviosRes] = await Promise.all([
+        fetch("/api/estoque-full"),
+        fetch("/api/full/envios"),
+      ]);
       const data = await res.json();
       if (!data.connected) {
         setStatus("desconectado");
@@ -65,6 +84,7 @@ export default function FullPage() {
       setPeriodo(data.periodo);
       setApiDisponivel(Boolean(data.apiDisponivel));
       setUserProductSeller(data.userProductSeller ?? null);
+      setEnvios(await enviosRes.json());
       setStatus("ready");
     } catch {
       setStatus("erro");
@@ -81,13 +101,13 @@ export default function FullPage() {
     return linhas.filter(
       (l) =>
         l.nome.toLowerCase().includes(termo) ||
-        l.skuOuKit.toLowerCase().includes(termo)
+        l.sku.toLowerCase().includes(termo)
     );
   }, [linhas, busca]);
 
-  async function ajustarFull(placaId: number, delta: number) {
+  async function ajustarFull(chave: string, placaId: number, delta: number) {
     if (!delta) return;
-    setSalvando((prev) => ({ ...prev, [placaId]: true }));
+    setSalvando((prev) => ({ ...prev, [chave]: true }));
     try {
       const res = await fetch("/api/estoque-full", {
         method: "POST",
@@ -109,8 +129,29 @@ export default function FullPage() {
         );
       }
     } finally {
-      setSalvando((prev) => ({ ...prev, [placaId]: false }));
+      setSalvando((prev) => ({ ...prev, [chave]: false }));
     }
+  }
+
+  async function criarEnvio(sku: string, placaId: number, quantidade: number, dataLimite: string) {
+    await fetch("/api/full/envios", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sku, placaId, quantidade, dataLimite }),
+    });
+    const enviosRes = await fetch("/api/full/envios");
+    setEnvios(await enviosRes.json());
+  }
+
+  async function confirmarEnvio(id: number) {
+    setEnvios((prev) => prev.filter((e) => e.id !== id));
+    await fetch(`/api/full/envios/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "confirmado" }),
+    });
+    const enviosRes = await fetch("/api/full/envios");
+    setEnvios(await enviosRes.json());
   }
 
   if (status === "desconectado") {
@@ -152,6 +193,7 @@ export default function FullPage() {
   const totalEstoqueFull = linhasFiltradas.reduce((s, l) => s + l.estoqueFullAtual, 0);
   const totalAEnviar = linhasFiltradas.reduce((s, l) => s + l.recomendacaoEnvio, 0);
   const pendentes = linhasFiltradas.filter((l) => l.recomendacaoEnvio > 0).length;
+  const enviosPendentes = envios.filter((e) => e.status === "pendente");
 
   return (
     <div className="flex flex-col gap-6">
@@ -165,26 +207,22 @@ export default function FullPage() {
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         <p className="font-semibold">Como funciona a recomendação</p>
         <p className="mt-1">
+          Cada linha da tabela abaixo já é um SKU real (ou o SKU
+          cadastrado, quando não houve venda no Full na semana).
           &quot;A enviar&quot; = peças vendidas no Full nos últimos 7 dias
           (período {periodo?.inicio} a {periodo?.fim}) — repor 1:1 o que
-          saiu, mesmo critério já usado no lembrete de Full da aba
-          Produção. &quot;Estoque no Full&quot; agora é lido
-          automaticamente da API da ML (badge{" "}
+          saiu. &quot;Estoque no Full&quot; agora é lido automaticamente
+          da API da ML (badge{" "}
           <span className="rounded bg-green-100 px-1 py-0.5 font-semibold text-green-700">API</span>
-          ) pras placas que tiveram venda na semana — só cai pro valor
+          ) pros SKUs que tiveram venda na semana — só cai pro valor
           digitado manualmente (badge{" "}
           <span className="rounded bg-gray-200 px-1 py-0.5 font-semibold text-gray-700">Manual</span>
           ) quando não há venda recente ou a leitura da API não retornou
-          nada. O ajuste manual continua disponível como reforço/correção
-          pra esses casos. Quando uma placa tem mais de um SKU real
-          vendido na ML (ex: Com Parafuso x Sem Parafuso), aparece uma
-          tabelinha abaixo do nome quebrando venda e estoque por SKU —
-          a produção/estoque local continua só por cor, essa quebra é só
-          pra reposição e conferência com o painel da ML.
+          nada.
           {!apiDisponivel && (
             <>
               {" "}
-              Nenhuma placa retornou leitura via API ainda nesta consulta.
+              Nenhum SKU retornou leitura via API ainda nesta consulta.
               {userProductSeller === false ? (
                 <>
                   {" "}
@@ -211,6 +249,13 @@ export default function FullPage() {
         </p>
       </div>
 
+      <EnviosPlanejados
+        linhas={linhas}
+        envios={enviosPendentes}
+        onCriar={criarEnvio}
+        onConfirmar={confirmarEnvio}
+      />
+
       <div>
         <input
           type="text"
@@ -225,7 +270,7 @@ export default function FullPage() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
             <tr>
-              <th className="px-3 py-2">Placa / SKU</th>
+              <th className="px-3 py-2">SKU / Placa</th>
               <th className="px-3 py-2">Tier</th>
               <th className="px-3 py-2 text-right">Vendido no Full (7d)</th>
               <th className="px-3 py-2 text-right">Estoque no Full (fonte)</th>
@@ -239,10 +284,10 @@ export default function FullPage() {
               .sort((a, b) => b.recomendacaoEnvio - a.recomendacaoEnvio)
               .map((linha) => (
                 <LinhaFullRow
-                  key={linha.placaId}
+                  key={linha.chave}
                   linha={linha}
-                  salvando={Boolean(salvando[linha.placaId])}
-                  onAjustar={(delta) => ajustarFull(linha.placaId, delta)}
+                  salvando={Boolean(salvando[linha.chave])}
+                  onAjustar={(delta) => ajustarFull(linha.chave, linha.placaId, delta)}
                 />
               ))}
           </tbody>
@@ -278,6 +323,190 @@ function TierBadge({ tier }: { tier: "A" | "B" | "C" }) {
   );
 }
 
+// Seção de envios planejados do Full — pedido do Guilherme em
+// 2026-07-25. Formulário (data + SKU + quantidade) + lista dos envios
+// ainda pendentes, cada um com um botão "Confirmar envio" que tira essa
+// produção da linha de frente da fila de prioridade (ver
+// app/producao/page.tsx, critério nº-2).
+function EnviosPlanejados({
+  linhas,
+  envios,
+  onCriar,
+  onConfirmar,
+}: {
+  linhas: LinhaFull[];
+  envios: EnvioFull[];
+  onCriar: (sku: string, placaId: number, quantidade: number, dataLimite: string) => Promise<void>;
+  onConfirmar: (id: number) => Promise<void>;
+}) {
+  const [buscaSku, setBuscaSku] = useState("");
+  const [resultados, setResultados] = useState<SkuResult[]>([]);
+  const [selecionado, setSelecionado] = useState<{ sku: string; placaId: number; label: string } | null>(
+    null
+  );
+  const [quantidade, setQuantidade] = useState("");
+  const [dataLimite, setDataLimite] = useState(todaySP());
+  const [enviando, setEnviando] = useState(false);
+  const [confirmando, setConfirmando] = useState<Record<number, boolean>>({});
+
+  useEffect(() => {
+    if (buscaSku.trim().length < 2) {
+      setResultados([]);
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      const res = await fetch(`/api/skus?q=${encodeURIComponent(buscaSku.trim())}`);
+      setResultados(await res.json());
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [buscaSku]);
+
+  async function enviar() {
+    if (!selecionado || !quantidade || Number(quantidade) <= 0 || !dataLimite) return;
+    setEnviando(true);
+    try {
+      await onCriar(selecionado.sku, selecionado.placaId, Number(quantidade), dataLimite);
+      setSelecionado(null);
+      setBuscaSku("");
+      setQuantidade("");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-4">
+      <h2 className="mb-1 text-sm font-semibold text-gray-900">Envios planejados do Full</h2>
+      <p className="mb-3 text-xs text-gray-500">
+        Registre aqui a data limite, o SKU e a quantidade de cada envio que
+        você precisa preparar. Se o estoque atual + o que já está sendo
+        produzido não cobrir a quantidade, essa placa vira prioridade
+        extraordinária na fila de produção — acima até do backlog de
+        despacho — até ser produzida ou o envio ser confirmado.
+      </p>
+
+      <div className="mb-4 flex flex-col gap-2 rounded border border-gray-200 bg-gray-50 p-3 sm:flex-row sm:items-end sm:gap-3">
+        <div className="flex-1">
+          <label className="mb-1 block text-xs font-medium text-gray-500">SKU do produto</label>
+          <input
+            type="text"
+            placeholder="Buscar SKU..."
+            value={selecionado ? selecionado.label : buscaSku}
+            onChange={(e) => {
+              setSelecionado(null);
+              setBuscaSku(e.target.value);
+            }}
+            className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs"
+          />
+          {!selecionado && resultados.length > 0 && (
+            <ul className="mt-1 max-h-40 overflow-y-auto rounded border border-gray-200 text-xs">
+              {resultados.map((r) => (
+                <li key={r.placa_id}>
+                  <button
+                    onClick={() => {
+                      setSelecionado({
+                        sku: r.sku,
+                        placaId: r.placa_id,
+                        label: `${r.sku} → ${r.placa_nome}`,
+                      });
+                      setResultados([]);
+                    }}
+                    className="block w-full px-2 py-1 text-left hover:bg-gray-50"
+                  >
+                    <span className="font-medium text-gray-900">{r.placa_nome}</span>{" "}
+                    <span className="text-gray-400">({r.sku})</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="w-full sm:w-28">
+          <label className="mb-1 block text-xs font-medium text-gray-500">Quantidade</label>
+          <input
+            type="number"
+            min={1}
+            value={quantidade}
+            onChange={(e) => setQuantidade(e.target.value)}
+            className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs"
+          />
+        </div>
+        <div className="w-full sm:w-40">
+          <label className="mb-1 block text-xs font-medium text-gray-500">Enviar até</label>
+          <input
+            type="date"
+            value={dataLimite}
+            onChange={(e) => setDataLimite(e.target.value)}
+            className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs"
+          />
+        </div>
+        <button
+          disabled={!selecionado || !quantidade || Number(quantidade) <= 0 || enviando}
+          onClick={enviar}
+          className="shrink-0 rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
+        >
+          {enviando ? "Salvando..." : "Adicionar envio"}
+        </button>
+      </div>
+
+      {envios.length === 0 ? (
+        <p className="text-xs text-gray-400">Nenhum envio pendente cadastrado.</p>
+      ) : (
+        <div className="overflow-x-auto rounded border border-gray-200">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 text-left font-semibold uppercase text-gray-500">
+              <tr>
+                <th className="px-3 py-2">SKU / Placa</th>
+                <th className="px-3 py-2 text-right">Quantidade</th>
+                <th className="px-3 py-2">Enviar até</th>
+                <th className="px-3 py-2 text-right">Falta produzir</th>
+                <th className="px-3 py-2">&nbsp;</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {envios.map((e) => (
+                <tr key={e.id}>
+                  <td className="px-3 py-2">
+                    <p className="font-medium text-gray-900">{e.placaNome}</p>
+                    <p className="text-gray-400">SKU: {e.sku}</p>
+                  </td>
+                  <td className="px-3 py-2 text-right text-gray-700">{e.quantidade}</td>
+                  <td className="px-3 py-2 text-gray-700">{formatDiaBR(e.dataLimite)}</td>
+                  <td className="px-3 py-2 text-right">
+                    {e.faltantePlaca > 0 ? (
+                      <span className="rounded bg-red-100 px-1.5 py-0.5 font-semibold text-red-700">
+                        faltam {e.faltantePlaca}
+                      </span>
+                    ) : (
+                      <span className="text-green-700">coberto</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <button
+                      disabled={Boolean(confirmando[e.id])}
+                      onClick={async () => {
+                        setConfirmando((prev) => ({ ...prev, [e.id]: true }));
+                        try {
+                          await onConfirmar(e.id);
+                        } finally {
+                          setConfirmando((prev) => ({ ...prev, [e.id]: false }));
+                        }
+                      }}
+                      className="rounded border border-green-300 bg-green-50 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-100 disabled:opacity-40"
+                    >
+                      Confirmar envio
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function LinhaFullRow({
   linha,
   salvando,
@@ -290,52 +519,17 @@ function LinhaFullRow({
   const [valor, setValor] = useState("");
 
   return (
-    <tr className={"hover:bg-gray-50 " + (linha.recomendacaoEnvio > 0 ? "" : "")}>
+    <tr className="hover:bg-gray-50">
       <td className="px-3 py-2">
-        <p className="font-medium text-gray-900">{linha.nome}</p>
-        <p className="text-xs text-gray-400">{linha.skuOuKit.split("|")[0].trim()}</p>
-        {linha.anuncios.length > 0 ? (
-          <div className="mt-1 space-y-0.5">
-            {linha.anuncios.map((a, i) => (
-              <p key={i} className="text-xs text-blue-700">
-                Anúncio ML: {a.titulo}
-                {a.sku ? ` (SKU: ${a.sku})` : ""}
-              </p>
-            ))}
-          </div>
-        ) : (
+        <p className="font-medium text-gray-900">{linha.sku || linha.nome}</p>
+        <p className="text-xs text-gray-400">{linha.nome}</p>
+        {linha.titulo ? (
+          <p className="mt-1 text-xs text-blue-700">Anúncio ML: {linha.titulo}</p>
+        ) : linha.vendidoFull7d === 0 ? (
           <p className="mt-1 text-xs text-gray-400 italic">
-            Sem venda no Full na semana — nenhum anúncio identificado.
+            Sem venda no Full na semana — SKU cadastrado no catálogo.
           </p>
-        )}
-        {linha.variantes.length > 0 && (
-          <div className="mt-2 overflow-hidden rounded border border-gray-200">
-            <table className="w-full text-[11px]">
-              <thead className="bg-gray-50 text-gray-500">
-                <tr>
-                  <th className="px-2 py-1 text-left font-medium">
-                    SKU (ML) — separado por variação
-                  </th>
-                  <th className="px-2 py-1 text-right font-medium">Vendido (7d)</th>
-                  <th className="px-2 py-1 text-right font-medium">Estoque Full</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {linha.variantes.map((v, i) => (
-                  <tr key={i}>
-                    <td className="px-2 py-1 text-gray-700">{v.label}</td>
-                    <td className="px-2 py-1 text-right text-gray-700">
-                      {v.vendidoFull7d}
-                    </td>
-                    <td className="px-2 py-1 text-right text-gray-700">
-                      {v.estoqueFullAtual ?? "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        ) : null}
       </td>
       <td className="px-3 py-2">
         <TierBadge tier={linha.tier} />
