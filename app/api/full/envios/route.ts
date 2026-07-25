@@ -90,7 +90,11 @@ export async function GET() {
     placaId: e.placa_id,
     placaNome: e.placa_nome,
     quantidade: Number(e.quantidade),
-    dataLimite: e.data_limite,
+    // A coluna é DATE, mas o driver da Neon devolve um Date/ISO completo
+    // (ex: "2026-07-25T00:00:00.000Z") — normaliza pra "YYYY-MM-DD" (mesmo
+    // formato usado em todaySP()/formatDiaBR em lib/date.ts), senão o
+    // <input type="date"> e o formatDiaBR da tela quebram ("Invalid Date").
+    dataLimite: String(e.data_limite).slice(0, 10),
     status: e.status as FullEnvioRow["status"],
     criadoEm: e.criado_em,
     confirmadoEm: e.confirmado_em,
