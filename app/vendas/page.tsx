@@ -368,8 +368,8 @@ function TopProdutosCard({
               key={r.plataforma + r.itemId + idx}
               className="flex items-center justify-between gap-2 text-xs"
             >
-              <span className="truncate text-gray-900">
-                {idx + 1}. {r.titulo}
+              <span className="truncate text-gray-900" title={r.titulo}>
+                {idx + 1}. {r.sku || r.titulo}
               </span>
               <span className="shrink-0 font-semibold text-gray-900">
                 {r.quantidade}x
@@ -700,6 +700,11 @@ export default async function VendasPage({
   // alimenta o card "Mais vendidos" na fileira de recordes, além da aba
   // Ranking mais abaixo — mesmos pedidos já buscados, sem chamada extra.
   const ranking = rankingPorQuantidade(principal.orders);
+  // Pedido do Guilherme em 2026-07-25: mais 2 cards de "mais vendidos",
+  // pra semana e pro mês — reaproveita semanaResult/mesResult (já
+  // buscados pros cards de resumo acima), sem chamada extra à API.
+  const rankingSemana = rankingPorQuantidade(semanaResult.orders);
+  const rankingMes = rankingPorQuantidade(mesResult.orders);
 
   const resumo = (
     <div className="flex flex-col gap-4">
@@ -756,6 +761,10 @@ export default async function VendasPage({
             Recorde de 90 dias indisponível agora — reconecte a(s) plataforma(s) acima.
           </div>
         )}
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <TopProdutosCard ranking={rankingSemana} periodo="últimos 7 dias" />
+        <TopProdutosCard ranking={rankingMes} periodo="mês" />
       </div>
     </div>
   );
