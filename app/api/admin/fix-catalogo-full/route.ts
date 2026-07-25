@@ -54,7 +54,26 @@ function normalizeLower(s: string): string {
     .trim();
 }
 
+// Migração idempotente (2026-07-26) — tabela que registra a baixa de
+// estoque local disparada quando um envio planejado do Full é
+// confirmado (ver PATCH /api/full/envios/[id]). Colocada aqui pra
+// reaproveitar essa rota de manutenção já existente em vez de precisar
+// abrir o console do Neon de novo.
+async function garantirTabelaBaixaFull() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS baixas_estoque_full_envios (
+      id SERIAL PRIMARY KEY,
+      envio_id INTEGER NOT NULL REFERENCES full_envios(id),
+      placa_id INTEGER NOT NULL REFERENCES placas(id),
+      pecas INTEGER NOT NULL,
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+}
+
 export async function POST() {
+  await garantirTabelaBaixaFull();
+
   const placaIds = Object.keys(FRASES_POR_PLACA).map(Number);
   const rows = (await sql`
     SELECT id, sku_ou_kit FROM placas WHERE id = ANY(${placaIds})
