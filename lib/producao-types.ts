@@ -37,6 +37,11 @@ export interface DemandaPlacaRow {
   mediaSemanal: number;
   recomendadoEstoque: number;
   aProduzir: number;
+  // Data (ISO) do pedido mais recente que bateu com essa placa nos últimos
+  // 30 dias — null se não vendeu nada no período. Usado na fila de
+  // prioridade pra saber se o produto vendeu nas últimas 2 semanas (ver
+  // lib/demanda.ts).
+  ultimaVendaEm: string | null;
 }
 
 export interface NaoIdentificadoRow {

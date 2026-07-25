@@ -187,6 +187,13 @@ export interface DemandaPlaca {
   // Meta de estoque: 1 semana no ritmo atual + 1 semana extra de reforço.
   recomendadoEstoque: number;
   aProduzir: number;
+  // Data (ISO) do pedido mais recente que bateu com essa placa dentro do
+  // período usado nessa chamada — null se não vendeu nada no período.
+  // Adicionado em 2026-07-24 a pedido do Guilherme: produto sem venda
+  // recente (últimos 14 dias) não deve competir por prioridade máxima só
+  // por estar com estoque zerado — vira última prioridade até vender de
+  // novo. Ver critério nº0 da fila de prioridade em app/producao/page.tsx.
+  ultimaVendaEm: string | null;
 }
 
 // Mapeamento exato SKU → placa(s), vindo da tabela sku_placa (catálogo
@@ -289,19 +296,32 @@ export function calcularDemandaSemanal(
 ): ResultadoDemanda {
   const vendidoPorPlaca = new Map<number, number>();
   const vendidoFullPorPlaca = new Map<number, number>();
+  // Data do pedido mais recente que bateu com cada placa — usado só pra
+  // decidir "vendeu nas últimas 2 semanas?" na fila de prioridade, não
+  // afeta qtyVendidaPeriodo/mediaSemanal/aProduzir.
+  const ultimaVendaPorPlaca = new Map<number, string>();
   const naoIdentificado: NaoIdentificado = {
     qtyPeriodo: 0,
     qtyFull: 0,
     amostras: [],
   };
 
-  const somar = (placaId: number, qty: number, isFull: boolean) => {
+  const somar = (
+    placaId: number,
+    qty: number,
+    isFull: boolean,
+    dataCriacao: string
+  ) => {
     vendidoPorPlaca.set(placaId, (vendidoPorPlaca.get(placaId) ?? 0) + qty);
     if (isFull) {
       vendidoFullPorPlaca.set(
         placaId,
         (vendidoFullPorPlaca.get(placaId) ?? 0) + qty
       );
+    }
+    const atual = ultimaVendaPorPlaca.get(placaId);
+    if (!atual || dataCriacao > atual) {
+      ultimaVendaPorPlaca.set(placaId, dataCriacao);
     }
   };
 
@@ -321,7 +341,8 @@ export function calcularDemandaSemanal(
             somar(
               entrada.placaId,
               item.quantity * entrada.pecasPorUnidade,
-              isFull
+              isFull,
+              order.dateCreated
             );
           }
         }
@@ -338,7 +359,7 @@ export function calcularDemandaSemanal(
             (item.hasCustomSku && correspondeAoItem(placa, item.sku))
           ) {
             casou = true;
-            somar(placa.id, item.quantity, isFull);
+            somar(placa.id, item.quantity, isFull, order.dateCreated);
           }
         }
       }
@@ -402,6 +423,7 @@ export function calcularDemandaSemanal(
       mediaSemanal,
       recomendadoEstoque,
       aProduzir,
+      ultimaVendaEm: ultimaVendaPorPlaca.get(placa.id) ?? null,
     });
   }
 
