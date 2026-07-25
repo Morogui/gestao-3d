@@ -26,6 +26,20 @@ function diasDeEstoque(estoque: number, mediaSemanal: number): number {
   return (estoque / mediaSemanal) * 7;
 }
 
+// Janela usada pro critério "vendeu recentemente?" da fila de prioridade —
+// pedido do Guilherme em 2026-07-24: "produtos sem vendas no intervalo de
+// 2 semanas devem entrar como última prioridade, mesmo sem estoque; entram
+// pra prioridade quando sair venda de novo". Um produto pode ter aProduzir
+// > 0 só porque vendeu algo entre 15-30 dias atrás (dentro da janela de 30
+// dias usada pra calcular a meta) — sem isso, esse tipo de produto competia
+// de igual pra igual com quem vende toda semana, só por estar com estoque
+// zerado.
+const DUAS_SEMANAS_MS = 14 * 24 * 60 * 60 * 1000;
+function vendeuUltimasDuasSemanas(demanda: DemandaPlacaRow | undefined): boolean {
+  if (!demanda?.ultimaVendaEm) return false;
+  return Date.now() - new Date(demanda.ultimaVendaEm).getTime() <= DUAS_SEMANAS_MS;
+}
+
 // Quantas placas carregar de uma vez pra cobrir o horário sem ninguém pra
 // trocar (janela de operação aprendida — ver /api/producao/janela). Sempre
 // ao menos 1 placa.
@@ -310,7 +324,18 @@ export default function ProducaoPage() {
 
   // Fila de prioridade: placas com algo a produzir.
   //
-  // Critério nº1, SEMPRE, em qualquer horário, sem exceção: produto com
+  // Critério nº0, ANTES de tudo (inclusive antes do nº1 abaixo): vendeu
+  // nas últimas 2 semanas? Pedido do Guilherme em 2026-07-24: "produtos
+  // sem vendas no intervalo de 2 semanas devem entrar como última
+  // prioridade, mesmo sem estoque; entram pra prioridade quando sair
+  // venda [de novo]". Sem esse critério, um produto que vendeu 1x há 20
+  // dias (e nada desde então) aparecia com "0 dias de estoque" (máxima
+  // urgência) só por estar zerado — competindo de igual pra igual com
+  // quem vende toda semana. Continua aparecendo na fila (informativo,
+  // não desaparece), só cai pro fim — ver vendeuUltimasDuasSemanas() acima.
+  //
+  // Critério nº1, SEMPRE, em qualquer horário, sem exceção (entre itens
+  // que já passaram pelo nº0 acima): produto com
   // venda real e sem estoque é nível 1 de prioridade — "dias de estoque
   // restante" (estoque ÷ venda média diária), crescente. Confirmado pelo
   // Guilherme em 2026-07-23 e reafirmado em 2026-07-24 ("todo produto
@@ -394,6 +419,10 @@ export default function ProducaoPage() {
       b.placa.tempoPlacaHoras - a.placa.tempoPlacaHoras;
 
     return itens.sort((a, b) => {
+      const aVendeu = vendeuUltimasDuasSemanas(a.demanda) ? 0 : 1;
+      const bVendeu = vendeuUltimasDuasSemanas(b.demanda) ? 0 : 1;
+      const porVendaRecente = aVendeu - bVendeu;
+      if (porVendaRecente !== 0) return porVendaRecente;
       const porDias = porDiasDeEstoque(a, b);
       if (porDias !== 0) return porDias;
       if (pertoDoFechamento) {
@@ -763,7 +792,17 @@ export default function ProducaoPage() {
                   return (
                     <tr key={item.placa.id}>
                       <td className="px-3 py-2 text-gray-400">{idx + 1}</td>
-                      <td className="px-3 py-2 font-medium text-gray-900">{item.placa.nome}</td>
+                      <td className="px-3 py-2 font-medium text-gray-900">
+                        {item.placa.nome}
+                        {!vendeuUltimasDuasSemanas(item.demanda) && (
+                          <span
+                            className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-normal text-gray-500"
+                            title="Última venda há mais de 14 dias (ou nenhuma nos últimos 30) — por isso caiu pro fim da fila, mesmo sem estoque."
+                          >
+                            sem venda recente
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2">
                         <TierBadge tier={item.placa.tier} />
                       </td>
