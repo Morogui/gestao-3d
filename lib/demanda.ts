@@ -142,12 +142,28 @@ function textoCorresponde(referencia: string, tituloOuSku: string): boolean {
 const CORES_CONHECIDAS = [
   "branco", "preto", "preta", "cinza", "marrom", "prata", "bege", "laranja",
 ];
+// Bug real 2026-07-26: título "Suporte Porta Escova Para Parede Cabelo
+// Organizador Gillete Branco Suporte Preto" tem DUAS cores no texto
+// ("branco" de um trecho de marketing tipo marca/compatibilidade,
+// "preto" no final indicando a cor real do produto) — a versão antiga
+// desta função retornava sempre a primeira cor da lista
+// CORES_CONHECIDAS que aparecesse no texto (prioridade fixa, não a
+// ordem real das palavras), então sempre pegava "branco" e travava no
+// guard de cor mesmo pro anúncio certo. Convenção observada nos títulos
+// da ML: a cor real do produto normalmente vem por último (o resto
+// antes costuma ser nome comercial/compatibilidade). Por isso agora
+// pega a ÚLTIMA cor conhecida que aparece na ordem do texto, não a
+// primeira da lista de prioridade.
 function corDoTexto(texto: string): string | null {
-  const tokens = new Set(normalize(texto).split(" "));
-  for (const cor of CORES_CONHECIDAS) {
-    if (tokens.has(cor)) return cor === "preta" ? "preto" : cor;
+  const tokensNaOrdem = normalize(texto).split(" ");
+  const coresConhecidas = new Set(CORES_CONHECIDAS);
+  let ultima: string | null = null;
+  for (const tok of tokensNaOrdem) {
+    if (coresConhecidas.has(tok)) {
+      ultima = tok === "preta" ? "preto" : tok;
+    }
   }
-  return null;
+  return ultima;
 }
 
 function correspondeAoItem(placa: PlacaRow, tituloOuSku: string): boolean {
