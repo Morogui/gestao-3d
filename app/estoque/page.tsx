@@ -8,7 +8,7 @@ type Status = "loading" | "ready" | "erro";
 
 interface Movimento {
   data: string;
-  tipo: "venda" | "producao" | "manual";
+  tipo: "venda" | "producao" | "manual" | "full";
   quantidade: number;
   detalhe: string;
 }
@@ -431,8 +431,17 @@ function OrigemBadge({ tipo }: { tipo: Movimento["tipo"] }) {
       ? "bg-red-100 text-red-700"
       : tipo === "producao"
       ? "bg-green-100 text-green-700"
+      : tipo === "full"
+      ? "bg-purple-100 text-purple-700"
       : "bg-amber-100 text-amber-700";
-  const rotulo = tipo === "venda" ? "Venda" : tipo === "producao" ? "Produção" : "Manual";
+  const rotulo =
+    tipo === "venda"
+      ? "Venda"
+      : tipo === "producao"
+      ? "Produção"
+      : tipo === "full"
+      ? "Envio Full"
+      : "Manual";
   return (
     <span className={"rounded px-1.5 py-0.5 text-xs font-semibold " + estilos}>
       {rotulo}
