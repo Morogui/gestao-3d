@@ -1318,24 +1318,18 @@ function CarregarPlacaForm({
   const [placaSelecionadaNome, setPlacaSelecionadaNome] = useState<string | null>(null);
   const [buscando, setBuscando] = useState(false);
 
-  // Sugestão de quantidade pra cobrir até a reabertura sem ninguém pra
-  // trocar a placa — só faz sentido mostrar/aplicar perto do horário de
-  // fechamento (pedido do Guilherme: "no último horário sempre estar
-  // mandando placas onde vire a noite rodando"). Fora desse período, o
-  // padrão continua sendo 1 placa por vez (mais responsivo à fila).
-  // pertoDoFechamento e aberturaHora vêm do pai, calculados a partir da
-  // janela de operação aprendida (ver RelogioOperacao/JANELA_PADRAO).
-  const placaSelecionada = placaId ? placaPorId.get(placaId) : undefined;
-  const sugestaoNoturna = placaSelecionada
-    ? qtdParaVirarNoite(placaSelecionada.tempoPlacaHoras, aberturaHora)
-    : null;
-
-  useEffect(() => {
-    if (pertoDoFechamento && sugestaoNoturna) {
-      setQuantidade(sugestaoNoturna);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [placaId]);
+  // Removida a sugestão automática de "carregar Nx pra virar a noite" —
+  // pedido do Guilherme em 2026-07-24: na impressora dele só dá pra
+  // carregar 1 placa de cada vez (não enfileira repetição sozinha à
+  // noite), então uma sugestão de quantidade > 1 não reflete a realidade
+  // do equipamento e só criava confusão/risco de erro. Ele prefere sempre
+  // decidir manualmente qual placa carregar a cada troca — por isso
+  // quantidade agora fica sempre em 1 por padrão (input abaixo continua
+  // editável manualmente se algum dia fizer sentido). A coluna "Qtd p/
+  // virar a noite" na fila de prioridade (informativa, ajuda a decidir
+  // qual placa escolher) e o critério de desempate noturno continuam
+  // existindo — só essa sugestão de auto-preencher a quantidade foi
+  // removida.
 
   useEffect(() => {
     if (buscaSku.trim().length < 2) {
@@ -1418,28 +1412,6 @@ function CarregarPlacaForm({
       {placaSelecionadaNome && (
         <p className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-800">
           Selecionado via busca: {placaSelecionadaNome}
-        </p>
-      )}
-
-      {sugestaoNoturna && sugestaoNoturna > 1 && (
-        <p
-          className={
-            "rounded px-2 py-1 text-xs " +
-            (pertoDoFechamento
-              ? "bg-indigo-50 text-indigo-800"
-              : "bg-gray-50 text-gray-500")
-          }
-        >
-          {pertoDoFechamento ? "Perto do fechamento — " : ""}
-          Carregar {sugestaoNoturna}x cobre até a reabertura ({formatHora(aberturaHora)}) sem troca.{" "}
-          {quantidade !== sugestaoNoturna && (
-            <button
-              onClick={() => setQuantidade(sugestaoNoturna)}
-              className="font-medium text-indigo-700 underline hover:no-underline"
-            >
-              usar {sugestaoNoturna}x
-            </button>
-          )}
         </p>
       )}
 
