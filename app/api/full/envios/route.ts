@@ -84,17 +84,31 @@ export async function GET() {
     return Math.max(0, pendente - estoqueProjetado);
   }
 
+  // A coluna é DATE, mas o driver da Neon devolve isso como um objeto Date
+  // nativo do JS (não uma string) — String(dateObj) vira algo tipo
+  // "Sat Jul 25 2026 00:00:00 GMT+0000", e um simples .slice(0,10) pegava
+  // "Sat Jul 25" (errado). Aqui lemos os componentes em UTC (a DATE não
+  // tem timezone, o driver monta o Date à meia-noite UTC) e montamos
+  // "YYYY-MM-DD" manualmente — mesmo formato usado em
+  // todaySP()/formatDiaBR em lib/date.ts. Também cobre o caso de já vir
+  // como string ISO.
+  function toPlainDate(v: unknown): string {
+    if (v instanceof Date) {
+      const y = v.getUTCFullYear();
+      const m = String(v.getUTCMonth() + 1).padStart(2, "0");
+      const d = String(v.getUTCDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+    return String(v).slice(0, 10);
+  }
+
   const resultado: FullEnvioRow[] = envios.map((e) => ({
     id: e.id,
     sku: e.sku,
     placaId: e.placa_id,
     placaNome: e.placa_nome,
     quantidade: Number(e.quantidade),
-    // A coluna é DATE, mas o driver da Neon devolve um Date/ISO completo
-    // (ex: "2026-07-25T00:00:00.000Z") — normaliza pra "YYYY-MM-DD" (mesmo
-    // formato usado em todaySP()/formatDiaBR em lib/date.ts), senão o
-    // <input type="date"> e o formatDiaBR da tela quebram ("Invalid Date").
-    dataLimite: String(e.data_limite).slice(0, 10),
+    dataLimite: toPlainDate(e.data_limite),
     status: e.status as FullEnvioRow["status"],
     criadoEm: e.criado_em,
     confirmadoEm: e.confirmado_em,
