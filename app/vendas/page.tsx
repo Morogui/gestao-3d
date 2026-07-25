@@ -20,6 +20,7 @@ import { labelShopeeOrderStatus } from "@/lib/shopee";
 import { todaySP, formatDiaBR, diasAtras, inicioDoMes } from "@/lib/date";
 import ItemThumbnail from "@/components/ItemThumbnail";
 import VendasTabSwitch from "@/components/VendasTabSwitch";
+import OcultarNumeros from "@/components/OcultarNumeros";
 
 export const dynamic = "force-dynamic";
 
@@ -304,12 +305,14 @@ function ResumoCard({
       }
     >
       <p className="text-xs text-gray-500">{label}</p>
-      <p className="text-xl font-semibold text-gray-900">{formatBRL(faturamento)}</p>
-      <p className="text-xs text-gray-400">
+      <p className="valor-sensivel text-xl font-semibold text-gray-900">
+        {formatBRL(faturamento)}
+      </p>
+      <p className="valor-sensivel text-xs text-gray-400">
         {pedidos} pedido(s) · {itensVendidos} produto(s) vendido(s)
       </p>
       {comparativo && (
-        <p className="mt-1.5 border-t border-gray-100 pt-1.5 text-[11px] text-gray-400">
+        <p className="valor-sensivel mt-1.5 border-t border-gray-100 pt-1.5 text-[11px] text-gray-400">
           {comparativo.label}: {formatBRL(comparativo.faturamento)} ·{" "}
           {comparativo.pedidos} pedido(s)
         </p>
@@ -333,10 +336,10 @@ function TotalPedidosCard({
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4">
       <p className="text-xs text-gray-500">{label}</p>
-      <p className="text-xl font-semibold text-gray-900">{pedidos}</p>
+      <p className="valor-sensivel text-xl font-semibold text-gray-900">{pedidos}</p>
       <p className="text-xs text-gray-400">pedido(s) no período</p>
       {comparativo && (
-        <p className="mt-1.5 border-t border-gray-100 pt-1.5 text-[11px] text-gray-400">
+        <p className="valor-sensivel mt-1.5 border-t border-gray-100 pt-1.5 text-[11px] text-gray-400">
           {comparativo.label}: {comparativo.pedidos} pedido(s)
         </p>
       )}
@@ -371,7 +374,7 @@ function TopProdutosCard({
               <span className="truncate text-gray-900" title={r.titulo}>
                 {idx + 1}. {r.sku || r.titulo}
               </span>
-              <span className="shrink-0 font-semibold text-gray-900">
+              <span className="valor-sensivel shrink-0 font-semibold text-gray-900">
                 {r.quantidade}x
               </span>
             </li>
@@ -399,10 +402,10 @@ function RecordeDiaCard({
       <p className="text-xs text-amber-700">{label}</p>
       {melhorDia ? (
         <>
-          <p className="text-xl font-semibold text-gray-900">
+          <p className="valor-sensivel text-xl font-semibold text-gray-900">
             {formatBRL(melhorDia.faturamento)}
           </p>
-          <p className="text-xs text-amber-700">
+          <p className="valor-sensivel text-xs text-amber-700">
             {formatDiaBR(melhorDia.dia)} · {melhorDia.pedidos} pedido(s)
           </p>
         </>
@@ -887,7 +890,7 @@ export default async function VendasPage({
 
   return (
     <div className="flex flex-col gap-4">
-      {resumo}
+      <OcultarNumeros>{resumo}</OcultarNumeros>
       <VendasTabSwitch pedidosView={pedidosView} rankingView={rankingView} />
     </div>
   );
