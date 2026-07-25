@@ -78,6 +78,11 @@ interface FilaPrioridadeItem {
   emProducao: number;
   estoqueProjetado: number;
   aProduzirEfetivo: number;
+  // Peças que faltam pra cobrir pedidos JÁ VENDIDOS e ainda não
+  // despachados (pecasPendentesDespacho - estoqueProjetado, nunca
+  // negativo) — backlog real, prioridade acima de tudo. Ver critério
+  // nº-1 em filaPrioridade abaixo.
+  faltaDespacho: number;
 }
 
 const JANELA_PADRAO: Janela = {
@@ -324,7 +329,19 @@ export default function ProducaoPage() {
 
   // Fila de prioridade: placas com algo a produzir.
   //
-  // Critério nº0, ANTES de tudo (inclusive antes do nº1 abaixo): vendeu
+  // Critério nº-1, ANTES de TUDO (inclusive antes do nº0 abaixo): backlog
+  // real de despacho — faltaDespacho = pecasPendentesDespacho (pedidos já
+  // PAGOS e ainda não despachados) menos o estoque projetado, decrescente.
+  // Pedido do Guilherme em 2026-07-25: "o suporte de mangueira é uma venda
+  // que precisamos despachar e não tem estoque suficiente, então ela
+  // deveria tomar a frente". Achado real: "Suporte Mangueira (Prata)"
+  // tinha 10 pedidos pagos, só 6 já despachados (delivered/shipped) e
+  // apenas 1 peça em estoque — isso é MAIS urgente que o critério nº1
+  // (dias de estoque médio) porque é um pedido concreto esperando, não
+  // uma projeção de ritmo de venda. Ver pecasPendentesDespacho em
+  // lib/demanda.ts.
+  //
+  // Critério nº0, antes do nº1 abaixo (mas depois do nº-1 acima): vendeu
   // nas últimas 2 semanas? Pedido do Guilherme em 2026-07-24: "produtos
   // sem vendas no intervalo de 2 semanas devem entrar como última
   // prioridade, mesmo sem estoque; entram pra prioridade quando sair
@@ -395,13 +412,19 @@ export default function ProducaoPage() {
         const emProducao = pecasEmProducaoPorPlaca.get(placa.id) ?? 0;
         const estoqueProjetado = placa.estoque + emProducao;
         const aProduzirEfetivo = Math.max(0, (demanda?.aProduzir ?? 0) - emProducao);
-        return { placa, demanda, emProducao, estoqueProjetado, aProduzirEfetivo };
+        const faltaDespacho = Math.max(
+          0,
+          (demanda?.pecasPendentesDespacho ?? 0) - estoqueProjetado
+        );
+        return { placa, demanda, emProducao, estoqueProjetado, aProduzirEfetivo, faltaDespacho };
       })
       // Usa aProduzirEfetivo (já descontando o que está sendo produzido
       // agora) em vez do aProduzir "cru" — senão uma placa que já tem
       // uma impressora rodando pra ela continua aparecendo com a mesma
-      // urgência pras outras impressoras livres.
-      .filter((item) => item.aProduzirEfetivo > 0);
+      // urgência pras outras impressoras livres. Mantém também quem tem
+      // faltaDespacho > 0 mesmo no raro caso de aProduzirEfetivo cair a
+      // zero — um backlog real nunca deve sumir da fila silenciosamente.
+      .filter((item) => item.aProduzirEfetivo > 0 || item.faltaDespacho > 0);
 
     const porDiasDeEstoque = (a: FilaPrioridadeItem, b: FilaPrioridadeItem) =>
       diasDeEstoque(a.estoqueProjetado, a.demanda?.mediaSemanal ?? 0) -
@@ -419,6 +442,8 @@ export default function ProducaoPage() {
       b.placa.tempoPlacaHoras - a.placa.tempoPlacaHoras;
 
     return itens.sort((a, b) => {
+      const porBacklog = b.faltaDespacho - a.faltaDespacho;
+      if (porBacklog !== 0) return porBacklog;
       const aVendeu = vendeuUltimasDuasSemanas(a.demanda) ? 0 : 1;
       const bVendeu = vendeuUltimasDuasSemanas(b.demanda) ? 0 : 1;
       const porVendaRecente = aVendeu - bVendeu;
@@ -794,6 +819,14 @@ export default function ProducaoPage() {
                       <td className="px-3 py-2 text-gray-400">{idx + 1}</td>
                       <td className="px-3 py-2 font-medium text-gray-900">
                         {item.placa.nome}
+                        {item.faltaDespacho > 0 && (
+                          <span
+                            className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-xs font-normal text-red-700"
+                            title={`Faltam ${item.faltaDespacho} peça(s) pra cobrir pedidos já pagos e ainda não despachados — backlog real, prioridade acima de tudo.`}
+                          >
+                            faltam {item.faltaDespacho}pç p/ despachar
+                          </span>
+                        )}
                         {!vendeuUltimasDuasSemanas(item.demanda) && (
                           <span
                             className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-normal text-gray-500"
