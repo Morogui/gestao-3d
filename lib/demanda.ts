@@ -21,8 +21,28 @@
 // (corpo+gancho), a venda de 1 unidade do produto final consome ~1
 // peça de cada lado do par — aplicamos a mesma demanda a ambas as
 // placas do grupo.
-import { OrderSummary } from "./ml-orders";
+import { OrderSummary, pedidoFoiVendido } from "./ml-orders";
 import { PlacaRow } from "./placas";
+
+// "Despachado" = já saiu de fato (rastreio gerado/coletado) ou já
+// confirmado entregue. Cobre tanto o shippingStatus bruto da ML quanto o
+// da Shopee (que reaproveita o order_status — ver comentário em
+// OrderSummary). Qualquer outro valor (pending, handling, ready_to_ship,
+// to_ship, vazio etc.) conta como AINDA NÃO despachado — backlog real de
+// despacho. Pedido do Guilherme em 2026-07-25, depois de ver "Suporte
+// Mangueira (Prata)" com 10 pedidos pagos e só 6 já despachados
+// (ready_to_ship/pending), enquanto o estoque físico só tinha 1 peça:
+// isso é MUITO mais urgente que a meta média de "dias de estoque",
+// porque é um pedido concreto esperando, não uma projeção.
+const DESPACHADO = new Set([
+  "shipped",
+  "delivered",
+  "completed",
+  "to_confirm_receive",
+]);
+function pedidoAindaNaoDespachado(order: OrderSummary): boolean {
+  return !DESPACHADO.has((order.shippingStatus || "").toLowerCase());
+}
 
 function normalize(s: string): string {
   return s
@@ -194,6 +214,13 @@ export interface DemandaPlaca {
   // por estar com estoque zerado — vira última prioridade até vender de
   // novo. Ver critério nº0 da fila de prioridade em app/producao/page.tsx.
   ultimaVendaEm: string | null;
+  // Peças de pedidos já VENDIDOS (pagos) mas ainda NÃO despachados dentro
+  // do período — backlog real de despacho, não projeção. Pedido do
+  // Guilherme em 2026-07-25: isso é mais urgente que a meta de "dias de
+  // estoque" — um pedido concreto esperando pra sair vale mais que a
+  // média histórica. Ver critério nº-1 da fila de prioridade em
+  // app/producao/page.tsx.
+  pecasPendentesDespacho: number;
 }
 
 // Mapeamento exato SKU → placa(s), vindo da tabela sku_placa (catálogo
@@ -300,6 +327,10 @@ export function calcularDemandaSemanal(
   // decidir "vendeu nas últimas 2 semanas?" na fila de prioridade, não
   // afeta qtyVendidaPeriodo/mediaSemanal/aProduzir.
   const ultimaVendaPorPlaca = new Map<number, string>();
+  // Peças de pedidos pagos e ainda não despachados — backlog real (ver
+  // pedidoAindaNaoDespachado acima). Acumulado por pedido (não por item),
+  // já que "despachado?" é uma propriedade do pedido inteiro, não do item.
+  const pendenteDespachoPorPlaca = new Map<number, number>();
   const naoIdentificado: NaoIdentificado = {
     qtyPeriodo: 0,
     qtyFull: 0,
@@ -310,7 +341,8 @@ export function calcularDemandaSemanal(
     placaId: number,
     qty: number,
     isFull: boolean,
-    dataCriacao: string
+    dataCriacao: string,
+    pendenteDespacho: boolean
   ) => {
     vendidoPorPlaca.set(placaId, (vendidoPorPlaca.get(placaId) ?? 0) + qty);
     if (isFull) {
@@ -323,10 +355,20 @@ export function calcularDemandaSemanal(
     if (!atual || dataCriacao > atual) {
       ultimaVendaPorPlaca.set(placaId, dataCriacao);
     }
+    if (pendenteDespacho) {
+      pendenteDespachoPorPlaca.set(
+        placaId,
+        (pendenteDespachoPorPlaca.get(placaId) ?? 0) + qty
+      );
+    }
   };
 
   for (const order of orders) {
     const isFull = order.shippingMode === "Full";
+    // Calculado 1x por pedido (não por item) — "vendido e ainda não
+    // despachado" é uma propriedade do pedido inteiro.
+    const pendenteDespacho =
+      pedidoFoiVendido(order) && pedidoAindaNaoDespachado(order);
     for (const item of order.items) {
       // 1) Casamento exato: SKU cadastrado no anúncio da ML bate com o
       // catálogo sku_placa. Tem prioridade sobre o texto — é preciso,
@@ -342,7 +384,8 @@ export function calcularDemandaSemanal(
               entrada.placaId,
               item.quantity * entrada.pecasPorUnidade,
               isFull,
-              order.dateCreated
+              order.dateCreated,
+              pendenteDespacho
             );
           }
         }
@@ -359,7 +402,13 @@ export function calcularDemandaSemanal(
             (item.hasCustomSku && correspondeAoItem(placa, item.sku))
           ) {
             casou = true;
-            somar(placa.id, item.quantity, isFull, order.dateCreated);
+            somar(
+              placa.id,
+              item.quantity,
+              isFull,
+              order.dateCreated,
+              pendenteDespacho
+            );
           }
         }
       }
@@ -424,6 +473,7 @@ export function calcularDemandaSemanal(
       recomendadoEstoque,
       aProduzir,
       ultimaVendaEm: ultimaVendaPorPlaca.get(placa.id) ?? null,
+      pecasPendentesDespacho: pendenteDespachoPorPlaca.get(placa.id) ?? 0,
     });
   }
 

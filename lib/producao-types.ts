@@ -42,6 +42,10 @@ export interface DemandaPlacaRow {
   // prioridade pra saber se o produto vendeu nas últimas 2 semanas (ver
   // lib/demanda.ts).
   ultimaVendaEm: string | null;
+  // Peças de pedidos pagos e ainda não despachados — backlog real de
+  // despacho, mais urgente que a meta média de "dias de estoque" (ver
+  // lib/demanda.ts e critério nº-1 em app/producao/page.tsx).
+  pecasPendentesDespacho: number;
 }
 
 export interface NaoIdentificadoRow {
