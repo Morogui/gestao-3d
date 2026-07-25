@@ -1348,6 +1348,12 @@ function CarregarPlacaForm({
     return () => clearTimeout(timeout);
   }, [buscaSku]);
 
+  // Tempo médio de impressão da placa escolhida — pedido do Guilherme em
+  // 2026-07-24: mostrar como observação na hora de carregar, pra dar uma
+  // noção de quando ela deve terminar (mesmo campo tempoPlacaHoras já
+  // usado no cálculo de "Qtd p/ virar a noite" da fila de prioridade).
+  const placaSelecionada = placaId ? placaPorId.get(placaId) : undefined;
+
   return (
     <div className="flex flex-col gap-2">
       <div>
@@ -1412,6 +1418,13 @@ function CarregarPlacaForm({
       {placaSelecionadaNome && (
         <p className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-800">
           Selecionado via busca: {placaSelecionadaNome}
+        </p>
+      )}
+
+      {placaSelecionada && (
+        <p className="rounded bg-gray-50 px-2 py-1 text-xs text-gray-600">
+          Tempo médio de impressão: {formatHora(placaSelecionada.tempoPlacaHoras)}
+          {quantidade > 1 ? ` por placa (${quantidade}x = ${formatHora(placaSelecionada.tempoPlacaHoras * quantidade)} no total)` : ""}
         </p>
       )}
 
