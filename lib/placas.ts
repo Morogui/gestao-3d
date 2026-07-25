@@ -1,6 +1,64 @@
 // Tipos compartilhados entre as rotas de API e a página de Produção pro
 // catálogo de placas (ver docs/logica-producao-placas.md).
 
+// Cores de filamento controladas em estoque — pedido do Guilherme em
+// 2026-07-25: "adicione um campo onde coloco o que tenho de filamento...
+// o que eu deixar zerado nao precisa subir produto para a producao". A
+// fila de prioridade (app/producao/page.tsx) exclui automaticamente
+// qualquer placa cuja cor de filamento esteja zerada — ver
+// corFilamentoDaPlaca() abaixo.
+export const CORES_FILAMENTO = [
+  "colorido",
+  "preto",
+  "branco",
+  "prata",
+  "marrom",
+  "bege",
+] as const;
+export type CorFilamento = (typeof CORES_FILAMENTO)[number];
+
+function normalizeCor(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(new RegExp("[\\u0300-\\u036f]", "g"), "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+// Descobre a cor de filamento de uma placa a partir do nome — reaproveita
+// a mesma convenção "Nome (Cor)" já usada no catálogo inteiro (ver
+// corDoTexto em lib/demanda.ts). Duas cores existem no catálogo mas não
+// têm campo de estoque próprio (cinza, laranja) — retorna null nesse
+// caso, o que significa "sem restrição" (nunca é bloqueada por
+// filamento zerado, já que não temos como saber a quantidade real).
+// Placas SEM cor no nome (ex: "6X3 21 FATIAS", kits diversos) assumem
+// "colorido" — são justamente os produtos multicoloridos/de
+// confeitaria que usam filamento arco-íris, que nunca aparecem com uma
+// cor sólida no nome.
+const CORES_CONHECIDAS_NO_NOME = [
+  "branco",
+  "preto",
+  "preta",
+  "cinza",
+  "marrom",
+  "prata",
+  "bege",
+  "laranja",
+];
+export function corFilamentoDaPlaca(nome: string): CorFilamento | null {
+  const tokens = new Set(normalizeCor(nome).split(" "));
+  for (const cor of CORES_CONHECIDAS_NO_NOME) {
+    if (tokens.has(cor)) {
+      const mapeada = cor === "preta" ? "preto" : cor;
+      return (CORES_FILAMENTO as readonly string[]).includes(mapeada)
+        ? (mapeada as CorFilamento)
+        : null;
+    }
+  }
+  return "colorido";
+}
+
 export interface PlacaRow {
   id: number;
   numero: number;

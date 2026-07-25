@@ -1,6 +1,14 @@
 // Tipos compartilhados pela página de Produção (client component) —
 // espelham o formato JSON devolvido pelas rotas de API.
 
+import { CorFilamento } from "./placas";
+
+// Estoque de filamento por cor, em gramas — ver
+// app/api/producao/filamento/route.ts. Cor deixada em 0 bloqueia
+// automaticamente a fila de prioridade pras placas daquela cor (ver
+// corFilamentoDaPlaca em lib/placas.ts).
+export type EstoqueFilamentoRow = Record<CorFilamento, number>;
+
 export interface MachineRow {
   id: number;
   nome: string;
