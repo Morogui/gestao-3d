@@ -125,6 +125,8 @@ export async function GET() {
   // cadastrado no anúncio quando existe, senão o título do anúncio.
   interface VarianteAcumulada {
     label: string;
+    sku: string;
+    titulo: string;
     itemIds: Set<string>;
     vendidoFull7d: number;
   }
@@ -147,7 +149,13 @@ export async function GET() {
         }
         let acumulada = variantes.get(varianteKey);
         if (!acumulada) {
-          acumulada = { label: varianteLabel, itemIds: new Set(), vendidoFull7d: 0 };
+          acumulada = {
+            label: varianteLabel,
+            sku: item.hasCustomSku ? item.sku : "",
+            titulo: item.title,
+            itemIds: new Set(),
+            vendidoFull7d: 0,
+          };
           variantes.set(varianteKey, acumulada);
         }
         acumulada.itemIds.add(item.itemId);
@@ -206,48 +214,62 @@ export async function GET() {
     return estoqueFullViaApiParaItens(itemIdsPorPlaca.get(placaId));
   }
 
-  const linhas = placas.map((placa) => {
-    const demanda = porPlaca.get(placa.id);
-    const vendidoFull7d = demanda?.qtyVendidaFull ?? 0;
-    const full = estoqueFullPorPlaca.get(placa.id);
-    const apiFull = estoqueFullViaApi(placa.id);
-    const estoqueFullAtual = apiFull ?? full?.quantidade_pecas ?? 0;
-
-    // Só mostra quebra por variante quando há mais de 1 SKU/anúncio real
-    // distinto vendido nessa placa na semana — placas com 1 SKU só (a
-    // maioria do catálogo) continuam exatamente como antes.
+  // Pedido do Guilherme em 2026-07-25: "deve mostrar por SKU os produtos
+  // que foram vendidos no full na semana... precisamos por sku
+  // certinho". Antes, a linha era sempre por PLACA (cor) e só mostrava a
+  // quebra por SKU real da ML numa tabelinha aninhada quando havia mais
+  // de 1 variante. Agora cada linha da tela já É um SKU: uma placa com 2
+  // SKUs reais vendidos na semana (ex: Com/Sem Parafuso) vira 2 linhas
+  // (uma por SKU), e uma placa sem venda no Full na semana continua
+  // aparecendo com 1 linha só, usando o SKU cadastrado no catálogo (não
+  // tem como saber o SKU real da ML sem uma venda recente pra consultar).
+  const linhas = placas.flatMap((placa) => {
     const variantesMap = variantesPorPlaca.get(placa.id);
-    const variantes =
-      variantesMap && variantesMap.size > 1
-        ? Array.from(variantesMap.values()).map((v) => ({
-            label: v.label,
-            vendidoFull7d: v.vendidoFull7d,
-            estoqueFullAtual: estoqueFullViaApiParaItens(v.itemIds),
-          }))
-        : [];
+    const full = estoqueFullPorPlaca.get(placa.id);
 
-    return {
-      placaId: placa.id,
-      numero: placa.numero,
-      nome: placa.nome,
-      tier: placa.tier,
-      skuOuKit: placa.skuOuKit,
-      estoqueLocal: placa.estoque,
-      vendidoFull7d,
-      estoqueFullAtual,
-      // Anúncio(s) da ML que geraram esse número — pra conferir no
-      // painel da ML que é o produto certo.
-      anuncios: anunciosDaPlaca(placa.id),
-      // "api" = lido agora mesmo da ML (mais confiável); "manual" = caiu
-      // pro valor que você digitou aqui (sem venda recente pra achar o
-      // item, ou conta ainda fora do modelo User Products).
-      fonteEstoqueFull: apiFull !== null ? "api" : "manual",
-      atualizadoEm: full?.atualizado_em ?? null,
-      // Recomendação simples: reponha o que vendeu no Full na semana —
-      // mesmo critério já usado no "Lembrete Full" da aba Produção.
-      recomendacaoEnvio: vendidoFull7d,
-      variantes,
-    };
+    if (variantesMap && variantesMap.size > 0) {
+      return Array.from(variantesMap.entries()).map(([chaveVariante, v]) => {
+        const apiFull = estoqueFullViaApiParaItens(v.itemIds);
+        return {
+          chave: `${placa.id}:${chaveVariante}`,
+          placaId: placa.id,
+          numero: placa.numero,
+          nome: placa.nome,
+          tier: placa.tier,
+          sku: v.sku,
+          titulo: v.titulo,
+          estoqueLocal: placa.estoque,
+          vendidoFull7d: v.vendidoFull7d,
+          estoqueFullAtual: apiFull ?? full?.quantidade_pecas ?? 0,
+          anuncios: [{ titulo: v.titulo, sku: v.sku }],
+          fonteEstoqueFull: apiFull !== null ? "api" : "manual",
+          atualizadoEm: full?.atualizado_em ?? null,
+          recomendacaoEnvio: v.vendidoFull7d,
+        };
+      });
+    }
+
+    // Sem venda no Full na semana — 1 linha só, usando o SKU cadastrado
+    // no catálogo (primeiro token antes do "|", mesmo padrão já usado em
+    // outras telas).
+    return [
+      {
+        chave: `${placa.id}:sem-venda`,
+        placaId: placa.id,
+        numero: placa.numero,
+        nome: placa.nome,
+        tier: placa.tier,
+        sku: placa.skuOuKit.split("|")[0].trim(),
+        titulo: "",
+        estoqueLocal: placa.estoque,
+        vendidoFull7d: 0,
+        estoqueFullAtual: full?.quantidade_pecas ?? 0,
+        anuncios: [] as { titulo: string; sku: string }[],
+        fonteEstoqueFull: "manual" as const,
+        atualizadoEm: full?.atualizado_em ?? null,
+        recomendacaoEnvio: 0,
+      },
+    ];
   });
 
   return NextResponse.json({
