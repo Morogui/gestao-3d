@@ -90,6 +90,14 @@ interface FilaPrioridadeItem {
   // negativo) — backlog real, prioridade acima de tudo. Ver critério
   // nº-1 em filaPrioridade abaixo.
   faltaDespacho: number;
+  // Peças que faltam produzir pra cobrir os ENVIOS DO FULL planejados e
+  // ainda pendentes de confirmação (ver aba Full — "Envios planejados").
+  // Pedido do Guilherme em 2026-07-25: "gera uma ordem de produção
+  // extraordinária de prioridade para produzir o full, depois seguimos
+  // todas as ordens combinada" — por isso esse é o critério nº-2, ANTES
+  // até do backlog de despacho (nº-1). Confirmar o envio na aba Full
+  // zera isso na hora (tira da linha de frente).
+  faltaEnvioFull: number;
 }
 
 const JANELA_PADRAO: Janela = {
@@ -160,6 +168,17 @@ interface SkuResult {
   variacoes: number;
 }
 
+// Envio planejado do Full ainda pendente (ver aba Full — "Envios
+// planejados" e app/api/full/envios/route.ts). faltantePlaca já vem
+// calculado do servidor: quanto falta produzir pra cobrir TODOS os
+// envios pendentes dessa placa, descontando estoque + em produção.
+interface EnvioFullPendente {
+  id: number;
+  placaId: number;
+  status: "pendente" | "confirmado" | "cancelado";
+  faltantePlaca: number;
+}
+
 export default function ProducaoPage() {
   const [status, setStatus] = useState<Status>("loading");
   const [placas, setPlacas] = useState<PlacaRow[]>([]);
@@ -173,6 +192,10 @@ export default function ProducaoPage() {
   // prioridade pras placas daquela cor (ver corFilamentoDaPlaca em
   // lib/placas.ts e o filtro de filaPrioridade abaixo).
   const [filamento, setFilamento] = useState<EstoqueFilamentoRow | null>(null);
+  // Envios planejados do Full ainda pendentes — pedido do Guilherme em
+  // 2026-07-25: alimenta o critério nº-2 da fila de prioridade (ver
+  // filaPrioridade abaixo).
+  const [enviosFull, setEnviosFull] = useState<EnvioFullPendente[]>([]);
   const [carregando, setCarregando] = useState<Record<number, boolean>>({});
   // Só pra fazer a fila/sugestões reagirem sozinhas quando o relógio
   // cruza o horário de fechamento, sem precisar de uma ação manual pra
@@ -186,7 +209,7 @@ export default function ProducaoPage() {
   // precisa terminar pra tela e botão reagirem; não faz sentido travar o
   // clique do usuário esperando a ML/Shopee responderem de novo.
   async function carregarRapido() {
-    const [placasRes, machinesRes, producoesRes, consumoRes, janelaRes, filamentoRes] =
+    const [placasRes, machinesRes, producoesRes, consumoRes, janelaRes, filamentoRes, enviosFullRes] =
       await Promise.all([
         fetch("/api/placas").then((r) => r.json()),
         fetch("/api/machines").then((r) => r.json()),
@@ -194,6 +217,7 @@ export default function ProducaoPage() {
         fetch("/api/producao/consumo").then((r) => r.json()),
         fetch("/api/producao/janela").then((r) => r.json()),
         fetch("/api/producao/filamento").then((r) => r.json()),
+        fetch("/api/full/envios").then((r) => r.json()),
       ]);
     setPlacas(placasRes);
     setMachines(machinesRes);
@@ -201,6 +225,7 @@ export default function ProducaoPage() {
     setConsumo(consumoRes);
     setJanela(janelaRes ?? JANELA_PADRAO);
     setFilamento(filamentoRes);
+    setEnviosFull(enviosFullRes);
   }
 
   // Refresh "lento": busca pedidos de 30 dias na ML + Shopee (com
@@ -351,9 +376,34 @@ export default function ProducaoPage() {
     0
   );
 
+  // Envios do Full ainda pendentes, por placa — pedido do Guilherme em
+  // 2026-07-25 (aba Full, seção "Envios planejados"): faltantePlaca já
+  // vem calculado do servidor (ver app/api/full/envios/route.ts), então
+  // aqui só precisamos do mapa placaId -> faltantePlaca pra alimentar o
+  // critério nº-2 abaixo. Confirmar o envio na aba Full remove o registro
+  // da lista de "pendente" e some daqui automaticamente no próximo
+  // refresh.
+  const enviosFullPorPlaca = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const e of enviosFull) {
+      if (e.status !== "pendente") continue;
+      map.set(e.placaId, Math.max(map.get(e.placaId) ?? 0, e.faltantePlaca));
+    }
+    return map;
+  }, [enviosFull]);
+
   // Fila de prioridade: placas com algo a produzir.
   //
-  // Critério nº-1, ANTES de TUDO (inclusive antes do nº0 abaixo): backlog
+  // Critério nº-2, ANTES de TUDO (inclusive antes do backlog de despacho
+  // nº-1 abaixo): envio do Full planejado e ainda sem estoque suficiente
+  // — faltaEnvioFull, decrescente. Pedido do Guilherme em 2026-07-25: "se
+  // não tiver essa quantidade, gera uma ordem de produção extraordinária
+  // de prioridade para produzir o full, depois seguimos todas as ordens
+  // combinada" — ou seja, essa é a ÚNICA coisa que fura até o backlog de
+  // despacho, e só enquanto o envio não for confirmado (ou produzido o
+  // suficiente) na aba Full. Ver EnviosPlanejados em app/full/page.tsx.
+  //
+  // Critério nº-1, ANTES de TUDO o resto (inclusive antes do nº0 abaixo): backlog
   // real de despacho — faltaDespacho = pecasPendentesDespacho (pedidos já
   // PAGOS e ainda não despachados) menos o estoque projetado, decrescente.
   // Pedido do Guilherme em 2026-07-25: "o suporte de mangueira é uma venda
@@ -440,7 +490,16 @@ export default function ProducaoPage() {
           0,
           (demanda?.pecasPendentesDespacho ?? 0) - estoqueProjetado
         );
-        return { placa, demanda, emProducao, estoqueProjetado, aProduzirEfetivo, faltaDespacho };
+        const faltaEnvioFull = enviosFullPorPlaca.get(placa.id) ?? 0;
+        return {
+          placa,
+          demanda,
+          emProducao,
+          estoqueProjetado,
+          aProduzirEfetivo,
+          faltaDespacho,
+          faltaEnvioFull,
+        };
       })
       // Usa aProduzirEfetivo (já descontando o que está sendo produzido
       // agora) em vez do aProduzir "cru" — senão uma placa que já tem
@@ -459,7 +518,10 @@ export default function ProducaoPage() {
       // Placas sem estoque de filamento carregado ainda (filamento ===
       // null, API não respondeu) ou cor não controlada (corFilamentoDaPlaca
       // retorna null — cinza/laranja) nunca são bloqueadas.
-      .filter((item) => item.aProduzirEfetivo > 0 || item.faltaDespacho > 0)
+      .filter(
+        (item) =>
+          item.aProduzirEfetivo > 0 || item.faltaDespacho > 0 || item.faltaEnvioFull > 0
+      )
       .filter((item) => {
         if (!filamento) return true;
         const cor = corFilamentoDaPlaca(item.placa.nome);
@@ -483,6 +545,8 @@ export default function ProducaoPage() {
       b.placa.tempoPlacaHoras - a.placa.tempoPlacaHoras;
 
     return itens.sort((a, b) => {
+      const porEnvioFull = b.faltaEnvioFull - a.faltaEnvioFull;
+      if (porEnvioFull !== 0) return porEnvioFull;
       const porBacklog = b.faltaDespacho - a.faltaDespacho;
       if (porBacklog !== 0) return porBacklog;
       const aVendeu = vendeuUltimasDuasSemanas(a.demanda) ? 0 : 1;
@@ -503,7 +567,15 @@ export default function ProducaoPage() {
       }
       return porTempoDePlaca(a, b);
     });
-  }, [placas, demandaPorPlaca, pecasEmProducaoPorPlaca, pertoDoFechamento, janela.aberturaHora, filamento]);
+  }, [
+    placas,
+    demandaPorPlaca,
+    pecasEmProducaoPorPlaca,
+    pertoDoFechamento,
+    janela.aberturaHora,
+    filamento,
+    enviosFullPorPlaca,
+  ]);
 
   // Todas as ações abaixo seguem o mesmo padrão: marca a máquina como
   // "carregando" (feedback visual imediato no botão), faz a chamada,
@@ -874,6 +946,14 @@ export default function ProducaoPage() {
                       <td className="px-3 py-2 text-gray-400">{idx + 1}</td>
                       <td className="px-3 py-2 font-medium text-gray-900">
                         {item.placa.nome}
+                        {item.faltaEnvioFull > 0 && (
+                          <span
+                            className="ml-2 rounded bg-purple-100 px-1.5 py-0.5 text-xs font-normal text-purple-700"
+                            title={`Faltam ${item.faltaEnvioFull} peça(s) pra cobrir envio(s) do Full planejados na aba Full — prioridade extraordinária, acima até do backlog de despacho.`}
+                          >
+                            faltam {item.faltaEnvioFull}pç p/ envio Full
+                          </span>
+                        )}
                         {item.faltaDespacho > 0 && (
                           <span
                             className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-xs font-normal text-red-700"
