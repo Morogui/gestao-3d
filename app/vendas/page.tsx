@@ -327,20 +327,24 @@ function ResumoCard({
 function TotalPedidosCard({
   label,
   pedidos,
+  itensVendidos,
   comparativo,
 }: {
   label: string;
   pedidos: number;
-  comparativo?: { label: string; pedidos: number };
+  itensVendidos: number;
+  comparativo?: { label: string; pedidos: number; itensVendidos: number };
 }) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4">
       <p className="text-xs text-gray-500">{label}</p>
       <p className="valor-sensivel text-xl font-semibold text-gray-900">{pedidos}</p>
-      <p className="text-xs text-gray-400">pedido(s) no período</p>
+      <p className="valor-sensivel text-xs text-gray-400">
+        pedido(s) no período · {itensVendidos} produto(s) vendido(s)
+      </p>
       {comparativo && (
         <p className="valor-sensivel mt-1.5 border-t border-gray-100 pt-1.5 text-[11px] text-gray-400">
-          {comparativo.label}: {comparativo.pedidos} pedido(s)
+          {comparativo.label}: {comparativo.pedidos} pedido(s) · {comparativo.itensVendidos} produto(s)
         </p>
       )}
     </div>
@@ -742,9 +746,14 @@ export default async function VendasPage({
         <TotalPedidosCard
           label={`Total de pedidos em ${rotuloPeriodo}`}
           pedidos={resumoSelecionado.pedidos}
+          itensVendidos={resumoSelecionado.itensVendidos}
           comparativo={
             resumoAnterior && labelDiaAnterior
-              ? { label: labelDiaAnterior, pedidos: resumoAnterior.pedidos }
+              ? {
+                  label: labelDiaAnterior,
+                  pedidos: resumoAnterior.pedidos,
+                  itensVendidos: resumoAnterior.itensVendidos,
+                }
               : undefined
           }
         />
