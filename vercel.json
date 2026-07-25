@@ -5,7 +5,7 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/pedidos/sincronizar?dias=100",
+      "path": "/api/pedidos/sincronizar?dias=10",
       "schedule": "17 6 * * *"
     }
   ]
