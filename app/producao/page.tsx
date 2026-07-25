@@ -2,7 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { PlacaRow, estoqueVendavel } from "@/lib/placas";
+import {
+  PlacaRow,
+  estoqueVendavel,
+  CORES_FILAMENTO,
+  CorFilamento,
+  corFilamentoDaPlaca,
+} from "@/lib/placas";
 import { horaAtualSP, horasAteProximaAbertura } from "@/lib/date";
 import {
   MachineRow,
@@ -10,6 +16,7 @@ import {
   DemandaResult,
   DemandaPlacaRow,
   ConsumoResult,
+  EstoqueFilamentoRow,
 } from "@/lib/producao-types";
 
 // Dias de estoque restante no ritmo de venda atual (estoque ÷ venda
@@ -161,6 +168,11 @@ export default function ProducaoPage() {
   const [demanda, setDemanda] = useState<DemandaResult | null>(null);
   const [consumo, setConsumo] = useState<ConsumoResult | null>(null);
   const [janela, setJanela] = useState<Janela>(JANELA_PADRAO);
+  // Estoque de filamento por cor (gramas) — pedido do Guilherme em
+  // 2026-07-25: cor deixada em 0 bloqueia automaticamente a fila de
+  // prioridade pras placas daquela cor (ver corFilamentoDaPlaca em
+  // lib/placas.ts e o filtro de filaPrioridade abaixo).
+  const [filamento, setFilamento] = useState<EstoqueFilamentoRow | null>(null);
   const [carregando, setCarregando] = useState<Record<number, boolean>>({});
   // Só pra fazer a fila/sugestões reagirem sozinhas quando o relógio
   // cruza o horário de fechamento, sem precisar de uma ação manual pra
@@ -174,19 +186,21 @@ export default function ProducaoPage() {
   // precisa terminar pra tela e botão reagirem; não faz sentido travar o
   // clique do usuário esperando a ML/Shopee responderem de novo.
   async function carregarRapido() {
-    const [placasRes, machinesRes, producoesRes, consumoRes, janelaRes] =
+    const [placasRes, machinesRes, producoesRes, consumoRes, janelaRes, filamentoRes] =
       await Promise.all([
         fetch("/api/placas").then((r) => r.json()),
         fetch("/api/machines").then((r) => r.json()),
         fetch("/api/producoes").then((r) => r.json()),
         fetch("/api/producao/consumo").then((r) => r.json()),
         fetch("/api/producao/janela").then((r) => r.json()),
+        fetch("/api/producao/filamento").then((r) => r.json()),
       ]);
     setPlacas(placasRes);
     setMachines(machinesRes);
     setProducoes(producoesRes);
     setConsumo(consumoRes);
     setJanela(janelaRes ?? JANELA_PADRAO);
+    setFilamento(filamentoRes);
   }
 
   // Refresh "lento": busca pedidos de 30 dias na ML + Shopee (com
@@ -265,6 +279,16 @@ export default function ProducaoPage() {
       body: JSON.stringify({ gramasImpressasManual: Math.max(0, kg) * 1000 }),
     });
     await carregarRapido();
+  }
+
+  async function salvarFilamento(novo: EstoqueFilamentoRow) {
+    setFilamento(novo);
+    const salvo = await fetch("/api/producao/filamento", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(novo),
+    }).then((r) => r.json());
+    setFilamento(salvo);
   }
 
   useEffect(() => {
@@ -424,7 +448,24 @@ export default function ProducaoPage() {
       // urgência pras outras impressoras livres. Mantém também quem tem
       // faltaDespacho > 0 mesmo no raro caso de aProduzirEfetivo cair a
       // zero — um backlog real nunca deve sumir da fila silenciosamente.
-      .filter((item) => item.aProduzirEfetivo > 0 || item.faltaDespacho > 0);
+      //
+      // Filtro extra de filamento — pedido do Guilherme em 2026-07-25: "o
+      // que eu deixar zerado não precisa subir produto para a produção".
+      // Detecta a cor do filamento pelo nome da placa
+      // (corFilamentoDaPlaca, mesma convenção "Nome (Cor)" do catálogo) e
+      // exclui da fila qualquer placa cuja cor esteja com 0g cadastrado —
+      // sem filamento daquela cor não tem como produzir de qualquer jeito,
+      // então não faz sentido sugerir (nem como backlog de despacho).
+      // Placas sem estoque de filamento carregado ainda (filamento ===
+      // null, API não respondeu) ou cor não controlada (corFilamentoDaPlaca
+      // retorna null — cinza/laranja) nunca são bloqueadas.
+      .filter((item) => item.aProduzirEfetivo > 0 || item.faltaDespacho > 0)
+      .filter((item) => {
+        if (!filamento) return true;
+        const cor = corFilamentoDaPlaca(item.placa.nome);
+        if (!cor) return true;
+        return filamento[cor] > 0;
+      });
 
     const porDiasDeEstoque = (a: FilaPrioridadeItem, b: FilaPrioridadeItem) =>
       diasDeEstoque(a.estoqueProjetado, a.demanda?.mediaSemanal ?? 0) -
@@ -462,7 +503,7 @@ export default function ProducaoPage() {
       }
       return porTempoDePlaca(a, b);
     });
-  }, [placas, demandaPorPlaca, pecasEmProducaoPorPlaca, pertoDoFechamento, janela.aberturaHora]);
+  }, [placas, demandaPorPlaca, pecasEmProducaoPorPlaca, pertoDoFechamento, janela.aberturaHora, filamento]);
 
   // Todas as ações abaixo seguem o mesmo padrão: marca a máquina como
   // "carregando" (feedback visual imediato no botão), faz a chamada,
@@ -623,6 +664,20 @@ export default function ProducaoPage() {
           </p>
         )}
         {consumo && <ImpressoManualEditor consumo={consumo} onSalvar={salvarImpressoManualKg} />}
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-sm font-semibold text-gray-900">Estoque de filamento por cor</h2>
+        <p className="mb-3 text-xs text-gray-500">
+          Informe o quanto tem em estoque de cada cor (em gramas). Cor deixada
+          em 0 bloqueia automaticamente a fila de prioridade abaixo pra todas
+          as placas daquela cor — não precisa subir produto pra produção sem
+          ter filamento pra imprimir. A cor de cada placa é detectada pelo
+          nome (ex: &quot;Suporte Carro (Prata)&quot;); placas sem cor no
+          nome (kits, produtos multicoloridos) contam como
+          &quot;Colorido&quot;.
+        </p>
+        {filamento && <FilamentoEditor filamento={filamento} onSalvar={salvarFilamento} />}
       </section>
 
       <section>
@@ -1086,6 +1141,87 @@ function ImpressoManualEditor({
       <button onClick={() => setEditando(false)} className="text-gray-400 hover:underline">
         cancelar
       </button>
+    </div>
+  );
+}
+
+// Nomes de exibição das cores controladas — mesma ordem de CORES_FILAMENTO.
+const LABEL_COR_FILAMENTO: Record<CorFilamento, string> = {
+  colorido: "Colorido",
+  preto: "Preto",
+  branco: "Branco",
+  prata: "Prata",
+  marrom: "Marrom",
+  bege: "Bege",
+};
+
+// Formulário de estoque de filamento por cor — 6 campos (um por cor
+// controlada), edição local até clicar em Salvar (evita disparar um PUT a
+// cada dígito digitado). Pedido do Guilherme em 2026-07-25: cor em 0
+// bloqueia a fila de prioridade (ver filtro em filaPrioridade acima).
+function FilamentoEditor({
+  filamento,
+  onSalvar,
+}: {
+  filamento: EstoqueFilamentoRow;
+  onSalvar: (novo: EstoqueFilamentoRow) => void;
+}) {
+  const [valores, setValores] = useState<Record<CorFilamento, string>>(() => {
+    const inicial = {} as Record<CorFilamento, string>;
+    for (const cor of CORES_FILAMENTO) inicial[cor] = String(filamento[cor] ?? 0);
+    return inicial;
+  });
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    const atualizado = {} as Record<CorFilamento, string>;
+    for (const cor of CORES_FILAMENTO) atualizado[cor] = String(filamento[cor] ?? 0);
+    setValores(atualizado);
+  }, [filamento]);
+
+  async function salvar() {
+    setSalvando(true);
+    try {
+      const novo = {} as EstoqueFilamentoRow;
+      for (const cor of CORES_FILAMENTO) novo[cor] = Math.max(0, Number(valores[cor]) || 0);
+      await onSalvar(novo);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+        {CORES_FILAMENTO.map((cor) => (
+          <label key={cor} className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500">
+              {LABEL_COR_FILAMENTO[cor]} (g)
+            </span>
+            <input
+              type="number"
+              min={0}
+              value={valores[cor]}
+              onChange={(e) => setValores((prev) => ({ ...prev, [cor]: e.target.value }))}
+              className={
+                "rounded border px-2 py-1 text-sm " +
+                ((Number(valores[cor]) || 0) <= 0
+                  ? "border-red-300 bg-red-50 text-red-700"
+                  : "border-gray-300")
+              }
+            />
+          </label>
+        ))}
+      </div>
+      <div>
+        <button
+          disabled={salvando}
+          onClick={salvar}
+          className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
+        >
+          {salvando ? "Salvando..." : "Salvar estoque de filamento"}
+        </button>
+      </div>
     </div>
   );
 }
