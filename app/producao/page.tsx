@@ -316,6 +316,31 @@ export default function ProducaoPage() {
     setFilamento(salvo);
   }
 
+  // Registra uma perda AVULSA de filamento (fora de uma produção
+  // rastreada) — pedido do Guilherme em 2026-07-26: "coloque um campo
+  // onde eu consiga adicionar perda a parte" + "precisa alimentar qual o
+  // filamento que teve perda, cor do filamento". Desconta na hora do
+  // estoque daquela cor e soma no card "Total já desperdiçado" (ver
+  // /api/producao/perda-filamento). Depois de salvar, recarrega
+  // filamento + consumo pra refletir os dois na tela.
+  async function registrarPerdaFilamento(
+    cor: CorFilamento,
+    gramas: number,
+    motivo: string
+  ): Promise<string | null> {
+    const res = await fetch("/api/producao/perda-filamento", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cor, gramas, motivo: motivo || undefined }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return data.error ?? "Erro ao registrar perda.";
+    }
+    await carregarRapido();
+    return null;
+  }
+
   useEffect(() => {
     carregarTudo();
   }, []);
@@ -750,6 +775,9 @@ export default function ProducaoPage() {
           &quot;Colorido&quot;.
         </p>
         {filamento && <FilamentoEditor filamento={filamento} onSalvar={salvarFilamento} />}
+        <div className="mt-3">
+          <PerdaFilamentoForm onRegistrar={registrarPerdaFilamento} />
+        </div>
       </section>
 
       <section>
@@ -1302,6 +1330,109 @@ function FilamentoEditor({
           {salvando ? "Salvando..." : "Salvar estoque de filamento"}
         </button>
       </div>
+    </div>
+  );
+}
+
+// Registro de perda AVULSA de filamento — pedido do Guilherme em
+// 2026-07-26: "coloque um campo onde eu consiga adicionar perda a parte
+// caso eu queira" + "precisa alimentar qual o filamento que teve perda,
+// cor do filamento". Diferente da perda automática (só nasce de uma
+// produção marcada como falha) — aqui é pra qualquer perda avulsa
+// (purga, calibração, filamento emaranhado etc.), com a cor obrigatória
+// pra descontar do estoque certo e um motivo opcional só pra histórico.
+// Desconta o estoque_filamento daquela cor na hora e soma no card "Total
+// já desperdiçado" acima.
+function PerdaFilamentoForm({
+  onRegistrar,
+}: {
+  onRegistrar: (cor: CorFilamento, gramas: number, motivo: string) => Promise<string | null>;
+}) {
+  const [cor, setCor] = useState<CorFilamento>("colorido");
+  const [gramas, setGramas] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [sucesso, setSucesso] = useState(false);
+
+  async function registrar() {
+    const gramasNum = Number(gramas);
+    if (!Number.isFinite(gramasNum) || gramasNum <= 0) {
+      setErro("Informe a quantidade em gramas (maior que 0).");
+      return;
+    }
+    setErro(null);
+    setSucesso(false);
+    setSalvando(true);
+    try {
+      const erroApi = await onRegistrar(cor, gramasNum, motivo.trim());
+      if (erroApi) {
+        setErro(erroApi);
+        return;
+      }
+      setGramas("");
+      setMotivo("");
+      setSucesso(true);
+      setTimeout(() => setSucesso(false), 3000);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
+      <p className="text-xs font-medium text-gray-600">
+        Registrar perda avulsa de filamento (fora de uma produção — ex: purga,
+        calibração, filamento emaranhado)
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-500">Cor</span>
+          <select
+            value={cor}
+            onChange={(e) => setCor(e.target.value as CorFilamento)}
+            className="rounded border border-gray-300 px-2 py-1.5 text-sm"
+          >
+            {CORES_FILAMENTO.map((c) => (
+              <option key={c} value={c}>
+                {LABEL_COR_FILAMENTO[c]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-gray-500">Gramas</span>
+          <input
+            type="number"
+            min={0}
+            step="1"
+            value={gramas}
+            onChange={(e) => setGramas(e.target.value)}
+            placeholder="0"
+            className="w-24 rounded border border-gray-300 px-2 py-1.5 text-sm"
+          />
+        </label>
+        <label className="flex flex-1 min-w-[180px] flex-col gap-1">
+          <span className="text-xs font-medium text-gray-500">Motivo (opcional)</span>
+          <input
+            type="text"
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            placeholder="ex: purga na troca de cor"
+            maxLength={200}
+            className="rounded border border-gray-300 px-2 py-1.5 text-sm"
+          />
+        </label>
+        <button
+          disabled={salvando}
+          onClick={registrar}
+          className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
+        >
+          {salvando ? "Registrando..." : "Registrar perda"}
+        </button>
+      </div>
+      {erro && <p className="text-xs text-red-600">{erro}</p>}
+      {sucesso && <p className="text-xs text-green-600">Perda registrada e descontada do estoque.</p>}
     </div>
   );
 }
