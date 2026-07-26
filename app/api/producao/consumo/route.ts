@@ -20,17 +20,40 @@ export const dynamic = "force-dynamic";
 //    prática pra declarar um total histórico).
 //
 // "Desperdiçado" já era rastreado desde a v21 (falha de placa inteira +
-// falha de peça avulsa) — aqui só somamos os dois de uma vez:
+// falha de peça avulsa) — aqui somamos os três:
 // - `producoes.gramas_desperdicadas`: preenchido quando o operador marca
 //   "falha na placa" (aborta a impressão inteira, digita quanto foi
 //   perdido).
 // - `falhas_peca.gramas`: cada peça individual descartada numa placa que
 //   continuou imprimindo normalmente.
+// - `perdas_filamento_manual.gramas`: perda avulsa registrada à parte
+//   (2026-07-26) — cobre perda que não veio de uma produção rastreada
+//   (purga, calibração, filamento emaranhado etc.), com a cor de cada
+//   registro (ver /api/producao/perda-filamento).
+// Garante a tabela de perdas avulsas antes de consultá-la — evita que
+// essa rota (chamada o tempo todo pela aba Produção) quebre com "relation
+// does not exist" caso a migração da rota /api/producao/perda-filamento
+// ainda não tenha sido criada nesse ambiente. Idempotente e rápida.
+async function garantirTabelaPerdaManual() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS perdas_filamento_manual (
+      id SERIAL PRIMARY KEY,
+      cor TEXT NOT NULL,
+      gramas INTEGER NOT NULL,
+      motivo TEXT,
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+}
+
 export async function GET() {
+  await garantirTabelaPerdaManual();
+
   const [
     impressoRows,
     desperdicoPlacaRows,
     desperdicoPecaRows,
+    desperdicoManualRows,
     cobertura,
     manualRows,
     falhaRows,
@@ -47,6 +70,9 @@ export async function GET() {
         WHERE status = 'falha_placa'
       `,
       sql`SELECT COALESCE(SUM(gramas), 0) AS total FROM falhas_peca`,
+      sql`
+        SELECT COALESCE(SUM(gramas), 0) AS total FROM perdas_filamento_manual
+      `,
       sql`
         SELECT
           count(*) FILTER (WHERE peso_placa_gramas IS NULL) AS sem_peso,
@@ -93,6 +119,9 @@ export async function GET() {
   const gramasDesperdicadasPeca = Number(
     (desperdicoPecaRows as { total: string }[])[0]?.total ?? 0
   );
+  const gramasDesperdicadasManual = Number(
+    (desperdicoManualRows as { total: string }[])[0]?.total ?? 0
+  );
   const { sem_peso: placasSemPeso, total: totalPlacas } = (
     cobertura as { sem_peso: string; total: string }[]
   )[0];
@@ -111,9 +140,11 @@ export async function GET() {
     gramasImpressas: gramasImpressasCalculadas + gramasImpressasManual,
     gramasImpressasCalculadas,
     gramasImpressasManual,
-    gramasDesperdicadas: gramasDesperdicadasPlaca + gramasDesperdicadasPeca,
+    gramasDesperdicadas:
+      gramasDesperdicadasPlaca + gramasDesperdicadasPeca + gramasDesperdicadasManual,
     gramasDesperdicadasPlaca,
     gramasDesperdicadasPeca,
+    gramasDesperdicadasManual,
     placasSemPeso: Number(placasSemPeso),
     totalPlacas: Number(totalPlacas),
     pecasRodadas: pecasRodadasNum,
