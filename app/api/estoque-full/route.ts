@@ -50,7 +50,7 @@ export async function GET() {
   const placaRows = (await sql`
     SELECT
       p.id, p.numero, p.nome, p.tipo, p.papel, p.grupo_composto,
-      p.sku_ou_kit, p.pecas_por_placa, p.tempo_placa_horas, p.tier,
+      p.sku_ou_kit, p.frases_correspondencia, p.pecas_por_placa, p.tempo_placa_horas, p.tier,
       p.descontinuada,
       COALESCE(e.quantidade_pecas, 0) AS estoque
     FROM placas p
