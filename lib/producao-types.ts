@@ -85,6 +85,7 @@ export interface ConsumoResult {
   gramasDesperdicadas: number;
   gramasDesperdicadasPlaca: number;
   gramasDesperdicadasPeca: number;
+  gramasDesperdicadasManual: number;
   placasSemPeso: number;
   totalPlacas: number;
   // Taxa de falha real: peças com falha (falha de peça avulsa + placas
