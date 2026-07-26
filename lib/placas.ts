@@ -67,6 +67,20 @@ export interface PlacaRow {
   papel: "corpo" | "gancho" | null;
   grupoComposto: string | null;
   skuOuKit: string;
+  // Frases alternativas SÓ pra casamento de texto (título de anúncio/SKU
+  // real vs. catálogo) — separadas por "|", cada uma tentada em
+  // textoCorresponde() (lib/demanda.ts). Adicionada em 2026-07-26 pra
+  // resolver um bug real: skuOuKit servia DOIS papéis ao mesmo tempo —
+  // texto exibido pro Guilherme na aba Estoque (convenção de 2026-07-23:
+  // "aqui sempre temos que ter a sku nao o nome") E o corpo de frases
+  // alternativas de casamento. Toda vez que uma frase alternativa era
+  // adicionada em skuOuKit, ela poluía a exibição (ex: "SUPORTE UNIVERSAL
+  // BRANCO | Suporte De Parede Carregador Carro Eletrico Tipo 2
+  // Universal" aparecendo inteiro na aba Estoque). Agora skuOuKit fica
+  // limpo (só o texto real exibido) e frasesCorrespondencia guarda as
+  // frases extras de anúncio, nunca exibidas em lugar nenhum. Null/vazio
+  // quando a placa não precisa de nenhuma frase alternativa.
+  frasesCorrespondencia: string | null;
   pecasPorPlaca: number;
   tempoPlacaHoras: number;
   tier: "A" | "B" | "C";
@@ -97,6 +111,7 @@ export interface DbPlacaRow {
   papel: string | null;
   grupo_composto: string | null;
   sku_ou_kit: string;
+  frases_correspondencia?: string | null;
   pecas_por_placa: string;
   tempo_placa_horas: string;
   tier: string;
@@ -116,6 +131,7 @@ export function toPlacaRow(row: DbPlacaRow): PlacaRow {
     papel: row.papel as PlacaRow["papel"],
     grupoComposto: row.grupo_composto,
     skuOuKit: row.sku_ou_kit,
+    frasesCorrespondencia: row.frases_correspondencia ?? null,
     pecasPorPlaca: Number(row.pecas_por_placa),
     tempoPlacaHoras: Number(row.tempo_placa_horas),
     tier: row.tier as PlacaRow["tier"],

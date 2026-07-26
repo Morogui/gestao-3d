@@ -169,7 +169,10 @@ function corDoTexto(texto: string): string | null {
 function correspondeAoItem(placa: PlacaRow, tituloOuSku: string): boolean {
   const bateu =
     textoCorresponde(placa.skuOuKit, tituloOuSku) ||
-    textoCorresponde(placa.nome, tituloOuSku);
+    textoCorresponde(placa.nome, tituloOuSku) ||
+    (placa.frasesCorrespondencia
+      ? textoCorresponde(placa.frasesCorrespondencia, tituloOuSku)
+      : false);
   if (!bateu) return false;
 
   const corPlaca = corDoTexto(placa.nome);
