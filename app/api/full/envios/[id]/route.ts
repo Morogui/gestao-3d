@@ -26,11 +26,51 @@ export async function PATCH(
 ) {
   const id = Number(params.id);
   const body = await request.json();
-  const status = body.status as string;
+  const status = body.status as string | undefined;
 
-  if (!id || (status !== "confirmado" && status !== "cancelado")) {
+  if (!id) {
+    return NextResponse.json({ error: "Informe um id válido." }, { status: 400 });
+  }
+
+  // Edição de quantidade/data limite — pedido do Guilherme em 2026-07-27:
+  // "eu coloquei errado e não tem como editar". Só é permitido enquanto o
+  // envio ainda está "pendente" — depois de confirmado, a baixa de
+  // estoque já aconteceu, e mudar a quantidade aqui não desfaria/refaria
+  // aquela baixa (por isso o WHERE status = 'pendente' abaixo).
+  if (status === undefined) {
+    const quantidade = body.quantidade !== undefined ? Number(body.quantidade) : null;
+    const dataLimite = body.dataLimite !== undefined ? String(body.dataLimite).trim() : null;
+
+    if (quantidade === null && dataLimite === null) {
+      return NextResponse.json(
+        { error: "Informe status, ou quantidade/dataLimite pra editar." },
+        { status: 400 }
+      );
+    }
+    if (quantidade !== null && (!Number.isFinite(quantidade) || quantidade <= 0)) {
+      return NextResponse.json({ error: "quantidade inválida." }, { status: 400 });
+    }
+
+    const rows = await sql`
+      UPDATE full_envios
+      SET quantidade = COALESCE(${quantidade}, quantidade),
+          data_limite = COALESCE(${dataLimite}, data_limite)
+      WHERE id = ${id} AND status = 'pendente'
+      RETURNING id, sku, placa_id, quantidade, data_limite, status
+    `;
+
+    if (rows.length === 0) {
+      return NextResponse.json(
+        { error: "Envio não encontrado ou não está mais pendente (só dá pra editar antes de confirmar/cancelar)." },
+        { status: 404 }
+      );
+    }
+    return NextResponse.json(rows[0]);
+  }
+
+  if (status !== "confirmado" && status !== "cancelado") {
     return NextResponse.json(
-      { error: "Informe um id válido e status 'confirmado' ou 'cancelado'." },
+      { error: "status precisa ser 'confirmado' ou 'cancelado'." },
       { status: 400 }
     );
   }
