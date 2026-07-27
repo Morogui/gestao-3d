@@ -30,26 +30,21 @@ export async function POST(request: NextRequest) {
   const opcoes: readonly string[] = tipo === "receita" ? CATEGORIAS_RECEITA : CATEGORIAS_DESPESA;
 
   try {
-    const { object } = await generateObject({
+    // Importante: usar output "array" (schema = item, não um objeto
+    // envelope { itens: [...] }) — testamos com um objeto envelope
+    // primeiro e o modelo às vezes devolvia o array serializado como
+    // STRING dentro da chave (ex: {"itens": "[{...}]"}), o que quebrava a
+    // validação do zod (AI_TypeValidationError: Expected array, received
+    // string). O modo "array" do generateObject evita esse problema.
+    const { object: itensBrutos } = await generateObject({
       model: "anthropic/claude-sonnet-5",
+      output: "array",
       schema: z.object({
-        itens: z
-          .array(
-            z.object({
-              descricao: z.string().describe("Descrição curta e específica desse item (o que foi comprado/recebido)"),
-              valor: z.number().describe("Valor em reais desse item específico"),
-              categoria: z
-                .string()
-                .describe(`Categoria desse item, escolhendo SOMENTE uma destas opções: ${opcoes.join(", ")}`),
-            })
-          )
-          .min(1)
-          .describe(
-            "Lista de itens identificados no texto. Se o texto descreve vários produtos/valores " +
-              "concatenados numa única compra (comum quando alguém cola o extrato de um comprovante " +
-              "com várias linhas de produto num campo só), separe cada produto em um item com seu " +
-              "próprio valor e categoria. Se o texto descreve só uma coisa, devolva um único item."
-          ),
+        descricao: z.string().describe("Descrição curta e específica desse item (o que foi comprado/recebido)"),
+        valor: z.number().describe("Valor em reais desse item específico"),
+        categoria: z
+          .string()
+          .describe(`Categoria desse item, escolhendo SOMENTE uma destas opções: ${opcoes.join(", ")}`),
       }),
       messages: [
         {
@@ -61,7 +56,8 @@ export async function POST(request: NextRequest) {
             "vindo direto de um comprovante de compra com várias linhas de produto, tipo caixas, fitas, " +
             "plástico bolha etc. de embalagem). Sua tarefa: separar em itens distintos, cada um com " +
             "descrição curta e específica, valor individual e categoria — escolhendo SOMENTE uma das " +
-            `opções da lista: ${opcoes.join(", ")}.\n\n` +
+            `opções da lista: ${opcoes.join(", ")}. Se o texto descreve só uma coisa (não dá pra separar ` +
+            "em vários itens), devolva um único item.\n\n" +
             `Tipo: ${tipo}\n` +
             `Texto da descrição: ${descricao}\n` +
             (valorTotal !== null
@@ -71,7 +67,11 @@ export async function POST(request: NextRequest) {
       ],
     });
 
-    const itens = object.itens.map((item) => {
+    if (!itensBrutos.length) {
+      return NextResponse.json({ error: "Não deu pra separar os itens." }, { status: 502 });
+    }
+
+    const itens = itensBrutos.map((item) => {
       const bruta = item.categoria.trim();
       const encontrada = opcoes.find((o) => o.toLowerCase() === bruta.toLowerCase());
       return {
