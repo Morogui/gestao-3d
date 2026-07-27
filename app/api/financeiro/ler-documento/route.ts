@@ -29,8 +29,18 @@ const schemaExtracao = z.object({
     .describe(
       "Categoria curta: Filamento, Energia elétrica, Embalagem, Frete, Marketing/Ads, Taxas de marketplace, Impostos, Manutenção de equipamento, Software/Assinaturas, Aluguel, Internet/Telefone, Salário/Pró-labore, Venda direta, Reembolso ou Outros"
     ),
-  descricao: z.string().describe("Resumo curto (1 frase) do que é o documento"),
+  descricao: z
+    .string()
+    .describe(
+      "Resumo curto e específico (1 frase) do que foi essa compra/recebimento — ex: 'Compra de 3 rolos de filamento PLA branco', não só 'pagamento'"
+    ),
   fornecedor: z.string().nullable().describe("Nome de quem emitiu ou recebeu, ou null se não identificar"),
+  formaPagamento: z
+    .string()
+    .nullable()
+    .describe(
+      "Forma de pagamento identificada no documento: PIX, Boleto, Cartão de crédito, Cartão de débito, Transferência (TED/DOC), Dinheiro ou Outro. Null se não identificar."
+    ),
 });
 
 export async function POST(request: NextRequest) {
@@ -75,7 +85,8 @@ export async function POST(request: NextRequest) {
                 "Você é o assistente financeiro de uma pequena empresa de impressão 3D e marketplace (Shopee/Mercado Livre/TikTok Shop). " +
                 "Leia esse comprovante (pode ser boleto, nota fiscal, recibo, comprovante de PIX/transferência, ou print de pagamento) " +
                 `e extraia os dados pro controle financeiro. Se não achar uma data no documento, use ${hojeSP}. ` +
-                "Se não conseguir ler o valor com confiança, estime 0.",
+                "Se não conseguir ler o valor com confiança, estime 0. " +
+                "Preste atenção especial em separar corretamente a categoria (tipo de gasto/receita) da forma de pagamento (PIX, boleto, cartão etc. — geralmente aparece como 'tipo de transferência', 'meio de pagamento' ou no cabeçalho do documento).",
             },
             ehPdf
               ? { type: "file", data: dataUrl, mediaType: mime, filename: file.name }
