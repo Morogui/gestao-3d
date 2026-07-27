@@ -19,6 +19,7 @@ interface Row {
   valor: string;
   data_vencimento: string;
   fornecedor: string | null;
+  forma_pagamento: string | null;
   arquivo_nome: string;
   arquivo_mime: string;
   criado_em: string;
@@ -36,7 +37,7 @@ function toPlainDate(v: unknown): string {
 
 export async function GET() {
   const rows = (await sql`
-    SELECT id, tipo, categoria, descricao, valor, data_vencimento, fornecedor, arquivo_nome, arquivo_mime, criado_em
+    SELECT id, tipo, categoria, descricao, valor, data_vencimento, fornecedor, forma_pagamento, arquivo_nome, arquivo_mime, criado_em
     FROM financeiro_lancamentos
     WHERE arquivo_nome IS NOT NULL
     ORDER BY data_vencimento DESC, id DESC
@@ -51,6 +52,7 @@ export async function GET() {
       valor: Number(r.valor),
       dataVencimento: toPlainDate(r.data_vencimento),
       fornecedor: r.fornecedor,
+      formaPagamento: r.forma_pagamento,
       arquivoNome: r.arquivo_nome,
       arquivoMime: r.arquivo_mime,
     }))
