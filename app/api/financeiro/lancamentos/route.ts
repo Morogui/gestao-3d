@@ -25,6 +25,14 @@ async function garantirTabela() {
       criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+  // forma_pagamento — pedido do Guilherme em 2026-07-27: "a IA separar
+  // essa compra por categoria e qual tipo de pagamento" (PIX, boleto,
+  // cartão etc.). Coluna adicionada depois da tabela já existir em
+  // produção — ADD COLUMN IF NOT EXISTS é idempotente, não quebra se
+  // rodar de novo.
+  await sql`
+    ALTER TABLE financeiro_lancamentos ADD COLUMN IF NOT EXISTS forma_pagamento TEXT
+  `;
 }
 
 interface LancamentoRow {
@@ -37,6 +45,7 @@ interface LancamentoRow {
   data_pagamento: string | null;
   status: string;
   fornecedor: string | null;
+  forma_pagamento: string | null;
   arquivo_nome: string | null;
   arquivo_mime: string | null;
   criado_em: string;
@@ -64,6 +73,7 @@ function serializar(r: LancamentoRow) {
     dataPagamento: toPlainDate(r.data_pagamento),
     status: r.status,
     fornecedor: r.fornecedor,
+    formaPagamento: r.forma_pagamento,
     arquivoNome: r.arquivo_nome,
     arquivoMime: r.arquivo_mime,
     criadoEm: r.criado_em,
@@ -132,6 +142,7 @@ export async function POST(request: NextRequest) {
   const dataVencimento = String(body.dataVencimento ?? "").trim();
   const dataPagamento = body.dataPagamento ? String(body.dataPagamento).trim() : null;
   const fornecedor = body.fornecedor ? String(body.fornecedor).trim() : null;
+  const formaPagamento = body.formaPagamento ? String(body.formaPagamento).trim() : null;
   const arquivoNome = body.arquivoNome ? String(body.arquivoNome) : null;
   const arquivoMime = body.arquivoMime ? String(body.arquivoMime) : null;
   const arquivoBase64 = body.arquivoBase64 ? String(body.arquivoBase64) : null;
@@ -149,9 +160,9 @@ export async function POST(request: NextRequest) {
 
   const rows = (await sql`
     INSERT INTO financeiro_lancamentos
-      (tipo, categoria, descricao, valor, data_vencimento, data_pagamento, status, fornecedor, arquivo_nome, arquivo_mime, arquivo_base64)
+      (tipo, categoria, descricao, valor, data_vencimento, data_pagamento, status, fornecedor, forma_pagamento, arquivo_nome, arquivo_mime, arquivo_base64)
     VALUES
-      (${tipo}, ${categoria}, ${descricao}, ${valor}, ${dataVencimento}, ${dataPagamento}, ${status}, ${fornecedor}, ${arquivoNome}, ${arquivoMime}, ${arquivoBase64})
+      (${tipo}, ${categoria}, ${descricao}, ${valor}, ${dataVencimento}, ${dataPagamento}, ${status}, ${fornecedor}, ${formaPagamento}, ${arquivoNome}, ${arquivoMime}, ${arquivoBase64})
     RETURNING *
   `) as LancamentoRow[];
 
