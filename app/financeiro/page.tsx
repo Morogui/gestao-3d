@@ -29,6 +29,18 @@ interface ExtracaoIA {
   fornecedor: string | null;
 }
 
+interface ComprovanteResumo {
+  id: number;
+  tipo: "despesa" | "receita";
+  categoria: string;
+  descricao: string;
+  valor: number;
+  dataVencimento: string;
+  fornecedor: string | null;
+  arquivoNome: string;
+  arquivoMime: string;
+}
+
 interface RascunhoLancamento {
   tipo: "despesa" | "receita";
   categoria: string;
@@ -97,6 +109,10 @@ export default function FinanceiroPage() {
   });
   const [salvandoCompra, setSalvandoCompra] = useState(false);
 
+  const [mostrarComprovantes, setMostrarComprovantes] = useState(false);
+  const [comprovantes, setComprovantes] = useState<ComprovanteResumo[]>([]);
+  const [carregandoComprovantes, setCarregandoComprovantes] = useState(false);
+
   async function carregarLancamentos(mesAlvo: string) {
     try {
       const res = await fetch(`/api/financeiro/lancamentos?mes=${mesAlvo}`);
@@ -127,6 +143,24 @@ export default function FinanceiroPage() {
   useEffect(() => {
     carregarCompras();
   }, []);
+
+  async function carregarComprovantes() {
+    setCarregandoComprovantes(true);
+    try {
+      const res = await fetch("/api/financeiro/comprovantes");
+      if (res.ok) {
+        setComprovantes(await res.json());
+      }
+    } finally {
+      setCarregandoComprovantes(false);
+    }
+  }
+
+  function alternarComprovantes() {
+    const abrindo = !mostrarComprovantes;
+    setMostrarComprovantes(abrindo);
+    if (abrindo) carregarComprovantes();
+  }
 
   const lancamentosFiltrados = useMemo(() => {
     if (!diaFiltro) return lancamentos;
@@ -202,6 +236,7 @@ export default function FinanceiroPage() {
         if (rascunho.dataVencimento.slice(0, 7) === mes) {
           await carregarLancamentos(mes);
         }
+        if (mostrarComprovantes) await carregarComprovantes();
       } else {
         const data = await res.json();
         setErroIA(data.error ?? "Não deu pra salvar.");
@@ -223,6 +258,7 @@ export default function FinanceiroPage() {
   async function excluirLancamento(id: number) {
     await fetch(`/api/financeiro/lancamentos/${id}`, { method: "DELETE" });
     await carregarLancamentos(mes);
+    if (mostrarComprovantes) await carregarComprovantes();
   }
 
   async function salvarCompra() {
@@ -325,9 +361,18 @@ export default function FinanceiroPage() {
       <UploadComprovante
         analisando={analisando}
         erro={erroIA}
+        mostrandoComprovantes={mostrarComprovantes}
         onArquivo={analisarComIA}
         onNovoManual={() => setRascunho(rascunhoVazio())}
+        onAlternarComprovantes={alternarComprovantes}
       />
+
+      {mostrarComprovantes && (
+        <ComprovantesSalvos
+          comprovantes={comprovantes}
+          carregando={carregandoComprovantes}
+        />
+      )}
 
       {rascunho && (
         <FormularioRevisao
@@ -529,13 +574,17 @@ function CalendarioPagamentos({
 function UploadComprovante({
   analisando,
   erro,
+  mostrandoComprovantes,
   onArquivo,
   onNovoManual,
+  onAlternarComprovantes,
 }: {
   analisando: boolean;
   erro: string | null;
+  mostrandoComprovantes: boolean;
   onArquivo: (file: File) => void;
   onNovoManual: () => void;
+  onAlternarComprovantes: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-gray-300 bg-white px-4 py-4">
@@ -559,10 +608,102 @@ function UploadComprovante({
       >
         + Lançamento manual
       </button>
+      <button
+        onClick={onAlternarComprovantes}
+        className={
+          "rounded border px-3 py-2 text-xs font-medium " +
+          (mostrandoComprovantes
+            ? "border-blue-300 bg-blue-50 text-blue-700"
+            : "border-gray-300 text-gray-700 hover:bg-gray-50")
+        }
+      >
+        {mostrandoComprovantes ? "Ocultar comprovantes salvos" : "Ver comprovantes salvos"}
+      </button>
       <p className="text-xs text-gray-400">
         A IA lê o documento e preenche os campos — você confirma antes de salvar.
       </p>
       {erro && <p className="w-full text-xs text-red-600">{erro}</p>}
+    </div>
+  );
+}
+
+function ComprovantesSalvos({
+  comprovantes,
+  carregando,
+}: {
+  comprovantes: ComprovanteResumo[];
+  carregando: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <p className="mb-1 text-sm font-semibold text-gray-700">Comprovantes salvos</p>
+      <p className="mb-3 text-xs text-gray-500">
+        Todos os documentos anexados a lançamentos, de qualquer mês — clique em &quot;abrir&quot;
+        pra ver o arquivo original.
+      </p>
+      <div className="overflow-x-auto rounded border border-gray-100">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
+            <tr>
+              <th className="px-3 py-2">Data</th>
+              <th className="px-3 py-2">Tipo</th>
+              <th className="px-3 py-2">Categoria</th>
+              <th className="px-3 py-2">Descrição</th>
+              <th className="px-3 py-2">Fornecedor</th>
+              <th className="px-3 py-2 text-right">Valor</th>
+              <th className="px-3 py-2">Arquivo</th>
+              <th className="px-3 py-2"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {carregando && (
+              <tr>
+                <td colSpan={8} className="px-3 py-4 text-center text-gray-400">
+                  Carregando...
+                </td>
+              </tr>
+            )}
+            {!carregando && comprovantes.length === 0 && (
+              <tr>
+                <td colSpan={8} className="px-3 py-4 text-center text-gray-400">
+                  Nenhum comprovante salvo ainda.
+                </td>
+              </tr>
+            )}
+            {!carregando &&
+              comprovantes.map((c) => (
+                <tr key={c.id}>
+                  <td className="px-3 py-2 text-gray-600">{formatDiaBR(c.dataVencimento)}</td>
+                  <td className="px-3 py-2">
+                    <span
+                      className={
+                        "rounded px-1.5 py-0.5 text-xs font-semibold " +
+                        (c.tipo === "receita" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")
+                      }
+                    >
+                      {c.tipo === "receita" ? "Receita" : "Despesa"}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">{c.categoria}</td>
+                  <td className="px-3 py-2 text-gray-600">{c.descricao || "—"}</td>
+                  <td className="px-3 py-2 text-gray-600">{c.fornecedor || "—"}</td>
+                  <td className="px-3 py-2 text-right font-medium">{formatBRL(c.valor)}</td>
+                  <td className="px-3 py-2 text-gray-500">{c.arquivoNome}</td>
+                  <td className="px-3 py-2 text-right">
+                    <a
+                      href={`/api/financeiro/lancamentos/${c.id}/arquivo`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-medium text-blue-600 hover:underline"
+                    >
+                      abrir
+                    </a>
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
