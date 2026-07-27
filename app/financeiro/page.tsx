@@ -57,6 +57,12 @@ interface RascunhoLancamento {
   arquivoBase64?: string | null;
 }
 
+interface ItemDividido {
+  descricao: string;
+  valor: string;
+  categoria: string;
+}
+
 function formatBRL(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -105,6 +111,8 @@ export default function FinanceiroPage() {
   const [erroIA, setErroIA] = useState<string | null>(null);
   const [salvandoLancamento, setSalvandoLancamento] = useState(false);
   const [categorizando, setCategorizando] = useState(false);
+  const [itensDivididos, setItensDivididos] = useState<ItemDividido[] | null>(null);
+  const [analisandoItens, setAnalisandoItens] = useState(false);
 
   const [novaCompra, setNovaCompra] = useState({
     cor: "branco",
@@ -264,6 +272,98 @@ export default function FinanceiroPage() {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rascunho?.descricao, rascunho?.tipo, rascunho?.categoria]);
+
+  // Separar descrição em itens — pedido do Guilherme em 2026-07-27: ele
+  // colou uma descrição que juntava vários produtos de embalagem com
+  // valores individuais (ex: "SHPP Brasil - 40,11 (Caixa papelao 18x13x9)
+  // 50un -73,84 2 rolo de bolha -126,84 ...") e isso virou 1 lançamento só
+  // com categoria errada. Esse botão manda o texto pra IA separar em
+  // itens (descrição + valor + categoria individuais) que o usuário revisa
+  // antes de salvar como vários lançamentos.
+  async function analisarItens() {
+    if (!rascunho) return;
+    const descricao = rascunho.descricao.trim();
+    if (!descricao) return;
+    setAnalisandoItens(true);
+    setErroIA(null);
+    try {
+      const valorTotalNum = Number(rascunho.valor.replace(",", "."));
+      const res = await fetch("/api/financeiro/separar-itens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: rascunho.tipo,
+          descricao,
+          valorTotal: Number.isFinite(valorTotalNum) ? valorTotalNum : null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setErroIA(data.error ?? "Não deu pra analisar a descrição.");
+        return;
+      }
+      const itens = data.itens as { descricao: string; valor: number; categoria: string }[];
+      if (itens.length <= 1) {
+        const item = itens[0];
+        if (item) {
+          setRascunho((atual) =>
+            atual
+              ? {
+                  ...atual,
+                  descricao: item.descricao || atual.descricao,
+                  categoria: item.categoria || atual.categoria,
+                  valor: item.valor ? String(item.valor) : atual.valor,
+                }
+              : atual
+          );
+        }
+        setItensDivididos(null);
+      } else {
+        setItensDivididos(
+          itens.map((item) => ({
+            descricao: item.descricao,
+            valor: String(item.valor),
+            categoria: item.categoria,
+          }))
+        );
+      }
+    } catch {
+      setErroIA("Não deu pra conectar com a IA.");
+    } finally {
+      setAnalisandoItens(false);
+    }
+  }
+
+  async function salvarItensDivididos() {
+    if (!rascunho || !itensDivididos) return;
+    setSalvandoLancamento(true);
+    try {
+      for (const item of itensDivididos) {
+        const valorNum = Number(item.valor.replace(",", "."));
+        if (!item.categoria.trim() || !Number.isFinite(valorNum) || valorNum <= 0) continue;
+        await fetch("/api/financeiro/lancamentos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tipo: rascunho.tipo,
+            categoria: item.categoria,
+            descricao: item.descricao,
+            valor: valorNum,
+            dataVencimento: rascunho.dataVencimento,
+            fornecedor: rascunho.fornecedor || null,
+            formaPagamento: rascunho.formaPagamento || null,
+          }),
+        });
+      }
+      setRascunho(null);
+      setItensDivididos(null);
+      setErroIA(null);
+      await carregarLancamentos(mes);
+      if (mostrarComprovantes) await carregarComprovantes();
+    } finally {
+      setSalvandoLancamento(false);
+    }
+  }
 
   async function salvarRascunho() {
     if (!rascunho) return;
@@ -433,12 +533,19 @@ export default function FinanceiroPage() {
           salvando={salvandoLancamento}
           categorizando={categorizando}
           erro={erroIA}
+          itensDivididos={itensDivididos}
+          analisandoItens={analisandoItens}
           onMudar={setRascunho}
           onSalvar={salvarRascunho}
           onCancelar={() => {
             setRascunho(null);
+            setItensDivididos(null);
             setErroIA(null);
           }}
+          onAnalisarItens={analisarItens}
+          onMudarItens={setItensDivididos}
+          onSalvarItens={salvarItensDivididos}
+          onCancelarItens={() => setItensDivididos(null)}
         />
       )}
 
@@ -778,19 +885,45 @@ function FormularioRevisao({
   salvando,
   categorizando,
   erro,
+  itensDivididos,
+  analisandoItens,
   onMudar,
   onSalvar,
   onCancelar,
+  onAnalisarItens,
+  onMudarItens,
+  onSalvarItens,
+  onCancelarItens,
 }: {
   rascunho: RascunhoLancamento;
   salvando: boolean;
   categorizando: boolean;
   erro: string | null;
+  itensDivididos: ItemDividido[] | null;
+  analisandoItens: boolean;
   onMudar: (r: RascunhoLancamento) => void;
   onSalvar: () => void;
   onCancelar: () => void;
+  onAnalisarItens: () => void;
+  onMudarItens: (itens: ItemDividido[]) => void;
+  onSalvarItens: () => void;
+  onCancelarItens: () => void;
 }) {
   const categorias = rascunho.tipo === "despesa" ? CATEGORIAS_DESPESA : CATEGORIAS_RECEITA;
+  const somaItens = itensDivididos?.reduce((acc, it) => acc + (Number(it.valor.replace(",", ".")) || 0), 0) ?? 0;
+
+  function atualizarItem(i: number, campo: keyof ItemDividido, valor: string) {
+    if (!itensDivididos) return;
+    const copia = itensDivididos.slice();
+    copia[i] = { ...copia[i], [campo]: valor };
+    onMudarItens(copia);
+  }
+
+  function removerItem(i: number) {
+    if (!itensDivididos) return;
+    onMudarItens(itensDivididos.filter((_, idx) => idx !== i));
+  }
+
   return (
     <div className="rounded-lg border border-blue-200 bg-blue-50/40 p-4">
       <p className="mb-3 text-sm font-medium text-gray-700">
@@ -812,7 +945,9 @@ function FormularioRevisao({
         </label>
         <label className="text-xs text-gray-500">
           Categoria{" "}
-          {categorizando ? (
+          {itensDivididos ? (
+            <span className="text-gray-400">(definida por item abaixo)</span>
+          ) : categorizando ? (
             <span className="text-blue-500">(IA analisando...)</span>
           ) : (
             <span className="text-gray-400">(sugerida pela IA a partir da descrição)</span>
@@ -822,7 +957,8 @@ function FormularioRevisao({
             value={rascunho.categoria}
             onChange={(e) => onMudar({ ...rascunho, categoria: e.target.value })}
             placeholder={categorizando ? "Analisando..." : "Digite a descrição pra IA sugerir"}
-            className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            disabled={!!itensDivididos}
+            className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm disabled:bg-gray-100 disabled:text-gray-400"
           />
           <datalist id="categorias-financeiro">
             {categorias.map((c) => (
@@ -831,11 +967,12 @@ function FormularioRevisao({
           </datalist>
         </label>
         <label className="text-xs text-gray-500">
-          Valor (R$)
+          Valor (R$) {itensDivididos && <span className="text-gray-400">(definido por item abaixo)</span>}
           <input
             value={rascunho.valor}
             onChange={(e) => onMudar({ ...rascunho, valor: e.target.value })}
-            className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            disabled={!!itensDivididos}
+            className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm disabled:bg-gray-100 disabled:text-gray-400"
             placeholder="0,00"
           />
         </label>
@@ -872,24 +1009,124 @@ function FormularioRevisao({
           </datalist>
         </label>
         <label className="text-xs text-gray-500 sm:col-span-3">
-          Descrição (detalhe breve do que foi essa compra)
-          <input
+          Descrição (detalhe breve do que foi essa compra — se colar vários produtos/valores juntos, a
+          IA consegue separar em itens)
+          <textarea
             value={rascunho.descricao}
             onChange={(e) => onMudar({ ...rascunho, descricao: e.target.value })}
+            rows={2}
             className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-            placeholder="Ex: compra de 3 rolos de filamento PLA branco"
+            placeholder="Ex: compra de 3 rolos de filamento PLA branco — ou cole a lista de produtos de uma compra com vários itens"
           />
         </label>
       </div>
+
+      {!itensDivididos && (
+        <button
+          onClick={onAnalisarItens}
+          disabled={analisandoItens || !rascunho.descricao.trim()}
+          className="mt-2 rounded border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-40"
+        >
+          {analisandoItens ? "Analisando descrição..." : "Separar em itens com IA"}
+        </button>
+      )}
+
+      {itensDivididos && (
+        <div className="mt-3 rounded border border-blue-200 bg-white p-3">
+          <p className="mb-2 text-xs font-medium text-gray-700">
+            A IA identificou {itensDivididos.length} itens nessa descrição — revise antes de salvar
+            (cada um vira um lançamento separado):
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs font-semibold uppercase text-gray-500">
+                <tr>
+                  <th className="px-2 py-1">Descrição do item</th>
+                  <th className="px-2 py-1">Categoria</th>
+                  <th className="px-2 py-1 text-right">Valor</th>
+                  <th className="px-2 py-1"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {itensDivididos.map((item, i) => (
+                  <tr key={i}>
+                    <td className="px-2 py-1">
+                      <input
+                        value={item.descricao}
+                        onChange={(e) => atualizarItem(i, "descricao", e.target.value)}
+                        className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                      />
+                    </td>
+                    <td className="px-2 py-1">
+                      <input
+                        list="categorias-financeiro"
+                        value={item.categoria}
+                        onChange={(e) => atualizarItem(i, "categoria", e.target.value)}
+                        className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                      />
+                    </td>
+                    <td className="px-2 py-1">
+                      <input
+                        value={item.valor}
+                        onChange={(e) => atualizarItem(i, "valor", e.target.value)}
+                        className="w-full rounded border border-gray-300 px-2 py-1 text-right text-sm"
+                      />
+                    </td>
+                    <td className="px-2 py-1 text-right">
+                      <button
+                        onClick={() => removerItem(i)}
+                        className="text-xs text-gray-400 hover:text-red-600"
+                      >
+                        remover
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-gray-500">
+            Soma dos itens: <span className="font-medium text-gray-700">{formatBRL(somaItens)}</span>
+            {rascunho.valor && Number.isFinite(Number(rascunho.valor.replace(",", "."))) && (
+              <>
+                {" "}
+                · Valor total digitado: {formatBRL(Number(rascunho.valor.replace(",", ".")))}
+                {Math.abs(somaItens - Number(rascunho.valor.replace(",", "."))) > 0.01 && (
+                  <span className="ml-1 font-medium text-amber-600">(não bate — confira os valores)</span>
+                )}
+              </>
+            )}
+          </p>
+        </div>
+      )}
+
       {erro && <p className="mt-2 text-xs text-red-600">{erro}</p>}
       <div className="mt-3 flex gap-2">
-        <button
-          onClick={onSalvar}
-          disabled={salvando}
-          className="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-40"
-        >
-          {salvando ? "Salvando..." : "Salvar lançamento"}
-        </button>
+        {itensDivididos ? (
+          <>
+            <button
+              onClick={onSalvarItens}
+              disabled={salvando || itensDivididos.length === 0}
+              className="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-40"
+            >
+              {salvando ? "Salvando..." : `Salvar ${itensDivididos.length} lançamentos`}
+            </button>
+            <button
+              onClick={onCancelarItens}
+              className="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+            >
+              Voltar pro lançamento único
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={onSalvar}
+            disabled={salvando}
+            className="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-40"
+          >
+            {salvando ? "Salvando..." : "Salvar lançamento"}
+          </button>
+        )}
         <button
           onClick={onCancelar}
           className="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
