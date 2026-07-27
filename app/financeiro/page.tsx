@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   CATEGORIAS_DESPESA,
   CATEGORIAS_RECEITA,
+  FORMAS_PAGAMENTO,
   LancamentoFinanceiro,
   CompraFilamento,
 } from "@/lib/financeiro";
@@ -27,6 +28,7 @@ interface ExtracaoIA {
   categoria: string;
   descricao: string;
   fornecedor: string | null;
+  formaPagamento: string | null;
 }
 
 interface ComprovanteResumo {
@@ -37,6 +39,7 @@ interface ComprovanteResumo {
   valor: number;
   dataVencimento: string;
   fornecedor: string | null;
+  formaPagamento: string | null;
   arquivoNome: string;
   arquivoMime: string;
 }
@@ -48,6 +51,7 @@ interface RascunhoLancamento {
   valor: string;
   dataVencimento: string;
   fornecedor: string;
+  formaPagamento: string;
   arquivoNome?: string | null;
   arquivoMime?: string | null;
   arquivoBase64?: string | null;
@@ -82,6 +86,7 @@ const rascunhoVazio = (tipo: "despesa" | "receita" = "despesa"): RascunhoLancame
   valor: "",
   dataVencimento: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10),
   fornecedor: "",
+  formaPagamento: "",
 });
 
 export default function FinanceiroPage() {
@@ -195,6 +200,7 @@ export default function FinanceiroPage() {
         valor: extraido.valor ? String(extraido.valor) : "",
         dataVencimento: extraido.data || rascunhoVazio().dataVencimento,
         fornecedor: extraido.fornecedor ?? "",
+        formaPagamento: extraido.formaPagamento ?? "",
         arquivoNome: data.arquivoNome,
         arquivoMime: data.arquivoMime,
         arquivoBase64: data.arquivoBase64,
@@ -225,6 +231,7 @@ export default function FinanceiroPage() {
           valor,
           dataVencimento: rascunho.dataVencimento,
           fornecedor: rascunho.fornecedor || null,
+          formaPagamento: rascunho.formaPagamento || null,
           arquivoNome: rascunho.arquivoNome ?? null,
           arquivoMime: rascunho.arquivoMime ?? null,
           arquivoBase64: rascunho.arquivoBase64 ?? null,
@@ -390,6 +397,7 @@ export default function FinanceiroPage() {
               <th className="px-3 py-2">Categoria</th>
               <th className="px-3 py-2">Descrição</th>
               <th className="px-3 py-2">Fornecedor</th>
+              <th className="px-3 py-2">Pagamento</th>
               <th className="px-3 py-2 text-right">Valor</th>
               <th className="px-3 py-2">Status</th>
               <th className="px-3 py-2"></th>
@@ -398,7 +406,7 @@ export default function FinanceiroPage() {
           <tbody className="divide-y divide-gray-100">
             {lancamentosFiltrados.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-6 text-center text-gray-400">
+                <td colSpan={9} className="px-3 py-6 text-center text-gray-400">
                   Nenhum lançamento nesse mês.
                 </td>
               </tr>
@@ -419,6 +427,7 @@ export default function FinanceiroPage() {
                 <td className="px-3 py-2">{l.categoria}</td>
                 <td className="px-3 py-2 text-gray-600">{l.descricao || "—"}</td>
                 <td className="px-3 py-2 text-gray-600">{l.fornecedor || "—"}</td>
+                <td className="px-3 py-2 text-gray-600">{l.formaPagamento || "—"}</td>
                 <td className="px-3 py-2 text-right font-medium">{formatBRL(l.valor)}</td>
                 <td className="px-3 py-2">
                   <button
@@ -650,6 +659,7 @@ function ComprovantesSalvos({
               <th className="px-3 py-2">Categoria</th>
               <th className="px-3 py-2">Descrição</th>
               <th className="px-3 py-2">Fornecedor</th>
+              <th className="px-3 py-2">Pagamento</th>
               <th className="px-3 py-2 text-right">Valor</th>
               <th className="px-3 py-2">Arquivo</th>
               <th className="px-3 py-2"></th>
@@ -658,14 +668,14 @@ function ComprovantesSalvos({
           <tbody className="divide-y divide-gray-100">
             {carregando && (
               <tr>
-                <td colSpan={8} className="px-3 py-4 text-center text-gray-400">
+                <td colSpan={9} className="px-3 py-4 text-center text-gray-400">
                   Carregando...
                 </td>
               </tr>
             )}
             {!carregando && comprovantes.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-4 text-center text-gray-400">
+                <td colSpan={9} className="px-3 py-4 text-center text-gray-400">
                   Nenhum comprovante salvo ainda.
                 </td>
               </tr>
@@ -687,6 +697,7 @@ function ComprovantesSalvos({
                   <td className="px-3 py-2">{c.categoria}</td>
                   <td className="px-3 py-2 text-gray-600">{c.descricao || "—"}</td>
                   <td className="px-3 py-2 text-gray-600">{c.fornecedor || "—"}</td>
+                  <td className="px-3 py-2 text-gray-600">{c.formaPagamento || "—"}</td>
                   <td className="px-3 py-2 text-right font-medium">{formatBRL(c.valor)}</td>
                   <td className="px-3 py-2 text-gray-500">{c.arquivoNome}</td>
                   <td className="px-3 py-2 text-right">
@@ -775,7 +786,7 @@ function FormularioRevisao({
             className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
           />
         </label>
-        <label className="text-xs text-gray-500 sm:col-span-2">
+        <label className="text-xs text-gray-500">
           Fornecedor/cliente
           <input
             value={rascunho.fornecedor}
@@ -783,12 +794,28 @@ function FormularioRevisao({
             className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
           />
         </label>
+        <label className="text-xs text-gray-500">
+          Forma de pagamento
+          <input
+            list="formas-pagamento-financeiro"
+            value={rascunho.formaPagamento}
+            onChange={(e) => onMudar({ ...rascunho, formaPagamento: e.target.value })}
+            className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            placeholder="PIX, Boleto, Cartão..."
+          />
+          <datalist id="formas-pagamento-financeiro">
+            {FORMAS_PAGAMENTO.map((f) => (
+              <option key={f} value={f} />
+            ))}
+          </datalist>
+        </label>
         <label className="text-xs text-gray-500 sm:col-span-3">
-          Descrição
+          Descrição (detalhe breve do que foi essa compra)
           <input
             value={rascunho.descricao}
             onChange={(e) => onMudar({ ...rascunho, descricao: e.target.value })}
             className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            placeholder="Ex: compra de 3 rolos de filamento PLA branco"
           />
         </label>
       </div>
