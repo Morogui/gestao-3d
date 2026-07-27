@@ -31,6 +31,20 @@ export const CATEGORIAS_RECEITA = [
   "Outros",
 ] as const;
 
+// Forma de pagamento — pedido do Guilherme em 2026-07-27: "a IA separar
+// essa compra por categoria e qual tipo de pagamento". Lista só de
+// sugestão (o campo aceita texto livre via datalist), cobrindo os meios
+// mais comuns em comprovante de boleto/nota/PIX.
+export const FORMAS_PAGAMENTO = [
+  "PIX",
+  "Boleto",
+  "Cartão de crédito",
+  "Cartão de débito",
+  "Transferência (TED/DOC)",
+  "Dinheiro",
+  "Outro",
+] as const;
+
 export type TipoLancamento = "despesa" | "receita";
 export type StatusLancamento = "pendente" | "pago";
 
@@ -44,6 +58,7 @@ export interface LancamentoFinanceiro {
   dataPagamento: string | null;
   status: StatusLancamento;
   fornecedor: string | null;
+  formaPagamento: string | null;
   arquivoNome: string | null;
   arquivoMime: string | null;
   criadoEm: string;
