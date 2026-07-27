@@ -13,6 +13,7 @@ interface LancamentoRow {
   data_pagamento: string | null;
   status: string;
   fornecedor: string | null;
+  forma_pagamento: string | null;
   arquivo_nome: string | null;
   arquivo_mime: string | null;
   criado_em: string;
@@ -40,6 +41,7 @@ function serializar(r: LancamentoRow) {
     dataPagamento: toPlainDate(r.data_pagamento),
     status: r.status,
     fornecedor: r.fornecedor,
+    formaPagamento: r.forma_pagamento,
     arquivoNome: r.arquivo_nome,
     arquivoMime: r.arquivo_mime,
     criadoEm: r.criado_em,
@@ -65,6 +67,7 @@ export async function PATCH(
   const valor = body.valor !== undefined ? Number(body.valor) : null;
   const dataVencimento = body.dataVencimento !== undefined ? String(body.dataVencimento).trim() : null;
   const fornecedor = body.fornecedor !== undefined ? String(body.fornecedor).trim() : null;
+  const formaPagamento = body.formaPagamento !== undefined ? String(body.formaPagamento).trim() : null;
 
   if (valor !== null && (!Number.isFinite(valor) || valor <= 0)) {
     return NextResponse.json({ error: "valor inválido" }, { status: 400 });
@@ -91,6 +94,7 @@ export async function PATCH(
           valor = COALESCE(${valor}, valor),
           data_vencimento = COALESCE(${dataVencimento}, data_vencimento)::date,
           fornecedor = COALESCE(${fornecedor}, fornecedor),
+          forma_pagamento = COALESCE(${formaPagamento}, forma_pagamento),
           status = ${status},
           data_pagamento = ${dataPagamento}
       WHERE id = ${id}
@@ -103,7 +107,8 @@ export async function PATCH(
           descricao = COALESCE(${descricao}, descricao),
           valor = COALESCE(${valor}, valor),
           data_vencimento = COALESCE(${dataVencimento}, data_vencimento)::date,
-          fornecedor = COALESCE(${fornecedor}, fornecedor)
+          fornecedor = COALESCE(${fornecedor}, fornecedor),
+          forma_pagamento = COALESCE(${formaPagamento}, forma_pagamento)
       WHERE id = ${id}
       RETURNING *
     `) as LancamentoRow[];
