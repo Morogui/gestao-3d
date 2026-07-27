@@ -367,13 +367,6 @@ export default function FinanceiroPage() {
         onAlternarComprovantes={alternarComprovantes}
       />
 
-      {mostrarComprovantes && (
-        <ComprovantesSalvos
-          comprovantes={comprovantes}
-          carregando={carregandoComprovantes}
-        />
-      )}
-
       {rascunho && (
         <FormularioRevisao
           rascunho={rascunho}
@@ -464,6 +457,13 @@ export default function FinanceiroPage() {
         onSalvar={salvarCompra}
         onExcluir={excluirCompra}
       />
+
+      {mostrarComprovantes && (
+        <ComprovantesSalvos
+          comprovantes={comprovantes}
+          carregando={carregandoComprovantes}
+        />
+      )}
     </div>
   );
 }
