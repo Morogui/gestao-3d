@@ -104,6 +104,7 @@ export default function FinanceiroPage() {
   const [analisando, setAnalisando] = useState(false);
   const [erroIA, setErroIA] = useState<string | null>(null);
   const [salvandoLancamento, setSalvandoLancamento] = useState(false);
+  const [categorizando, setCategorizando] = useState(false);
 
   const [novaCompra, setNovaCompra] = useState({
     cor: "branco",
@@ -211,6 +212,58 @@ export default function FinanceiroPage() {
       setAnalisando(false);
     }
   }
+
+  // Sugestão automática de categoria — pedido do Guilherme em 2026-07-27:
+  // "Categoria deve ser analisada pela Ia nao eu ter que preencher." Assim
+  // que o usuário digita uma descrição no lançamento manual (e ainda não
+  // escolheu categoria), a IA classifica sozinha; o campo continua
+  // editável caso ela erre.
+  async function sugerirCategoria(
+    tipo: "despesa" | "receita",
+    descricao: string,
+    fornecedor: string,
+    valorStr: string
+  ) {
+    setCategorizando(true);
+    try {
+      const valorNum = Number(valorStr.replace(",", "."));
+      const res = await fetch("/api/financeiro/categorizar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo,
+          descricao,
+          fornecedor: fornecedor.trim() || null,
+          valor: Number.isFinite(valorNum) ? valorNum : null,
+        }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setRascunho((atual) => {
+        if (!atual) return atual;
+        if (atual.categoria.trim()) return atual; // usuário já escolheu/a IA já preencheu
+        if (atual.descricao.trim() !== descricao) return atual; // descrição mudou de novo nesse meio tempo
+        return { ...atual, categoria: data.categoria };
+      });
+    } catch {
+      // silencioso — categoria continua editável manualmente pelo datalist
+    } finally {
+      setCategorizando(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!rascunho) return;
+    if (rascunho.categoria.trim()) return;
+    const descricaoAtual = rascunho.descricao.trim();
+    if (descricaoAtual.length < 4) return;
+    const { tipo: tipoAtual, fornecedor: fornecedorAtual, valor: valorAtual } = rascunho;
+    const timer = setTimeout(() => {
+      sugerirCategoria(tipoAtual, descricaoAtual, fornecedorAtual, valorAtual);
+    }, 700);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rascunho?.descricao, rascunho?.tipo, rascunho?.categoria]);
 
   async function salvarRascunho() {
     if (!rascunho) return;
@@ -378,6 +431,7 @@ export default function FinanceiroPage() {
         <FormularioRevisao
           rascunho={rascunho}
           salvando={salvandoLancamento}
+          categorizando={categorizando}
           erro={erroIA}
           onMudar={setRascunho}
           onSalvar={salvarRascunho}
@@ -722,6 +776,7 @@ function ComprovantesSalvos({
 function FormularioRevisao({
   rascunho,
   salvando,
+  categorizando,
   erro,
   onMudar,
   onSalvar,
@@ -729,6 +784,7 @@ function FormularioRevisao({
 }: {
   rascunho: RascunhoLancamento;
   salvando: boolean;
+  categorizando: boolean;
   erro: string | null;
   onMudar: (r: RascunhoLancamento) => void;
   onSalvar: () => void;
@@ -755,11 +811,17 @@ function FormularioRevisao({
           </select>
         </label>
         <label className="text-xs text-gray-500">
-          Categoria
+          Categoria{" "}
+          {categorizando ? (
+            <span className="text-blue-500">(IA analisando...)</span>
+          ) : (
+            <span className="text-gray-400">(sugerida pela IA a partir da descrição)</span>
+          )}
           <input
             list="categorias-financeiro"
             value={rascunho.categoria}
             onChange={(e) => onMudar({ ...rascunho, categoria: e.target.value })}
+            placeholder={categorizando ? "Analisando..." : "Digite a descrição pra IA sugerir"}
             className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
           />
           <datalist id="categorias-financeiro">
