@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateObject } from "ai";
 import { z } from "zod";
+import { CATEGORIAS_DESPESA, CATEGORIAS_RECEITA } from "@/lib/financeiro";
+import { categoriasHistoricas, mesclarCategorias } from "@/lib/financeiro-categorias";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -18,30 +20,41 @@ export const maxDuration = 60;
 // de salvar"). O arquivo original (base64) volta na resposta pra não
 // precisar subir de novo quando o usuário confirmar em
 // POST /api/financeiro/lancamentos.
-const schemaExtracao = z.object({
-  tipo: z
-    .enum(["despesa", "receita"])
-    .describe("'despesa' se é um pagamento/saída de dinheiro da empresa, 'receita' se é um recebimento/entrada"),
-  valor: z.number().describe("Valor do documento em reais, só o número"),
-  data: z.string().describe("Data do documento/pagamento, formato YYYY-MM-DD"),
-  categoria: z
-    .string()
-    .describe(
-      "Categoria curta: Filamento, Energia elétrica, Embalagem, Frete, Marketing/Ads, Taxas de marketplace, Impostos, Manutenção de equipamento, Software/Assinaturas, Aluguel, Internet/Telefone, Salário/Pró-labore, Venda direta, Reembolso ou Outros"
-    ),
-  descricao: z
-    .string()
-    .describe(
-      "Resumo curto e específico (1 frase) do que foi essa compra/recebimento — ex: 'Compra de 3 rolos de filamento PLA branco', não só 'pagamento'"
-    ),
-  fornecedor: z.string().nullable().describe("Nome de quem emitiu ou recebeu, ou null se não identificar"),
-  formaPagamento: z
-    .string()
-    .nullable()
-    .describe(
-      "Forma de pagamento identificada no documento: PIX, Boleto, Cartão de crédito, Cartão de débito, Transferência (TED/DOC), Dinheiro ou Outro. Null se não identificar."
-    ),
-});
+//
+// Atualizado em 2026-07-27 — pedido: "a IA deve... sempre ir aprendendo
+// com os fornecedores, descricao e ir organizando de forma mais clara."
+// A lista de categorias oferecida pra IA agora é a lista fixa UNIDA com
+// as categorias que já foram realmente usadas no histórico (via
+// lib/financeiro-categorias) — como aqui ainda não sabemos o tipo
+// (despesa/receita) antes da extração, buscamos o histórico dos dois e
+// oferecemos a união. Por isso o schema virou uma função (precisa da
+// lista carregada do banco antes de montar a description).
+function construirSchemaExtracao(opcoesCategoria: string[]) {
+  return z.object({
+    tipo: z
+      .enum(["despesa", "receita"])
+      .describe("'despesa' se é um pagamento/saída de dinheiro da empresa, 'receita' se é um recebimento/entrada"),
+    valor: z.number().describe("Valor do documento em reais, só o número"),
+    data: z.string().describe("Data do documento/pagamento, formato YYYY-MM-DD"),
+    categoria: z
+      .string()
+      .describe(
+        `Categoria mais adequada, priorizando reaproveitar uma destas opções (já usadas antes): ${opcoesCategoria.join(", ")}. Só use "Outros" se nada da lista fizer sentido.`
+      ),
+    descricao: z
+      .string()
+      .describe(
+        "Resumo curto e específico (1 frase) do que foi essa compra/recebimento — ex: 'Compra de 3 rolos de filamento PLA branco', não só 'pagamento'"
+      ),
+    fornecedor: z.string().nullable().describe("Nome de quem emitiu ou recebeu, ou null se não identificar"),
+    formaPagamento: z
+      .string()
+      .nullable()
+      .describe(
+        "Forma de pagamento identificada no documento: PIX, Boleto, Cartão de crédito, Cartão de débito, Transferência (TED/DOC), Dinheiro ou Outro. Null se não identificar."
+      ),
+  });
+}
 
 export async function POST(request: NextRequest) {
   let formData: FormData;
@@ -71,10 +84,29 @@ export async function POST(request: NextRequest) {
   const dataUrl = `data:${mime};base64,${base64}`;
   const hojeSP = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
+  // Ainda não sabemos se o documento é despesa ou receita (a IA decide
+  // isso na própria extração), então oferecemos a união das categorias
+  // dos dois tipos (fixas + históricas de cada um).
+  const [historicasDespesa, historicasReceita] = await Promise.all([
+    categoriasHistoricas("despesa"),
+    categoriasHistoricas("receita"),
+  ]);
+  const candidatas = [
+    ...mesclarCategorias(CATEGORIAS_DESPESA, historicasDespesa),
+    ...mesclarCategorias(CATEGORIAS_RECEITA, historicasReceita),
+  ];
+  const vistas = new Set<string>();
+  const opcoesCategoria = candidatas.filter((c) => {
+    const chave = c.toLowerCase();
+    if (vistas.has(chave)) return false;
+    vistas.add(chave);
+    return true;
+  });
+
   try {
     const { object } = await generateObject({
       model: "anthropic/claude-sonnet-5",
-      schema: schemaExtracao,
+      schema: construirSchemaExtracao(opcoesCategoria),
       messages: [
         {
           role: "user",
