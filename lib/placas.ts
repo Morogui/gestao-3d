@@ -149,26 +149,71 @@ export function toPlacaRow(row: DbPlacaRow): PlacaRow {
   };
 }
 
+// Alguns grupos de produto COMPARTILHAM o gancho entre si — pedido do
+// Guilherme em 2026-07-26: o gancho do Suporte Universal, do Suporte BMW
+// e do Suporte Carregador BYD é a MESMA peça física (mesmo molde/design),
+// então uma única placa "Gancho compartilhado" (por cor) abastece os três
+// produtos ao mesmo tempo, em vez de cada um ter seu próprio estoque de
+// gancho isolado. A placa "Mista" de cada produto (corpo+gancho na MESMA
+// impressão) continua sendo só daquele produto — "cada um tem o seu",
+// nas palavras do Guilherme — só a placa de gancho AVULSA (impressão só
+// de gancho) é que é compartilhada. O Suporte Carro fica de fora dessa
+// tabela de propósito: o gancho dele só existe via a própria placa Mista
+// do Carro, não usa (nem abastece) o pool compartilhado.
+// Os valores à direita são só chaves internas (nunca exibidas) que
+// identificam o "pool" de gancho compartilhado de cada cor — ver as
+// placas "Gancho Compartilhado (Branco/Preto)" criadas via
+// /api/admin/consolidar-gancho-compartilhado.
+const GANCHO_COMPARTILHADO_POR_GRUPO: Record<string, string> = {
+  Universal: "__gancho_compartilhado_branco__",
+  "Universal-Preto": "__gancho_compartilhado_preto__",
+  BMW: "__gancho_compartilhado_branco__",
+  "BMW-Preto": "__gancho_compartilhado_preto__",
+  BYD: "__gancho_compartilhado_branco__",
+  "BYD-Preto": "__gancho_compartilhado_preto__",
+};
+
 /**
  * Estoque "vendável" de uma placa. Placas diretas: o estoque é o
  * próprio. Placas compostas (corpo+gancho): o vendável é o mínimo entre
  * as duas metades do par — não adianta ter 50 corpos se só há 3
  * ganchos, o produto final trava em 3.
+ *
+ * Desde 2026-07-26 soma o estoque por PAPEL dentro de cada grupo antes
+ * de tirar o mínimo (em vez de tirar o mínimo direto entre todas as
+ * placas do grupo) — necessário porque um grupo pode ter mais de uma
+ * placa do mesmo papel (ex: Suporte Universal ganhou uma placa Mista
+ * além das já existentes Corpos-só e Ganchos-só, e as duas rendem
+ * gancho). Grupos listados em GANCHO_COMPARTILHADO_POR_GRUPO também
+ * somam o estoque do pool de gancho compartilhado (de outra placa,
+ * de outro grupo) ao seu próprio gancho antes de comparar com o corpo.
+ * Com uma única placa por papel e sem compartilhamento (caso mais
+ * comum, ex: Suporte Carro), o resultado é idêntico ao de antes.
  */
 export function estoqueVendavel(placas: PlacaRow[]): Map<string, number> {
   const resultado = new Map<string, number>();
-  const grupos = new Map<string, PlacaRow[]>();
+  const gruposPorPapel = new Map<string, Map<string, number>>();
 
   for (const placa of placas) {
-    if (placa.tipo !== "composto" || !placa.grupoComposto) continue;
-    const lista = grupos.get(placa.grupoComposto) ?? [];
-    lista.push(placa);
-    grupos.set(placa.grupoComposto, lista);
+    if (placa.tipo !== "composto" || !placa.grupoComposto || !placa.papel)
+      continue;
+    const porPapel =
+      gruposPorPapel.get(placa.grupoComposto) ?? new Map<string, number>();
+    porPapel.set(placa.papel, (porPapel.get(placa.papel) ?? 0) + placa.estoque);
+    gruposPorPapel.set(placa.grupoComposto, porPapel);
   }
 
-  for (const [grupo, lista] of grupos) {
-    const min = Math.min(...lista.map((p) => p.estoque));
-    resultado.set(grupo, min);
+  for (const [grupo, porPapel] of gruposPorPapel) {
+    const poolCompartilhado = GANCHO_COMPARTILHADO_POR_GRUPO[grupo];
+    if (poolCompartilhado) {
+      const corpo = porPapel.get("corpo") ?? 0;
+      const ganchoProprio = porPapel.get("gancho") ?? 0; // ex: saída da placa Mista
+      const ganchoDoPool = gruposPorPapel.get(poolCompartilhado)?.get("gancho") ?? 0;
+      resultado.set(grupo, Math.min(corpo, ganchoProprio + ganchoDoPool));
+    } else {
+      const min = Math.min(...porPapel.values());
+      resultado.set(grupo, min);
+    }
   }
 
   return resultado;
