@@ -21,6 +21,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json([]);
   }
 
+  // agrupar=false — pedido do Guilherme em 2026-07-27: a aba Full precisa
+  // enxergar cada SKU REAL separado (ex: Suporte Secador de Cabelo tem 4
+  // SKUs — Branco/Preto, com/sem parafuso —, todos a MESMA peça física
+  // pra produção/estoque, mas 4 anúncios/SKUs distintos na hora de
+  // planejar envio pro Full). O agrupamento por placa abaixo continua
+  // sendo o padrão (usado pela busca de "carregar máquina" na aba
+  // Produção, onde só importa qual placa imprimir).
+  const agrupar = request.nextUrl.searchParams.get("agrupar") !== "false";
+
   const rows = (await sql`
     SELECT sp.sku, sp.placa_id, sp.pecas_por_unidade, pl.nome AS placa_nome, pl.numero AS placa_numero
     FROM sku_placa sp
@@ -35,6 +44,12 @@ export async function GET(request: NextRequest) {
     placa_nome: string;
     placa_numero: number;
   }[];
+
+  if (!agrupar) {
+    return NextResponse.json(
+      rows.slice(0, 20).map((r) => ({ ...r, variacoes: 1 }))
+    );
+  }
 
   const porPlaca = new Map<
     number,
