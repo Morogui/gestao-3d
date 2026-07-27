@@ -154,6 +154,19 @@ export default function FullPage() {
     setEnvios(await enviosRes.json());
   }
 
+  // Edita quantidade/data limite de um envio ainda pendente — pedido do
+  // Guilherme em 2026-07-27: "eu coloquei errado e não tem como editar".
+  async function editarEnvio(id: number, quantidade: number, dataLimite: string) {
+    const res = await fetch(`/api/full/envios/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ quantidade, dataLimite }),
+    });
+    const enviosRes = await fetch("/api/full/envios");
+    setEnvios(await enviosRes.json());
+    return res.ok;
+  }
+
   if (status === "desconectado") {
     return (
       <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
@@ -254,6 +267,7 @@ export default function FullPage() {
         envios={enviosPendentes}
         onCriar={criarEnvio}
         onConfirmar={confirmarEnvio}
+        onEditar={editarEnvio}
       />
 
       <div>
@@ -333,11 +347,13 @@ function EnviosPlanejados({
   envios,
   onCriar,
   onConfirmar,
+  onEditar,
 }: {
   linhas: LinhaFull[];
   envios: EnvioFull[];
   onCriar: (sku: string, placaId: number, quantidade: number, dataLimite: string) => Promise<void>;
   onConfirmar: (id: number) => Promise<void>;
+  onEditar: (id: number, quantidade: number, dataLimite: string) => Promise<boolean>;
 }) {
   const [buscaSku, setBuscaSku] = useState("");
   const [resultados, setResultados] = useState<SkuResult[]>([]);
@@ -348,6 +364,10 @@ function EnviosPlanejados({
   const [dataLimite, setDataLimite] = useState(todaySP());
   const [enviando, setEnviando] = useState(false);
   const [confirmando, setConfirmando] = useState<Record<number, boolean>>({});
+  const [editando, setEditando] = useState<Record<number, { quantidade: string; dataLimite: string }>>(
+    {}
+  );
+  const [salvandoEdicao, setSalvandoEdicao] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     if (buscaSku.trim().length < 2) {
@@ -355,7 +375,13 @@ function EnviosPlanejados({
       return;
     }
     const timeout = setTimeout(async () => {
-      const res = await fetch(`/api/skus?q=${encodeURIComponent(buscaSku.trim())}`);
+      // agrupar=false: aqui precisamos ver cada SKU real separado (ex: os
+      // 4 SKUs do Suporte Secador de Cabelo — Branco/Preto, com/sem
+      // parafuso —, mesma placa física, anúncios diferentes). A busca da
+      // aba Produção (carregar máquina) continua agrupada por placa.
+      const res = await fetch(
+        `/api/skus?q=${encodeURIComponent(buscaSku.trim())}&agrupar=false`
+      );
       setResultados(await res.json());
     }, 300);
     return () => clearTimeout(timeout);
@@ -401,7 +427,7 @@ function EnviosPlanejados({
           {!selecionado && resultados.length > 0 && (
             <ul className="mt-1 max-h-40 overflow-y-auto rounded border border-gray-200 text-xs">
               {resultados.map((r) => (
-                <li key={r.placa_id}>
+                <li key={r.sku}>
                   <button
                     onClick={() => {
                       setSelecionado({
@@ -413,8 +439,8 @@ function EnviosPlanejados({
                     }}
                     className="block w-full px-2 py-1 text-left hover:bg-gray-50"
                   >
-                    <span className="font-medium text-gray-900">{r.placa_nome}</span>{" "}
-                    <span className="text-gray-400">({r.sku})</span>
+                    <span className="font-medium text-gray-900">{r.sku}</span>{" "}
+                    <span className="text-gray-400">→ {r.placa_nome}</span>
                   </button>
                 </li>
               ))}
@@ -464,41 +490,130 @@ function EnviosPlanejados({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {envios.map((e) => (
-                <tr key={e.id}>
-                  <td className="px-3 py-2">
-                    <p className="font-medium text-gray-900">{e.placaNome}</p>
-                    <p className="text-gray-400">SKU: {e.sku}</p>
-                  </td>
-                  <td className="px-3 py-2 text-right text-gray-700">{e.quantidade}</td>
-                  <td className="px-3 py-2 text-gray-700">{formatDiaBR(e.dataLimite)}</td>
-                  <td className="px-3 py-2 text-right">
-                    {e.faltantePlaca > 0 ? (
-                      <span className="rounded bg-red-100 px-1.5 py-0.5 font-semibold text-red-700">
-                        faltam {e.faltantePlaca}
-                      </span>
-                    ) : (
-                      <span className="text-green-700">coberto</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <button
-                      disabled={Boolean(confirmando[e.id])}
-                      onClick={async () => {
-                        setConfirmando((prev) => ({ ...prev, [e.id]: true }));
-                        try {
-                          await onConfirmar(e.id);
-                        } finally {
-                          setConfirmando((prev) => ({ ...prev, [e.id]: false }));
-                        }
-                      }}
-                      className="rounded border border-green-300 bg-green-50 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-100 disabled:opacity-40"
-                    >
-                      Confirmar envio
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {envios.map((e) => {
+                const emEdicao = editando[e.id];
+                return (
+                  <tr key={e.id}>
+                    <td className="px-3 py-2">
+                      <p className="font-medium text-gray-900">{e.placaNome}</p>
+                      <p className="text-gray-400">SKU: {e.sku}</p>
+                    </td>
+                    <td className="px-3 py-2 text-right text-gray-700">
+                      {emEdicao ? (
+                        <input
+                          type="number"
+                          min={1}
+                          value={emEdicao.quantidade}
+                          onChange={(ev) =>
+                            setEditando((prev) => ({
+                              ...prev,
+                              [e.id]: { ...prev[e.id], quantidade: ev.target.value },
+                            }))
+                          }
+                          className="w-20 rounded border border-gray-300 px-1.5 py-1 text-right text-xs"
+                        />
+                      ) : (
+                        e.quantidade
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-gray-700">
+                      {emEdicao ? (
+                        <input
+                          type="date"
+                          value={emEdicao.dataLimite}
+                          onChange={(ev) =>
+                            setEditando((prev) => ({
+                              ...prev,
+                              [e.id]: { ...prev[e.id], dataLimite: ev.target.value },
+                            }))
+                          }
+                          className="rounded border border-gray-300 px-1.5 py-1 text-xs"
+                        />
+                      ) : (
+                        formatDiaBR(e.dataLimite)
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {e.faltantePlaca > 0 ? (
+                        <span className="rounded bg-red-100 px-1.5 py-0.5 font-semibold text-red-700">
+                          faltam {e.faltantePlaca}
+                        </span>
+                      ) : (
+                        <span className="text-green-700">coberto</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex justify-end gap-1.5">
+                        {emEdicao ? (
+                          <>
+                            <button
+                              disabled={Boolean(salvandoEdicao[e.id])}
+                              onClick={async () => {
+                                const qtd = Number(emEdicao.quantidade);
+                                if (!qtd || qtd <= 0 || !emEdicao.dataLimite) return;
+                                setSalvandoEdicao((prev) => ({ ...prev, [e.id]: true }));
+                                try {
+                                  const ok = await onEditar(e.id, qtd, emEdicao.dataLimite);
+                                  if (ok) {
+                                    setEditando((prev) => {
+                                      const { [e.id]: _removido, ...resto } = prev;
+                                      return resto;
+                                    });
+                                  }
+                                } finally {
+                                  setSalvandoEdicao((prev) => ({ ...prev, [e.id]: false }));
+                                }
+                              }}
+                              className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-40"
+                            >
+                              {salvandoEdicao[e.id] ? "Salvando..." : "Salvar"}
+                            </button>
+                            <button
+                              onClick={() =>
+                                setEditando((prev) => {
+                                  const { [e.id]: _removido, ...resto } = prev;
+                                  return resto;
+                                })
+                              }
+                              className="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                            >
+                              Cancelar
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() =>
+                                setEditando((prev) => ({
+                                  ...prev,
+                                  [e.id]: { quantidade: String(e.quantidade), dataLimite: e.dataLimite },
+                                }))
+                              }
+                              className="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              disabled={Boolean(confirmando[e.id])}
+                              onClick={async () => {
+                                setConfirmando((prev) => ({ ...prev, [e.id]: true }));
+                                try {
+                                  await onConfirmar(e.id);
+                                } finally {
+                                  setConfirmando((prev) => ({ ...prev, [e.id]: false }));
+                                }
+                              }}
+                              className="rounded border border-green-300 bg-green-50 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-100 disabled:opacity-40"
+                            >
+                              Confirmar envio
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
