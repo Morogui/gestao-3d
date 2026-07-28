@@ -67,6 +67,21 @@ function formatBRL(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+// Filamento é comprado em kg mas consumido em gramas — pedido do
+// Guilherme em 2026-07-27: "Filamento compramos em kg e os produtos sao
+// gramas, mas nosso controle é kg ou kg + grama". Pra evitar confusão
+// com "1,36" podendo ser lido como 1,36kg=1360g (decimal comum) quando
+// na real ele quer dizer 1kg+36g=1036g, o formulário usa dois campos
+// separados (Kg e g) em vez de um campo só com vírgula. Aqui só formata
+// o total (sempre guardado em gramas no banco) de volta pra "1kg 36g".
+function formatPeso(totalGramas: number): string {
+  const kg = Math.floor(totalGramas / 1000);
+  const resto = Math.round(totalGramas - kg * 1000);
+  if (kg === 0) return `${resto}g`;
+  if (resto === 0) return `${kg}kg`;
+  return `${kg}kg ${resto}g`;
+}
+
 function mesAtual(): string {
   return new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 7);
 }
@@ -116,10 +131,20 @@ export default function FinanceiroPage() {
 
   const [novaCompra, setNovaCompra] = useState({
     cor: "branco",
-    gramas: "",
+    // Peso em dois campos (Kg + g) em vez de um campo decimal só —
+    // pedido do Guilherme: "Filamento compramos em kg e os produtos sao
+    // gramas, mas nosso controle é kg ou kg + grama, 1,36 um quilo e
+    // trinta e seis gramas". Um campo só com vírgula ficaria ambíguo
+    // (1,36 poderia ser lido como 1,36kg=1360g em vez de 1kg+36g=1036g).
+    pesoKg: "",
+    pesoG: "",
     valorPago: "",
     dataCompra: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10),
     fornecedor: "",
+    // À vista ou a prazo — pedido: "Filamento pode ser a vista, com prazo
+    // para pagamwento entao tem que conseguir coloca o prazo".
+    formaPagamento: "a_vista",
+    dataVencimento: "",
   });
   const [salvandoCompra, setSalvandoCompra] = useState(false);
 
@@ -422,9 +447,18 @@ export default function FinanceiroPage() {
   }
 
   async function salvarCompra() {
-    const gramas = Number(novaCompra.gramas.replace(",", "."));
+    // Kg + g somados em gramas totais (é assim que o banco guarda e que o
+    // custo médio ponderado é calculado) — kg vazio conta como 0, g vazio
+    // conta como 0, então dá pra comprar só em kg ("2" + "") ou só uns
+    // gramas soltos ("" + "250").
+    const kg = Number(novaCompra.pesoKg.replace(",", ".")) || 0;
+    const g = Number(novaCompra.pesoG.replace(",", ".")) || 0;
+    const gramas = kg * 1000 + g;
     const valorPago = Number(novaCompra.valorPago.replace(",", "."));
     if (!Number.isFinite(gramas) || gramas <= 0 || !Number.isFinite(valorPago) || valorPago <= 0) {
+      return;
+    }
+    if (novaCompra.formaPagamento === "a_prazo" && !novaCompra.dataVencimento) {
       return;
     }
     setSalvandoCompra(true);
@@ -438,10 +472,12 @@ export default function FinanceiroPage() {
           valorPago,
           dataCompra: novaCompra.dataCompra,
           fornecedor: novaCompra.fornecedor || null,
+          formaPagamento: novaCompra.formaPagamento,
+          dataVencimento: novaCompra.formaPagamento === "a_prazo" ? novaCompra.dataVencimento : null,
         }),
       });
       if (res.ok) {
-        setNovaCompra({ ...novaCompra, gramas: "", valorPago: "", fornecedor: "" });
+        setNovaCompra({ ...novaCompra, pesoKg: "", pesoG: "", valorPago: "", fornecedor: "", dataVencimento: "" });
         await carregarCompras();
       }
     } finally {
@@ -451,6 +487,15 @@ export default function FinanceiroPage() {
 
   async function excluirCompra(id: number) {
     await fetch(`/api/financeiro/compras-filamento/${id}`, { method: "DELETE" });
+    await carregarCompras();
+  }
+
+  async function marcarStatusCompra(id: number, novoStatus: "pago" | "pendente") {
+    await fetch(`/api/financeiro/compras-filamento/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: novoStatus }),
+    });
     await carregarCompras();
   }
 
@@ -626,6 +671,7 @@ export default function FinanceiroPage() {
         onMudar={setNovaCompra}
         onSalvar={salvarCompra}
         onExcluir={excluirCompra}
+        onMarcarStatus={marcarStatusCompra}
       />
 
       {mostrarComprovantes && (
@@ -1147,15 +1193,26 @@ function ComprasFilamento({
   onMudar,
   onSalvar,
   onExcluir,
+  onMarcarStatus,
 }: {
   compras: CompraFilamento[];
   custoMedioPorCor: Record<string, number>;
   custoMedioGeral: number | null;
-  novaCompra: { cor: string; gramas: string; valorPago: string; dataCompra: string; fornecedor: string };
+  novaCompra: {
+    cor: string;
+    pesoKg: string;
+    pesoG: string;
+    valorPago: string;
+    dataCompra: string;
+    fornecedor: string;
+    formaPagamento: string;
+    dataVencimento: string;
+  };
   salvando: boolean;
   onMudar: (v: typeof novaCompra) => void;
   onSalvar: () => void;
   onExcluir: (id: number) => void;
+  onMarcarStatus: (id: number, novoStatus: "pago" | "pendente") => void;
 }) {
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4">
@@ -1198,12 +1255,21 @@ function ComprasFilamento({
           </select>
         </label>
         <label className="text-xs text-gray-500">
-          Gramas
+          Peso — Kg
           <input
-            value={novaCompra.gramas}
-            onChange={(e) => onMudar({ ...novaCompra, gramas: e.target.value })}
+            value={novaCompra.pesoKg}
+            onChange={(e) => onMudar({ ...novaCompra, pesoKg: e.target.value })}
             className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-            placeholder="1000"
+            placeholder="1"
+          />
+        </label>
+        <label className="text-xs text-gray-500">
+          Peso — g (além do Kg)
+          <input
+            value={novaCompra.pesoG}
+            onChange={(e) => onMudar({ ...novaCompra, pesoG: e.target.value })}
+            className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            placeholder="0"
           />
         </label>
         <label className="text-xs text-gray-500">
@@ -1232,6 +1298,28 @@ function ComprasFilamento({
             className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
           />
         </label>
+        <label className="text-xs text-gray-500">
+          Pagamento
+          <select
+            value={novaCompra.formaPagamento}
+            onChange={(e) => onMudar({ ...novaCompra, formaPagamento: e.target.value })}
+            className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+          >
+            <option value="a_vista">À vista</option>
+            <option value="a_prazo">A prazo</option>
+          </select>
+        </label>
+        {novaCompra.formaPagamento === "a_prazo" && (
+          <label className="text-xs text-gray-500">
+            Vencimento
+            <input
+              type="date"
+              value={novaCompra.dataVencimento}
+              onChange={(e) => onMudar({ ...novaCompra, dataVencimento: e.target.value })}
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            />
+          </label>
+        )}
         <div className="flex items-end">
           <button
             onClick={onSalvar}
@@ -1249,17 +1337,19 @@ function ComprasFilamento({
             <tr>
               <th className="px-3 py-2">Data</th>
               <th className="px-3 py-2">Cor</th>
-              <th className="px-3 py-2 text-right">Gramas</th>
+              <th className="px-3 py-2 text-right">Peso</th>
               <th className="px-3 py-2 text-right">Valor pago</th>
               <th className="px-3 py-2 text-right">R$/kg</th>
               <th className="px-3 py-2">Fornecedor</th>
+              <th className="px-3 py-2">Vencimento</th>
+              <th className="px-3 py-2">Status</th>
               <th className="px-3 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {compras.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-4 text-center text-gray-400">
+                <td colSpan={9} className="px-3 py-4 text-center text-gray-400">
                   Nenhuma compra lançada ainda.
                 </td>
               </tr>
@@ -1268,10 +1358,24 @@ function ComprasFilamento({
               <tr key={c.id}>
                 <td className="px-3 py-2 text-gray-600">{formatDiaBR(c.dataCompra)}</td>
                 <td className="px-3 py-2 capitalize">{c.cor}</td>
-                <td className="px-3 py-2 text-right">{c.gramas.toLocaleString("pt-BR")}g</td>
+                <td className="px-3 py-2 text-right">{formatPeso(c.gramas)}</td>
                 <td className="px-3 py-2 text-right">{formatBRL(c.valorPago)}</td>
                 <td className="px-3 py-2 text-right">{formatBRL((c.valorPago / c.gramas) * 1000)}</td>
                 <td className="px-3 py-2 text-gray-600">{c.fornecedor || "—"}</td>
+                <td className="px-3 py-2 text-gray-600">{formatDiaBR(c.dataVencimento)}</td>
+                <td className="px-3 py-2">
+                  <button
+                    onClick={() => onMarcarStatus(c.id, c.status === "pago" ? "pendente" : "pago")}
+                    className={
+                      c.status === "pago"
+                        ? "rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 hover:bg-green-200"
+                        : "rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 hover:bg-amber-200"
+                    }
+                    title="Clique pra alternar pago/pendente"
+                  >
+                    {c.status === "pago" ? "Pago" : "Pendente"}
+                  </button>
+                </td>
                 <td className="px-3 py-2 text-right">
                   <button
                     onClick={() => onExcluir(c.id)}
