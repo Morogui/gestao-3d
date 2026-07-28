@@ -64,12 +64,20 @@ export interface LancamentoFinanceiro {
   criadoEm: string;
 }
 
+// Compra a vista ou a prazo — pedido do Guilherme em 2026-07-27:
+// "Filamento pode ser a vista, com prazo para pagamwento entao tem que
+// conseguir coloca o prazo". dataVencimento é quando o pagamento vence
+// (= dataCompra se for à vista); status/dataPagamento seguem o mesmo
+// padrão de LancamentoFinanceiro pra poder marcar como pago depois.
 export interface CompraFilamento {
   id: number;
   cor: string;
   gramas: number;
   valorPago: number;
   dataCompra: string;
+  dataVencimento: string;
+  status: StatusLancamento;
+  dataPagamento: string | null;
   fornecedor: string | null;
   criadoEm: string;
 }
