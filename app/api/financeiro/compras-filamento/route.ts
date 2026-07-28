@@ -24,6 +24,18 @@ async function garantirTabela() {
       criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+  // Pedido do Guilherme em 2026-07-27: "Filamento pode ser a vista, com
+  // prazo para pagamwento entao tem que conseguir coloca o prazo" — compra
+  // à vista já nasce paga (data_vencimento = data_pagamento = data_compra);
+  // a prazo nasce pendente com vencimento futuro, igual ao padrão já usado
+  // em financeiro_lancamentos.
+  await sql`ALTER TABLE compras_filamento ADD COLUMN IF NOT EXISTS data_vencimento DATE`;
+  await sql`ALTER TABLE compras_filamento ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pago'`;
+  await sql`ALTER TABLE compras_filamento ADD COLUMN IF NOT EXISTS data_pagamento DATE`;
+  // Backfill de linhas antigas (criadas antes dessas colunas existirem):
+  // trata como à vista, paga na própria data da compra.
+  await sql`UPDATE compras_filamento SET data_vencimento = data_compra WHERE data_vencimento IS NULL`;
+  await sql`UPDATE compras_filamento SET data_pagamento = data_compra WHERE status = 'pago' AND data_pagamento IS NULL`;
 }
 
 interface CompraRow {
@@ -32,6 +44,9 @@ interface CompraRow {
   gramas: string;
   valor_pago: string;
   data_compra: string;
+  data_vencimento: string;
+  status: string;
+  data_pagamento: string | null;
   fornecedor: string | null;
   criado_em: string;
 }
@@ -53,6 +68,9 @@ function serializar(r: CompraRow) {
     gramas: Number(r.gramas),
     valorPago: Number(r.valor_pago),
     dataCompra: toPlainDate(r.data_compra),
+    dataVencimento: toPlainDate(r.data_vencimento ?? r.data_compra),
+    status: r.status === "pendente" ? "pendente" : "pago",
+    dataPagamento: r.data_pagamento ? toPlainDate(r.data_pagamento) : null,
     fornecedor: r.fornecedor,
     criadoEm: r.criado_em,
   };
@@ -114,9 +132,22 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // À vista (padrão) ou a prazo — pedido do Guilherme: "Filamento pode ser
+  // a vista, com prazo para pagamwento entao tem que conseguir coloca o
+  // prazo". À vista: vence e já é paga na própria data da compra. A
+  // prazo: usa o vencimento informado e nasce pendente.
+  const aPrazo = body.formaPagamento === "a_prazo";
+  const dataVencimento = aPrazo
+    ? String(body.dataVencimento ?? "").trim() || dataCompra
+    : dataCompra;
+  const status = aPrazo ? "pendente" : "pago";
+  const dataPagamento = aPrazo ? null : dataCompra;
+
   const rows = (await sql`
-    INSERT INTO compras_filamento (cor, gramas, valor_pago, data_compra, fornecedor)
-    VALUES (${cor}, ${gramas}, ${valorPago}, ${dataCompra}, ${fornecedor})
+    INSERT INTO compras_filamento
+      (cor, gramas, valor_pago, data_compra, fornecedor, data_vencimento, status, data_pagamento)
+    VALUES
+      (${cor}, ${gramas}, ${valorPago}, ${dataCompra}, ${fornecedor}, ${dataVencimento}, ${status}, ${dataPagamento})
     RETURNING *
   `) as CompraRow[];
 
