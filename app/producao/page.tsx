@@ -543,11 +543,24 @@ export default function ProducaoPage() {
       // Placas sem estoque de filamento carregado ainda (filamento ===
       // null, API não respondeu) ou cor não controlada (corFilamentoDaPlaca
       // retorna null — cinza/laranja) nunca são bloqueadas.
+      //
+      // EXCEÇÃO: envio do Full pendente (faltaEnvioFull > 0) nunca é
+      // bloqueado por esse filtro. Achado real em 2026-07-27: "Suporte
+      // Secador de Cabelo (Preto)" tinha envio Full com faltam 23 (aba
+      // Full) mas sumia da fila de prioridade porque o filamento preto
+      // estava com 0g cadastrado — o filtro de filamento (critério
+      // operacional, "não produz sem material") estava silenciosamente
+      // vencendo o critério nº-2 (envio Full, que é pra ser ACIMA DE TUDO).
+      // O propósito do envio Full aparecer com prioridade máxima é
+      // justamente alertar que precisa resolver o filamento (comprar/repor)
+      // pra conseguir produzir — escondê-lo por falta de filamento é o
+      // oposto do que o Guilherme pediu.
       .filter(
         (item) =>
           item.aProduzirEfetivo > 0 || item.faltaDespacho > 0 || item.faltaEnvioFull > 0
       )
       .filter((item) => {
+        if (item.faltaEnvioFull > 0) return true;
         if (!filamento) return true;
         const cor = corFilamentoDaPlaca(item.placa.nome);
         if (!cor) return true;
