@@ -51,6 +51,58 @@ function shopeeConectado(): boolean {
   return Boolean(c.get("shopee_shop_id")?.value);
 }
 
+// Pedido do Guilherme em 2026-07-27: "não está trazendo números da
+// Shopee" — a causa raiz era a sessão da Shopee ter expirado (token/
+// refresh_token mortos), mas a tela de Vendas nunca mostrava o aviso de
+// "sessão expirada, reconecte" porque mlConectado()/shopeeConectado()
+// acima só conferem se existe um COOKIE de sessão salvo, não se ele
+// ainda funciona de verdade — então "cookie existe mas tá morto" e
+// "nunca conectou" pareciam a mesma coisa (silêncio, zero pedidos, sem
+// pista do motivo).
+//
+// A tela não pode chamar a API ao vivo a cada carregamento (é o motivo
+// desse arquivo existir), então guardamos aqui o resultado da ÚLTIMA
+// tentativa REAL de falar com a API (a que sincronizarPedidos() já faz).
+// Importante: o cron de 1 em 1 minuto (vercel.json) roda sem cookie
+// nenhum — é uma chamada servidor-a-servidor da própria Vercel, não uma
+// visita de navegador — então ele NUNCA teria cookie de sessão pra
+// tentar. Se gravássemos o resultado dele sem filtro, a tabela abaixo
+// ficaria marcada como "desconectado" a cada minuto pras duas contas,
+// mesmo com a sessão do navegador perfeitamente válida. Por isso só
+// gravamos quando a própria chamada a sincronizarPedidos() tinha o
+// cookie da plataforma (viu de um pedido real: alguém abriu a aba
+// Estoque/Vendas, ou um sync manual) — só aí o resultado da tentativa
+// significa alguma coisa.
+async function garantirTabelaStatusSync() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS sync_status (
+      plataforma TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+}
+
+async function gravarStatusSync(plataforma: Plataforma, status: "ok" | "erro") {
+  await garantirTabelaStatusSync();
+  await sql`
+    INSERT INTO sync_status (plataforma, status, atualizado_em)
+    VALUES (${plataforma}, ${status}, now())
+    ON CONFLICT (plataforma) DO UPDATE SET
+      status = EXCLUDED.status,
+      atualizado_em = now()
+  `;
+}
+
+async function statusSyncPersistido(plataforma: Plataforma): Promise<"ok" | "erro" | null> {
+  await garantirTabelaStatusSync();
+  const rows = (await sql`
+    SELECT status FROM sync_status WHERE plataforma = ${plataforma}
+  `) as { status: string }[];
+  if (rows.length === 0) return null;
+  return rows[0].status === "erro" ? "erro" : "ok";
+}
+
 interface PedidoCacheRow {
   plataforma: Plataforma;
   pedido_id: string;
@@ -102,6 +154,7 @@ export async function getOrdersRangeML(
   toDay: string
 ): Promise<OrdersResult> {
   if (!mlConectado()) return { connected: false };
+  if ((await statusSyncPersistido("ml")) === "erro") return { connected: true, error: true };
   const orders = await queryRange(fromDay, toDay, "ml");
   return { connected: true, error: false, orders };
 }
@@ -112,6 +165,7 @@ export async function getOrdersRangeShopee(
   toDay: string
 ): Promise<OrdersResult> {
   if (!shopeeConectado()) return { connected: false };
+  if ((await statusSyncPersistido("shopee")) === "erro") return { connected: true, error: true };
   const orders = await queryRange(fromDay, toDay, "shopee");
   return { connected: true, error: false, orders };
 }
@@ -142,6 +196,7 @@ export async function getDailyTotalsRangeML(
   toDay: string
 ): Promise<DailyTotalsResult> {
   if (!mlConectado()) return { connected: false };
+  if ((await statusSyncPersistido("ml")) === "erro") return { connected: true, error: true };
   const porDia = await dailyTotals(fromDay, toDay, "ml");
   return { connected: true, error: false, porDia };
 }
@@ -152,6 +207,7 @@ export async function getDailyTotalsRangeShopee(
   toDay: string
 ): Promise<DailyTotalsResult> {
   if (!shopeeConectado()) return { connected: false };
+  if ((await statusSyncPersistido("shopee")) === "erro") return { connected: true, error: true };
   const porDia = await dailyTotals(fromDay, toDay, "shopee");
   return { connected: true, error: false, porDia };
 }
@@ -212,6 +268,15 @@ export async function sincronizarPedidos(
   const hoje = todaySP();
   const inicio = diasAtras(hoje, Math.max(0, dias - 1));
 
+  // Só é seguro gravar o status (ok/erro) em sync_status quando ESSA
+  // chamada de verdade tinha o cookie da plataforma pra tentar — senão o
+  // cron de 1 em 1 minuto (que roda sem cookie nenhum, servidor-a-
+  // servidor) gravaria "erro" toda hora pras duas contas, mesmo com a
+  // sessão do navegador do Guilherme funcionando normalmente. Ver
+  // comentário em cima de garantirTabelaStatusSync().
+  const tentouML = mlConectado();
+  const tentouShopee = shopeeConectado();
+
   const [resultML, resultShopee] = await Promise.all([
     getOrdersRangeMLAoVivo(inicio, hoje),
     getOrdersRangeShopeeAoVivo(inicio, hoje),
@@ -225,6 +290,13 @@ export async function sincronizarPedidos(
     await upsertPedidos(ordersML),
     await upsertPedidos(ordersShopee),
   ];
+
+  if (tentouML) {
+    await gravarStatusSync("ml", resultML.connected && !resultML.error ? "ok" : "erro");
+  }
+  if (tentouShopee) {
+    await gravarStatusSync("shopee", resultShopee.connected && !resultShopee.error ? "ok" : "erro");
+  }
 
   return {
     janelaDias: dias,
