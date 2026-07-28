@@ -129,16 +129,15 @@ export default function FinanceiroPage() {
   const [itensDivididos, setItensDivididos] = useState<ItemDividido[] | null>(null);
   const [analisandoItens, setAnalisandoItens] = useState(false);
 
+  // Pedido do Guilherme em 2026-07-27: "Tem que deixar eu subir mais de
+  // uma cor por vez, pois eu vou subir sempre pedido inteiro" — um
+  // pedido de filamento normalmente vem com várias cores juntas. Agora o
+  // formulário separa: campos do PEDIDO (data, fornecedor, pagamento —
+  // compartilhados) e uma "lista de itens" (cor + peso + valor, um por
+  // cor), montada com "+ Adicionar" antes de salvar tudo de uma vez —
+  // cada item ainda vira uma linha própria em compras_filamento (o custo
+  // médio por cor continua correto).
   const [novaCompra, setNovaCompra] = useState({
-    cor: "branco",
-    // Peso em dois campos (Kg + g) em vez de um campo decimal só —
-    // pedido do Guilherme: "Filamento compramos em kg e os produtos sao
-    // gramas, mas nosso controle é kg ou kg + grama, 1,36 um quilo e
-    // trinta e seis gramas". Um campo só com vírgula ficaria ambíguo
-    // (1,36 poderia ser lido como 1,36kg=1360g em vez de 1kg+36g=1036g).
-    pesoKg: "",
-    pesoG: "",
-    valorPago: "",
     dataCompra: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10),
     fornecedor: "",
     // À vista ou a prazo — pedido: "Filamento pode ser a vista, com prazo
@@ -146,6 +145,17 @@ export default function FinanceiroPage() {
     formaPagamento: "a_vista",
     dataVencimento: "",
   });
+
+  // Item sendo preenchido (uma cor do pedido) antes de "+ Adicionar".
+  // Peso em dois campos (Kg + g) em vez de um campo decimal só — pedido
+  // do Guilherme: "Filamento compramos em kg e os produtos sao gramas,
+  // mas nosso controle é kg ou kg + grama, 1,36 um quilo e trinta e seis
+  // gramas". Um campo só com vírgula ficaria ambíguo (1,36 poderia ser
+  // lido como 1,36kg=1360g em vez de 1kg+36g=1036g).
+  const [itemAtual, setItemAtual] = useState({ cor: "branco", pesoKg: "", pesoG: "", valorPago: "" });
+  const [itensPedido, setItensPedido] = useState<
+    { cor: string; pesoKg: string; pesoG: string; valorPago: string }[]
+  >([]);
   const [salvandoCompra, setSalvandoCompra] = useState(false);
 
   const [mostrarComprovantes, setMostrarComprovantes] = useState(false);
@@ -446,40 +456,57 @@ export default function FinanceiroPage() {
     if (mostrarComprovantes) await carregarComprovantes();
   }
 
-  async function salvarCompra() {
-    // Kg + g somados em gramas totais (é assim que o banco guarda e que o
-    // custo médio ponderado é calculado) — kg vazio conta como 0, g vazio
-    // conta como 0, então dá pra comprar só em kg ("2" + "") ou só uns
-    // gramas soltos ("" + "250").
-    const kg = Number(novaCompra.pesoKg.replace(",", ".")) || 0;
-    const g = Number(novaCompra.pesoG.replace(",", ".")) || 0;
-    const gramas = kg * 1000 + g;
-    const valorPago = Number(novaCompra.valorPago.replace(",", "."));
+  // Kg + g somados em gramas totais (é assim que o banco guarda e que o
+  // custo médio ponderado é calculado) — kg vazio conta como 0, g vazio
+  // conta como 0, então dá pra comprar só em kg ("2" + "") ou só uns
+  // gramas soltos ("" + "250").
+  function gramasDoItem(item: { pesoKg: string; pesoG: string }): number {
+    const kg = Number(item.pesoKg.replace(",", ".")) || 0;
+    const g = Number(item.pesoG.replace(",", ".")) || 0;
+    return kg * 1000 + g;
+  }
+
+  function adicionarItemPedido() {
+    const gramas = gramasDoItem(itemAtual);
+    const valorPago = Number(itemAtual.valorPago.replace(",", "."));
     if (!Number.isFinite(gramas) || gramas <= 0 || !Number.isFinite(valorPago) || valorPago <= 0) {
       return;
     }
+    setItensPedido((atual) => [...atual, itemAtual]);
+    setItemAtual({ cor: itemAtual.cor, pesoKg: "", pesoG: "", valorPago: "" });
+  }
+
+  function removerItemPedido(indice: number) {
+    setItensPedido((atual) => atual.filter((_, i) => i !== indice));
+  }
+
+  async function salvarCompra() {
+    if (itensPedido.length === 0) return;
     if (novaCompra.formaPagamento === "a_prazo" && !novaCompra.dataVencimento) {
       return;
     }
     setSalvandoCompra(true);
     try {
-      const res = await fetch("/api/financeiro/compras-filamento", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cor: novaCompra.cor,
-          gramas,
-          valorPago,
-          dataCompra: novaCompra.dataCompra,
-          fornecedor: novaCompra.fornecedor || null,
-          formaPagamento: novaCompra.formaPagamento,
-          dataVencimento: novaCompra.formaPagamento === "a_prazo" ? novaCompra.dataVencimento : null,
-        }),
-      });
-      if (res.ok) {
-        setNovaCompra({ ...novaCompra, pesoKg: "", pesoG: "", valorPago: "", fornecedor: "", dataVencimento: "" });
-        await carregarCompras();
+      for (const item of itensPedido) {
+        const gramas = gramasDoItem(item);
+        const valorPago = Number(item.valorPago.replace(",", "."));
+        await fetch("/api/financeiro/compras-filamento", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cor: item.cor,
+            gramas,
+            valorPago,
+            dataCompra: novaCompra.dataCompra,
+            fornecedor: novaCompra.fornecedor || null,
+            formaPagamento: novaCompra.formaPagamento,
+            dataVencimento: novaCompra.formaPagamento === "a_prazo" ? novaCompra.dataVencimento : null,
+          }),
+        });
       }
+      setItensPedido([]);
+      setNovaCompra((atual) => ({ ...atual, fornecedor: "", dataVencimento: "" }));
+      await carregarCompras();
     } finally {
       setSalvandoCompra(false);
     }
@@ -667,8 +694,13 @@ export default function FinanceiroPage() {
         custoMedioPorCor={custoMedioPorCor}
         custoMedioGeral={custoMedioGeral}
         novaCompra={novaCompra}
+        itemAtual={itemAtual}
+        itensPedido={itensPedido}
         salvando={salvandoCompra}
         onMudar={setNovaCompra}
+        onMudarItem={setItemAtual}
+        onAdicionarItem={adicionarItemPedido}
+        onRemoverItem={removerItemPedido}
         onSalvar={salvarCompra}
         onExcluir={excluirCompra}
         onMarcarStatus={marcarStatusCompra}
@@ -1184,13 +1216,25 @@ function FormularioRevisao({
   );
 }
 
+interface ItemPedidoFilamento {
+  cor: string;
+  pesoKg: string;
+  pesoG: string;
+  valorPago: string;
+}
+
 function ComprasFilamento({
   compras,
   custoMedioPorCor,
   custoMedioGeral,
   novaCompra,
+  itemAtual,
+  itensPedido,
   salvando,
   onMudar,
+  onMudarItem,
+  onAdicionarItem,
+  onRemoverItem,
   onSalvar,
   onExcluir,
   onMarcarStatus,
@@ -1199,17 +1243,18 @@ function ComprasFilamento({
   custoMedioPorCor: Record<string, number>;
   custoMedioGeral: number | null;
   novaCompra: {
-    cor: string;
-    pesoKg: string;
-    pesoG: string;
-    valorPago: string;
     dataCompra: string;
     fornecedor: string;
     formaPagamento: string;
     dataVencimento: string;
   };
+  itemAtual: ItemPedidoFilamento;
+  itensPedido: ItemPedidoFilamento[];
   salvando: boolean;
   onMudar: (v: typeof novaCompra) => void;
+  onMudarItem: (v: ItemPedidoFilamento) => void;
+  onAdicionarItem: () => void;
+  onRemoverItem: (indice: number) => void;
   onSalvar: () => void;
   onExcluir: (id: number) => void;
   onMarcarStatus: (id: number, novoStatus: "pago" | "pendente") => void;
@@ -1239,12 +1284,17 @@ function ComprasFilamento({
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
+      <p className="text-xs text-gray-500">
+        Um pedido pode ter várias cores — adicione cada cor abaixo e depois salve o pedido inteiro
+        de uma vez (data, fornecedor e pagamento são únicos pro pedido).
+      </p>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         <label className="text-xs text-gray-500">
           Cor
           <select
-            value={novaCompra.cor}
-            onChange={(e) => onMudar({ ...novaCompra, cor: e.target.value })}
+            value={itemAtual.cor}
+            onChange={(e) => onMudarItem({ ...itemAtual, cor: e.target.value })}
             className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm capitalize"
           >
             {CORES_FILAMENTO.map((c) => (
@@ -1257,8 +1307,8 @@ function ComprasFilamento({
         <label className="text-xs text-gray-500">
           Peso — Kg
           <input
-            value={novaCompra.pesoKg}
-            onChange={(e) => onMudar({ ...novaCompra, pesoKg: e.target.value })}
+            value={itemAtual.pesoKg}
+            onChange={(e) => onMudarItem({ ...itemAtual, pesoKg: e.target.value })}
             className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
             placeholder="1"
           />
@@ -1266,8 +1316,8 @@ function ComprasFilamento({
         <label className="text-xs text-gray-500">
           Peso — g (além do Kg)
           <input
-            value={novaCompra.pesoG}
-            onChange={(e) => onMudar({ ...novaCompra, pesoG: e.target.value })}
+            value={itemAtual.pesoG}
+            onChange={(e) => onMudarItem({ ...itemAtual, pesoG: e.target.value })}
             className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
             placeholder="0"
           />
@@ -1275,12 +1325,59 @@ function ComprasFilamento({
         <label className="text-xs text-gray-500">
           Valor pago (R$)
           <input
-            value={novaCompra.valorPago}
-            onChange={(e) => onMudar({ ...novaCompra, valorPago: e.target.value })}
+            value={itemAtual.valorPago}
+            onChange={(e) => onMudarItem({ ...itemAtual, valorPago: e.target.value })}
             className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
             placeholder="0,00"
           />
         </label>
+        <div className="flex items-end">
+          <button
+            onClick={onAdicionarItem}
+            className="w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          >
+            + Adicionar cor
+          </button>
+        </div>
+      </div>
+
+      {itensPedido.length > 0 && (
+        <div className="overflow-x-auto rounded border border-gray-100">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
+              <tr>
+                <th className="px-3 py-1.5">Cor</th>
+                <th className="px-3 py-1.5 text-right">Peso</th>
+                <th className="px-3 py-1.5 text-right">Valor</th>
+                <th className="px-3 py-1.5"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {itensPedido.map((item, i) => (
+                <tr key={i}>
+                  <td className="px-3 py-1.5 capitalize">{item.cor}</td>
+                  <td className="px-3 py-1.5 text-right">
+                    {formatPeso((Number(item.pesoKg.replace(",", ".")) || 0) * 1000 + (Number(item.pesoG.replace(",", ".")) || 0))}
+                  </td>
+                  <td className="px-3 py-1.5 text-right">
+                    {formatBRL(Number(item.valorPago.replace(",", ".")) || 0)}
+                  </td>
+                  <td className="px-3 py-1.5 text-right">
+                    <button
+                      onClick={() => onRemoverItem(i)}
+                      className="text-xs text-gray-400 hover:text-red-600"
+                    >
+                      remover
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         <label className="text-xs text-gray-500">
           Data da compra
           <input
@@ -1290,7 +1387,7 @@ function ComprasFilamento({
             className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
           />
         </label>
-        <label className="text-xs text-gray-500 sm:col-span-1">
+        <label className="text-xs text-gray-500">
           Fornecedor
           <input
             value={novaCompra.fornecedor}
@@ -1323,10 +1420,14 @@ function ComprasFilamento({
         <div className="flex items-end">
           <button
             onClick={onSalvar}
-            disabled={salvando}
+            disabled={salvando || itensPedido.length === 0}
             className="w-full rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
           >
-            {salvando ? "Salvando..." : "+ Compra"}
+            {salvando
+              ? "Salvando..."
+              : itensPedido.length > 0
+              ? `Salvar pedido (${itensPedido.length} ${itensPedido.length === 1 ? "cor" : "cores"})`
+              : "Salvar pedido"}
           </button>
         </div>
       </div>
