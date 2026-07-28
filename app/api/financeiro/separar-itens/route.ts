@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { CATEGORIAS_DESPESA, CATEGORIAS_RECEITA } from "@/lib/financeiro";
+import { categoriasHistoricas, mesclarCategorias } from "@/lib/financeiro-categorias";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -27,7 +28,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Informe uma descrição." }, { status: 400 });
   }
 
-  const opcoes: readonly string[] = tipo === "receita" ? CATEGORIAS_RECEITA : CATEGORIAS_DESPESA;
+  const opcoesFixas: readonly string[] = tipo === "receita" ? CATEGORIAS_RECEITA : CATEGORIAS_DESPESA;
+  const historicas = await categoriasHistoricas(tipo);
+  const opcoes = mesclarCategorias(opcoesFixas, historicas);
 
   try {
     // Importante: usar output "array" (schema = item, não um objeto
@@ -77,7 +80,7 @@ export async function POST(request: NextRequest) {
       return {
         descricao: item.descricao.trim(),
         valor: item.valor,
-        categoria: encontrada ?? (opcoes.includes("Outros") ? "Outros" : opcoes[0]),
+        categoria: encontrada ?? bruta ?? (opcoes.includes("Outros") ? "Outros" : opcoes[0]),
       };
     });
 
