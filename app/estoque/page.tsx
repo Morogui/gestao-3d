@@ -69,26 +69,139 @@ export default function EstoquePage() {
     }
   }
 
-  async function registrarPerdaFilamento(
-    cor: CorFilamento,
-    gramas: number,
-    motivo: string
-  ): Promise<string | null> {
+  // Pedido de compra de filamento — abre uma janela (modal) onde dá pra
+  // lançar o pedido inteiro de uma vez: uma ou mais cores (cada uma com
+  // peso e valor), fornecedor, e a data de pagamento — com um botão "+"
+  // pra revelar o campo de vencimento só quando o pedido tem prazo (por
+  // padrão assume à vista, pago na própria data da compra). Pedido do
+  // Guilherme em 2026-07-29: "Para adicionar filamentos, deve ter um
+  // campo onde abra uma janela... Apos ser lançado ele gera demanda para
+  // a aba do financeiro". Cada cor vira uma linha em compras_filamento
+  // (soma o estoque_filamento e alimenta o custo médio, ver
+  // /api/financeiro/compras-filamento) e o pedido inteiro também vira UM
+  // lançamento em financeiro_lancamentos (categoria "Filamento", valor =
+  // soma de todas as cores) pra aparecer no calendário/resumo/despesas
+  // pendentes da aba Financeiro — antes só entrava no estoque, sem gerar
+  // essa "demanda" financeira.
+  const hojeISO = () => new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const [modalAdicionarAberto, setModalAdicionarAberto] = useState(false);
+  const [itemPedidoAtual, setItemPedidoAtual] = useState({
+    cor: "colorido" as CorFilamento,
+    pesoKg: "",
+    pesoG: "",
+    valorPago: "",
+  });
+  const [itensPedidoFilamento, setItensPedidoFilamento] = useState<
+    { cor: CorFilamento; pesoKg: string; pesoG: string; valorPago: string }[]
+  >([]);
+  const [pedidoFilamento, setPedidoFilamento] = useState({
+    dataCompra: hojeISO(),
+    fornecedor: "",
+    temPrazo: false,
+    dataVencimento: "",
+  });
+  const [salvandoPedido, setSalvandoPedido] = useState(false);
+  const [erroPedido, setErroPedido] = useState<string | null>(null);
+
+  function gramasDoItemPedido(item: { pesoKg: string; pesoG: string }): number {
+    const kg = Number(item.pesoKg.replace(",", ".")) || 0;
+    const g = Number(item.pesoG.replace(",", ".")) || 0;
+    return kg * 1000 + g;
+  }
+
+  function formatPesoPedido(totalGramas: number): string {
+    const kg = Math.floor(totalGramas / 1000);
+    const resto = Math.round(totalGramas - kg * 1000);
+    if (kg === 0) return `${resto}g`;
+    if (resto === 0) return `${kg}kg`;
+    return `${kg}kg ${resto}g`;
+  }
+
+  function adicionarItemPedidoFilamento() {
+    const gramas = gramasDoItemPedido(itemPedidoAtual);
+    const valorPago = Number(itemPedidoAtual.valorPago.replace(",", "."));
+    if (!Number.isFinite(gramas) || gramas <= 0 || !Number.isFinite(valorPago) || valorPago <= 0) {
+      return;
+    }
+    setItensPedidoFilamento((atual) => [...atual, itemPedidoAtual]);
+    setItemPedidoAtual({ cor: itemPedidoAtual.cor, pesoKg: "", pesoG: "", valorPago: "" });
+  }
+
+  function removerItemPedidoFilamento(indice: number) {
+    setItensPedidoFilamento((atual) => atual.filter((_, i) => i !== indice));
+  }
+
+  function fecharModalAdicionar() {
+    setModalAdicionarAberto(false);
+    setErroPedido(null);
+    setItensPedidoFilamento([]);
+    setItemPedidoAtual({ cor: "colorido", pesoKg: "", pesoG: "", valorPago: "" });
+    setPedidoFilamento({ dataCompra: hojeISO(), fornecedor: "", temPrazo: false, dataVencimento: "" });
+  }
+
+  const totalPedidoFilamento = itensPedidoFilamento.reduce(
+    (soma, item) => soma + (Number(item.valorPago.replace(",", ".")) || 0),
+    0
+  );
+
+  async function salvarPedidoFilamento() {
+    if (itensPedidoFilamento.length === 0) {
+      setErroPedido("Adicione pelo menos uma cor ao pedido.");
+      return;
+    }
+    if (pedidoFilamento.temPrazo && !pedidoFilamento.dataVencimento) {
+      setErroPedido("Informe o vencimento do prazo.");
+      return;
+    }
+    setSalvandoPedido(true);
+    setErroPedido(null);
     try {
-      const res = await fetch("/api/producao/perda-filamento", {
+      for (const item of itensPedidoFilamento) {
+        const gramas = gramasDoItemPedido(item);
+        const valorPago = Number(item.valorPago.replace(",", "."));
+        const res = await fetch("/api/financeiro/compras-filamento", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cor: item.cor,
+            gramas,
+            valorPago,
+            dataCompra: pedidoFilamento.dataCompra,
+            fornecedor: pedidoFilamento.fornecedor || null,
+            formaPagamento: pedidoFilamento.temPrazo ? "a_prazo" : "a_vista",
+            dataVencimento: pedidoFilamento.temPrazo ? pedidoFilamento.dataVencimento : null,
+          }),
+        });
+        if (!res.ok) throw new Error("falha ao salvar compra");
+      }
+
+      const resumoItens = itensPedidoFilamento
+        .map((it) => `${LABEL_COR_FILAMENTO[it.cor]} ${formatPesoPedido(gramasDoItemPedido(it))}`)
+        .join(", ");
+      await fetch("/api/financeiro/lancamentos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cor, gramas, motivo }),
+        body: JSON.stringify({
+          tipo: "despesa",
+          categoria: "Filamento",
+          descricao: `Compra de filamento — ${resumoItens}`,
+          valor: totalPedidoFilamento,
+          dataVencimento: pedidoFilamento.temPrazo
+            ? pedidoFilamento.dataVencimento
+            : pedidoFilamento.dataCompra,
+          dataPagamento: pedidoFilamento.temPrazo ? null : pedidoFilamento.dataCompra,
+          fornecedor: pedidoFilamento.fornecedor || null,
+          formaPagamento: pedidoFilamento.temPrazo ? "A prazo" : "À vista",
+        }),
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        return body?.error ?? "não deu pra registrar a perda";
-      }
-      const atualizado = await res.json();
-      setFilamento(atualizado);
-      return null;
+
+      await carregarFilamento();
+      fecharModalAdicionar();
     } catch {
-      return "não deu pra registrar a perda";
+      setErroPedido("Não deu pra salvar o pedido. Tente de novo.");
+    } finally {
+      setSalvandoPedido(false);
     }
   }
 
@@ -198,16 +311,40 @@ export default function EstoquePage() {
           produção sem ter filamento pra imprimir. A cor de cada placa é
           detectada pelo nome (ex: &quot;Suporte Carro (Prata)&quot;); placas
           sem cor no nome (kits, produtos multicoloridos) contam como
-          &quot;Colorido&quot;.
+          &quot;Colorido&quot;. Pra registrar perda avulsa, use a aba Produção.
         </p>
         {filamento && <FilamentoEditor filamento={filamento} onSalvar={salvarFilamento} />}
         <div className="mt-3">
-          <PerdaFilamentoForm onRegistrar={registrarPerdaFilamento} />
+          <button
+            onClick={() => setModalAdicionarAberto(true)}
+            className="rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          >
+            + Adicionar filamento
+          </button>
         </div>
         <div className="mt-3">
           <HistoricoFilamento />
         </div>
       </section>
+
+      {modalAdicionarAberto && (
+        <ModalAdicionarFilamento
+          itemAtual={itemPedidoAtual}
+          itensPedido={itensPedidoFilamento}
+          pedido={pedidoFilamento}
+          total={totalPedidoFilamento}
+          salvando={salvandoPedido}
+          erro={erroPedido}
+          onMudarItem={setItemPedidoAtual}
+          onAdicionarItem={adicionarItemPedidoFilamento}
+          onRemoverItem={removerItemPedidoFilamento}
+          onMudarPedido={setPedidoFilamento}
+          onSalvar={salvarPedidoFilamento}
+          onFechar={fecharModalAdicionar}
+          formatPeso={formatPesoPedido}
+          gramasDoItem={gramasDoItemPedido}
+        />
+      )}
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm">
         <button
@@ -604,90 +741,229 @@ function FilamentoEditor({
   );
 }
 
-function PerdaFilamentoForm({
-  onRegistrar,
+interface ItemPedidoFilamentoEstoque {
+  cor: CorFilamento;
+  pesoKg: string;
+  pesoG: string;
+  valorPago: string;
+}
+
+function formatBRLEstoque(v: number): string {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+// Janela de "novo pedido de filamento" — pedido do Guilherme em
+// 2026-07-29: "Para adicionar filamentos, deve ter um campo onde abra
+// uma janela, e eu consiga colocar os filamentos que quero adicionar,
+// total do pedido, janela para colocar data de pagamento, podendo ter
+// prazo entao deve ter um botao de + para colocar prazo caso tiver".
+// Um pedido pode trazer várias cores juntas — cada cor vira um item da
+// lista (com peso em Kg+g e valor) antes de "Salvar pedido"; por padrão
+// assume à vista (pago na data da compra) e o botão "+ Adicionar prazo"
+// revela o campo de vencimento só quando o pagamento não é imediato.
+function ModalAdicionarFilamento({
+  itemAtual,
+  itensPedido,
+  pedido,
+  total,
+  salvando,
+  erro,
+  onMudarItem,
+  onAdicionarItem,
+  onRemoverItem,
+  onMudarPedido,
+  onSalvar,
+  onFechar,
+  formatPeso,
+  gramasDoItem,
 }: {
-  onRegistrar: (cor: CorFilamento, gramas: number, motivo: string) => Promise<string | null>;
+  itemAtual: ItemPedidoFilamentoEstoque;
+  itensPedido: ItemPedidoFilamentoEstoque[];
+  pedido: { dataCompra: string; fornecedor: string; temPrazo: boolean; dataVencimento: string };
+  total: number;
+  salvando: boolean;
+  erro: string | null;
+  onMudarItem: (v: ItemPedidoFilamentoEstoque) => void;
+  onAdicionarItem: () => void;
+  onRemoverItem: (indice: number) => void;
+  onMudarPedido: (v: { dataCompra: string; fornecedor: string; temPrazo: boolean; dataVencimento: string }) => void;
+  onSalvar: () => void;
+  onFechar: () => void;
+  formatPeso: (gramas: number) => string;
+  gramasDoItem: (item: { pesoKg: string; pesoG: string }) => number;
 }) {
-  const [cor, setCor] = useState<CorFilamento>("colorido");
-  const [gramas, setGramas] = useState("");
-  const [motivo, setMotivo] = useState("");
-  const [salvando, setSalvando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-  const [sucesso, setSucesso] = useState(false);
-
-  async function registrar() {
-    const valor = Number(gramas);
-    if (!valor || valor <= 0) {
-      setErro("informe uma quantidade em gramas maior que 0");
-      return;
-    }
-    setSalvando(true);
-    setErro(null);
-    setSucesso(false);
-    try {
-      const resultado = await onRegistrar(cor, valor, motivo.trim());
-      if (resultado) {
-        setErro(resultado);
-      } else {
-        setGramas("");
-        setMotivo("");
-        setSucesso(true);
-        setTimeout(() => setSucesso(false), 3000);
-      }
-    } finally {
-      setSalvando(false);
-    }
-  }
-
   return (
-    <div>
-      <p className="mb-2 text-xs font-semibold text-gray-700">Registrar perda avulsa de filamento</p>
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-gray-500">Cor</span>
-          <select
-            value={cor}
-            onChange={(e) => setCor(e.target.value as CorFilamento)}
-            className="rounded border border-gray-300 px-2 py-1.5 text-sm"
-          >
-            {CORES_FILAMENTO.map((c) => (
-              <option key={c} value={c}>
-                {LABEL_COR_FILAMENTO[c]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-gray-500">Gramas</span>
-          <input
-            type="number"
-            min={0}
-            value={gramas}
-            onChange={(e) => setGramas(e.target.value)}
-            className="w-28 rounded border border-gray-300 px-2 py-1.5 text-sm"
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-gray-500">Motivo (opcional)</span>
-          <input
-            type="text"
-            value={motivo}
-            onChange={(e) => setMotivo(e.target.value)}
-            placeholder="ex: rolo estragado, teste de cor..."
-            className="w-56 rounded border border-gray-300 px-2 py-1.5 text-sm"
-          />
-        </label>
-        <button
-          onClick={registrar}
-          disabled={salvando}
-          className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
-        >
-          {salvando ? "Registrando..." : "Registrar perda"}
-        </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-y-auto rounded-lg bg-white p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900">Adicionar filamento — novo pedido</h3>
+          <button onClick={onFechar} className="text-gray-400 hover:text-gray-600">
+            ×
+          </button>
+        </div>
+        <p className="mb-3 text-xs text-gray-500">
+          Um pedido pode ter várias cores — adicione cada uma abaixo e depois salve o pedido inteiro
+          de uma vez. Isso soma direto no estoque de cada cor e também lança a despesa na aba
+          Financeiro.
+        </p>
+
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          <label className="text-xs text-gray-500">
+            Cor
+            <select
+              value={itemAtual.cor}
+              onChange={(e) => onMudarItem({ ...itemAtual, cor: e.target.value as CorFilamento })}
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            >
+              {CORES_FILAMENTO.map((c) => (
+                <option key={c} value={c}>
+                  {LABEL_COR_FILAMENTO[c]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs text-gray-500">
+            Peso — Kg
+            <input
+              value={itemAtual.pesoKg}
+              onChange={(e) => onMudarItem({ ...itemAtual, pesoKg: e.target.value })}
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+              placeholder="1"
+            />
+          </label>
+          <label className="text-xs text-gray-500">
+            Peso — g (além do Kg)
+            <input
+              value={itemAtual.pesoG}
+              onChange={(e) => onMudarItem({ ...itemAtual, pesoG: e.target.value })}
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+              placeholder="0"
+            />
+          </label>
+          <label className="text-xs text-gray-500">
+            Valor pago (R$)
+            <input
+              value={itemAtual.valorPago}
+              onChange={(e) => onMudarItem({ ...itemAtual, valorPago: e.target.value })}
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+              placeholder="0,00"
+            />
+          </label>
+          <div className="flex items-end">
+            <button
+              onClick={onAdicionarItem}
+              className="w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            >
+              + Adicionar cor
+            </button>
+          </div>
+        </div>
+
+        {itensPedido.length > 0 && (
+          <div className="mt-3 overflow-x-auto rounded border border-gray-100">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
+                <tr>
+                  <th className="px-3 py-1.5">Cor</th>
+                  <th className="px-3 py-1.5 text-right">Peso</th>
+                  <th className="px-3 py-1.5 text-right">Valor</th>
+                  <th className="px-3 py-1.5"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {itensPedido.map((item, i) => (
+                  <tr key={i}>
+                    <td className="px-3 py-1.5">{LABEL_COR_FILAMENTO[item.cor]}</td>
+                    <td className="px-3 py-1.5 text-right">{formatPeso(gramasDoItem(item))}</td>
+                    <td className="px-3 py-1.5 text-right">
+                      {formatBRLEstoque(Number(item.valorPago.replace(",", ".")) || 0)}
+                    </td>
+                    <td className="px-3 py-1.5 text-right">
+                      <button
+                        onClick={() => onRemoverItem(i)}
+                        className="text-xs text-gray-400 hover:text-red-600"
+                      >
+                        remover
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-2">
+          <label className="text-xs text-gray-500">
+            Fornecedor
+            <input
+              value={pedido.fornecedor}
+              onChange={(e) => onMudarPedido({ ...pedido, fornecedor: e.target.value })}
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            />
+          </label>
+          <label className="text-xs text-gray-500">
+            {pedido.temPrazo ? "Data da compra" : "Data de pagamento"}
+            <input
+              type="date"
+              value={pedido.dataCompra}
+              onChange={(e) => onMudarPedido({ ...pedido, dataCompra: e.target.value })}
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            />
+          </label>
+        </div>
+
+        <div className="mt-2">
+          {!pedido.temPrazo ? (
+            <button
+              onClick={() => onMudarPedido({ ...pedido, temPrazo: true })}
+              className="text-xs font-medium text-blue-600 hover:underline"
+            >
+              + Adicionar prazo (pagamento não é à vista)
+            </button>
+          ) : (
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="text-xs text-gray-500">
+                Vencimento (a prazo)
+                <input
+                  type="date"
+                  value={pedido.dataVencimento}
+                  onChange={(e) => onMudarPedido({ ...pedido, dataVencimento: e.target.value })}
+                  className="mt-1 rounded border border-gray-300 px-2 py-1.5 text-sm"
+                />
+              </label>
+              <button
+                onClick={() => onMudarPedido({ ...pedido, temPrazo: false, dataVencimento: "" })}
+                className="text-xs text-gray-400 hover:text-red-600"
+              >
+                remover prazo (voltar pra à vista)
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
+          <p className="text-sm text-gray-700">
+            Total do pedido: <span className="font-semibold">{formatBRLEstoque(total)}</span>
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={onFechar}
+              className="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={onSalvar}
+              disabled={salvando || itensPedido.length === 0}
+              className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
+            >
+              {salvando ? "Salvando..." : "Salvar pedido"}
+            </button>
+          </div>
+        </div>
+        {erro && <p className="mt-2 text-xs text-red-600">{erro}</p>}
       </div>
-      {erro && <p className="mt-1 text-xs text-red-600">{erro}</p>}
-      {sucesso && <p className="mt-1 text-xs text-green-700">Perda registrada.</p>}
     </div>
   );
 }
