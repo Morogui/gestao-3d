@@ -140,12 +140,25 @@ export default function FullPage() {
     }
   }
 
-  async function criarEnvio(sku: string, placaId: number, quantidade: number, dataLimite: string) {
-    await fetch("/api/full/envios", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sku, placaId, quantidade, dataLimite }),
-    });
+  // Pedido do Guilherme em 2026-07-29: produtos compostos (ex: Suporte
+  // Universal, que precisa de 1 placa "Corpos" + 1 placa "Ganchos" pra
+  // fechar 1 unidade vendida) devem aparecer como UMA sugestão só na
+  // busca — "pra ser vendido precisa de 1 gancho e 1 corpo... mostrar só
+  // a SKU principal, a produção é outra coisa". Por isso agora recebe
+  // uma LISTA de placaIds (todas as placas componentes daquele SKU) em
+  // vez de uma única: cria um envio (full_envios) pra cada placa
+  // componente, todos com o mesmo sku/quantidade/dataLimite — assim a
+  // tela de produção continua enxergando e cobrando cada placa
+  // separadamente (isso é produção, não venda), mas o usuário só
+  // precisou escolher e preencher uma vez.
+  async function criarEnvio(sku: string, placaIds: number[], quantidade: number, dataLimite: string) {
+    for (const placaId of placaIds) {
+      await fetch("/api/full/envios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sku, placaId, quantidade, dataLimite }),
+      });
+    }
     const enviosRes = await fetch("/api/full/envios");
     setEnvios(await enviosRes.json());
   }
@@ -399,13 +412,13 @@ function EnviosPlanejados({
 }: {
   linhas: LinhaFull[];
   envios: EnvioFull[];
-  onCriar: (sku: string, placaId: number, quantidade: number, dataLimite: string) => Promise<void>;
+  onCriar: (sku: string, placaIds: number[], quantidade: number, dataLimite: string) => Promise<void>;
   onConfirmar: (id: number) => Promise<void>;
   onEditar: (id: number, quantidade: number, dataLimite: string) => Promise<boolean>;
 }) {
   const [buscaSku, setBuscaSku] = useState("");
   const [resultados, setResultados] = useState<SkuResult[]>([]);
-  const [selecionado, setSelecionado] = useState<{ sku: string; placaId: number; label: string } | null>(
+  const [selecionado, setSelecionado] = useState<{ sku: string; placaIds: number[]; label: string } | null>(
     null
   );
   const [quantidade, setQuantidade] = useState("");
@@ -435,11 +448,42 @@ function EnviosPlanejados({
     return () => clearTimeout(timeout);
   }, [buscaSku]);
 
+  // Pedido do Guilherme em 2026-07-29: "para ser vendido precisa de 1
+  // gancho e 1 corpo, mostrar só a sku principal, a produção é outra
+  // coisa" — a busca acima (agrupar=false) traz uma linha por
+  // sku_placa, então um produto composto (Suporte Universal, Suporte
+  // Carro etc.) aparece 2-3x, uma vez por placa componente (corpos,
+  // ganchos, mista...). Pra quem tá planejando um ENVIO (venda), isso
+  // não importa — o que importa é o SKU que vai ser vendido. Aqui
+  // reagrupamos por sku de novo, do lado do cliente, juntando todas as
+  // placas componentes daquele sku numa lista (placaIds); ao confirmar a
+  // sugestão, criamos um envio pra cada placa componente por trás (ver
+  // criarEnvio em app/full/page.tsx), sem o usuário precisar escolher
+  // linha por linha.
+  const sugestoes = useMemo(() => {
+    const porSku = new Map<
+      string,
+      { sku: string; placaIds: number[]; placaNomes: string[] }
+    >();
+    for (const r of resultados) {
+      const existente = porSku.get(r.sku);
+      if (existente) {
+        if (!existente.placaIds.includes(r.placa_id)) {
+          existente.placaIds.push(r.placa_id);
+          existente.placaNomes.push(r.placa_nome);
+        }
+      } else {
+        porSku.set(r.sku, { sku: r.sku, placaIds: [r.placa_id], placaNomes: [r.placa_nome] });
+      }
+    }
+    return Array.from(porSku.values());
+  }, [resultados]);
+
   async function enviar() {
     if (!selecionado || !quantidade || Number(quantidade) <= 0 || !dataLimite) return;
     setEnviando(true);
     try {
-      await onCriar(selecionado.sku, selecionado.placaId, Number(quantidade), dataLimite);
+      await onCriar(selecionado.sku, selecionado.placaIds, Number(quantidade), dataLimite);
       setSelecionado(null);
       setBuscaSku("");
       setQuantidade("");
@@ -483,23 +527,27 @@ function EnviosPlanejados({
             }}
             className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs"
           />
-          {!selecionado && resultados.length > 0 && (
+          {!selecionado && sugestoes.length > 0 && (
             <ul className="mt-1 max-h-40 overflow-y-auto rounded border border-gray-200 text-xs">
-              {resultados.map((r) => (
-                <li key={r.sku}>
+              {sugestoes.map((s) => (
+                <li key={s.sku}>
                   <button
                     onClick={() => {
                       setSelecionado({
-                        sku: r.sku,
-                        placaId: r.placa_id,
-                        label: `${r.sku} → ${r.placa_nome}`,
+                        sku: s.sku,
+                        placaIds: s.placaIds,
+                        label: s.sku,
                       });
                       setResultados([]);
                     }}
                     className="block w-full px-2 py-1 text-left hover:bg-gray-50"
                   >
-                    <span className="font-medium text-gray-900">{r.sku}</span>{" "}
-                    <span className="text-gray-400">→ {r.placa_nome}</span>
+                    <span className="font-medium text-gray-900">{s.sku}</span>{" "}
+                    {s.placaNomes.length > 1 && (
+                      <span className="text-gray-400">
+                        (produção: {s.placaNomes.join(" + ")})
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}
