@@ -791,6 +791,16 @@ export default function ProducaoPage() {
         <div className="mt-3">
           <PerdaFilamentoForm onRegistrar={registrarPerdaFilamento} />
         </div>
+        {/* Histórico de movimentação do filamento — pedido do Guilherme em
+            2026-07-28: "tenho que ter uma abinha para ver a movimentacao
+            que esta rolando no meu estoque, qual foi a producao e o que
+            foi consumido". Mesmo padrão de "Ver histórico" já usado na
+            aba Estoque, só que aqui é uma lista única (não por placa) já
+            que o estoque de filamento é por cor. Ver
+            /api/producao/filamento/historico. */}
+        <div className="mt-3">
+          <HistoricoFilamento />
+        </div>
       </section>
 
       <section>
@@ -1446,6 +1456,121 @@ function PerdaFilamentoForm({
       </div>
       {erro && <p className="text-xs text-red-600">{erro}</p>}
       {sucesso && <p className="text-xs text-green-600">Perda registrada e descontada do estoque.</p>}
+    </div>
+  );
+}
+
+interface MovimentoFilamento {
+  data: string;
+  cor: string;
+  tipo: "producao" | "falha" | "perda_avulsa" | "ajuste_manual";
+  gramas: number;
+  detalhe: string;
+}
+
+const LABEL_TIPO_MOVIMENTO_FILAMENTO: Record<MovimentoFilamento["tipo"], string> = {
+  producao: "Produção concluída",
+  falha: "Falha na placa",
+  perda_avulsa: "Perda avulsa",
+  ajuste_manual: "Ajuste manual",
+};
+
+// Histórico de movimentação de filamento — pedido do Guilherme em
+// 2026-07-28: "tenho que ter uma abinha para ver a movimentacao que
+// esta rolando no meu estoque, qual foi a producao e o que foi
+// consumido". Busca sob demanda (só ao abrir) em
+// /api/producao/filamento/historico, que une consumo de produção
+// concluída, perda em falha de placa, perda avulsa manual e ajuste
+// manual do campo de estoque — tudo já com cor e detalhe.
+function HistoricoFilamento() {
+  const [aberto, setAberto] = useState(false);
+  const [historico, setHistorico] = useState<
+    MovimentoFilamento[] | "loading" | "erro" | null
+  >(null);
+
+  async function alternar() {
+    if (aberto) {
+      setAberto(false);
+      return;
+    }
+    setAberto(true);
+    if (historico === null) {
+      setHistorico("loading");
+      try {
+        const res = await fetch("/api/producao/filamento/historico");
+        if (!res.ok) throw new Error("falha");
+        const data = await res.json();
+        setHistorico(data.movimentos);
+      } catch {
+        setHistorico("erro");
+      }
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-gray-200 p-3">
+      <button
+        onClick={alternar}
+        className="text-xs font-medium text-blue-600 hover:underline"
+      >
+        {aberto ? "Fechar histórico" : "Ver histórico de movimentação"}
+      </button>
+      {aberto && (
+        <div className="mt-3">
+          {(historico === "loading" || historico === null) && (
+            <p className="text-xs text-gray-400">Carregando histórico...</p>
+          )}
+          {historico === "erro" && (
+            <p className="text-xs text-red-600">Não deu pra carregar o histórico.</p>
+          )}
+          {Array.isArray(historico) && historico.length === 0 && (
+            <p className="text-xs text-gray-400">
+              Nenhuma movimentação registrada ainda (o estoque atual pode vir de
+              antes desse histórico existir).
+            </p>
+          )}
+          {Array.isArray(historico) && historico.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full max-w-3xl text-xs">
+                <thead className="text-left uppercase text-gray-400">
+                  <tr>
+                    <th className="py-1 pr-3">Quando</th>
+                    <th className="py-1 pr-3">Cor</th>
+                    <th className="py-1 pr-3">Origem</th>
+                    <th className="py-1 pr-3 text-right">Gramas</th>
+                    <th className="py-1">Detalhe</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {historico.map((m, i) => (
+                    <tr key={i}>
+                      <td className="py-1.5 pr-3 whitespace-nowrap text-gray-500">
+                        {new Date(m.data).toLocaleString("pt-BR")}
+                      </td>
+                      <td className="py-1.5 pr-3 whitespace-nowrap text-gray-700">
+                        {LABEL_COR_FILAMENTO[m.cor as CorFilamento] ?? m.cor}
+                      </td>
+                      <td className="py-1.5 pr-3 whitespace-nowrap text-gray-500">
+                        {LABEL_TIPO_MOVIMENTO_FILAMENTO[m.tipo]}
+                      </td>
+                      <td
+                        className={
+                          "py-1.5 pr-3 text-right font-medium whitespace-nowrap " +
+                          (m.gramas < 0 ? "text-red-600" : "text-green-600")
+                        }
+                      >
+                        {m.gramas > 0 ? "+" : ""}
+                        {m.gramas}g
+                      </td>
+                      <td className="py-1.5 text-gray-500">{m.detalhe}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
