@@ -26,6 +26,13 @@ export const dynamic = "force-dynamic";
 //    filamento por cor" é salvo com um valor diferente do atual (ver PUT
 //    /api/producao/filamento), loga o delta — mesmo padrão do
 //    ajustes_manuais_estoque usado na aba Estoque.
+// 5) compras_filamento — entrada de estoque quando um pedido de compra é
+//    lançado na aba Financeiro (ver POST
+//    /api/financeiro/compras-filamento). Pedido do Guilherme em
+//    2026-07-28: "esse numero tem que mudar, e o filamento ser
+//    adicionado em salvar estoque de filamento" — antes a compra só
+//    alimentava o custo médio, sem entrar no saldo; agora soma direto,
+//    então precisa aparecer aqui como entrada (+).
 export async function GET() {
   const producoesConcluidas = (await sql`
     SELECT p.id, p.concluido_em AS data, p.quantidade_placas,
@@ -75,10 +82,17 @@ export async function GET() {
     LIMIT 100
   `) as { cor: string; delta: string; resultante: string; data: string }[];
 
+  const compras = (await sql`
+    SELECT cor, gramas, fornecedor, data_compra AS data
+    FROM compras_filamento
+    ORDER BY data_compra DESC, id DESC
+    LIMIT 100
+  `) as { cor: string; gramas: string; fornecedor: string | null; data: string }[];
+
   type Movimento = {
     data: string;
     cor: string;
-    tipo: "producao" | "falha" | "perda_avulsa" | "ajuste_manual";
+    tipo: "producao" | "falha" | "perda_avulsa" | "ajuste_manual" | "compra";
     gramas: number;
     detalhe: string;
   };
@@ -130,6 +144,18 @@ export async function GET() {
       tipo: "ajuste_manual",
       gramas: Number(a.delta),
       detalhe: `Ajuste manual do estoque (ficou em ${Number(a.resultante)}g)`,
+    });
+  }
+
+  for (const c of compras) {
+    const gramas = Number(c.gramas);
+    if (gramas <= 0) continue;
+    movimentos.push({
+      data: c.data,
+      cor: c.cor,
+      tipo: "compra",
+      gramas,
+      detalhe: c.fornecedor ? `Compra registrada — ${c.fornecedor}` : "Compra registrada",
     });
   }
 
