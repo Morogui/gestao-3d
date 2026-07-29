@@ -40,8 +40,21 @@ const DESPACHADO = new Set([
   "completed",
   "to_confirm_receive",
 ]);
+
+// Extraído do pedidoAindaNaoDespachado abaixo em 2026-07-29 pra poder
+// reaproveitar a MESMA regra de "já despachou de verdade?" fora do tipo
+// OrderSummary — a aba Estoque precisa aplicar essa checagem direto em
+// cima do shipping_status cru que já está gravado em pedidos_cache (sem
+// remontar um OrderSummary inteiro só pra isso), pro badge de "vendido
+// hoje, ainda não despachado" ao lado do estoque atual.
+export function statusIndicaDespachado(
+  shippingStatus: string | null | undefined
+): boolean {
+  return DESPACHADO.has((shippingStatus || "").toLowerCase());
+}
+
 function pedidoAindaNaoDespachado(order: OrderSummary): boolean {
-  return !DESPACHADO.has((order.shippingStatus || "").toLowerCase());
+  return !statusIndicaDespachado(order.shippingStatus);
 }
 
 function normalize(s: string): string {
