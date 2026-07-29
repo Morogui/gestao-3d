@@ -1561,9 +1561,20 @@ function PrinterCard({
   const [pecaDescricao, setPecaDescricao] = useState("");
   const [gramasPeca, setGramasPeca] = useState("");
 
+  // placaPorId vem de /api/placas, que filtra "descontinuada = false" — uma
+  // placa que estava rodando e foi descontinuada DEPOIS de carregada na
+  // máquina some desse mapa. Bug reportado pelo Guilherme em 2026-07-29:
+  // "mostra como rodando mas não mostra o que está rodando" (Impressora 2
+  // e 3). Antes disso, o corpo do card só renderizava com `producao &&
+  // placa` — sem a placa no mapa, caía no formulário vazio de carregar
+  // máquina mesmo com o badge certo dizendo "Rodando". Correção: usar
+  // producao.placa_nome/pecas_por_placa (que /api/producoes já traz, SEM
+  // filtro de descontinuada) como dado principal; placaPorId só
+  // complementa quando disponível, nunca bloqueia a renderização.
   const placa = producao ? placaPorId.get(producao.placa_id) : undefined;
-  const totalPecas =
-    producao && placa ? Number(producao.quantidade_placas) * placa.pecasPorPlaca : 0;
+  const placaNome = placa?.nome ?? producao?.placa_nome ?? "";
+  const pecasPorPlaca = placa?.pecasPorPlaca ?? Number(producao?.pecas_por_placa ?? 0);
+  const totalPecas = producao ? Number(producao.quantidade_placas) * pecasPorPlaca : 0;
 
   return (
     <div className="flex flex-col rounded-lg border border-gray-200 bg-white p-4">
@@ -1579,11 +1590,11 @@ function PrinterCard({
         </span>
       </div>
 
-      {producao && placa ? (
+      {producao ? (
         <div className="flex flex-col gap-3">
           <div>
             <p className="font-medium text-gray-900">
-              {placa.nome}
+              {placaNome}
               {producao.material === "PETG" && (
                 <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-semibold text-sky-700">
                   PETG
@@ -1591,7 +1602,7 @@ function PrinterCard({
               )}
             </p>
             <p className="text-xs text-gray-500">
-              {producao.quantidade_placas} placa(s) · {placa.pecasPorPlaca} pç/placa ·{" "}
+              {producao.quantidade_placas} placa(s) · {pecasPorPlaca} pç/placa ·{" "}
               {totalPecas} peças no total
             </p>
             <p className="text-xs text-gray-400">
@@ -1761,7 +1772,16 @@ function CarregarPlacaForm({
   // removida.
 
   useEffect(() => {
-    if (buscaSku.trim().length < 2) {
+    // Pedido do Guilherme em 2026-07-29: "quando escolhido, deve ficar
+    // marcado no buscar qual sku foi selecionado" — agora o próprio campo
+    // de busca fica preenchido com o SKU escolhido (ver onClick do
+    // resultado abaixo) em vez de voltar vazio pro placeholder. Por isso
+    // esse efeito precisa ignorar o próprio valor que ELE MESMO acabou de
+    // colocar no campo (buscaSku === placaSelecionadaNome): sem essa
+    // checagem, toda seleção dispararia uma busca nova pelo texto do
+    // resultado escolhido e reabriria a lista por baixo, como se o
+    // usuário tivesse digitado aquilo.
+    if (buscaSku.trim().length < 2 || buscaSku === placaSelecionadaNome) {
       setResultados([]);
       return;
     }
@@ -1775,7 +1795,7 @@ function CarregarPlacaForm({
       }
     }, 300);
     return () => clearTimeout(timeout);
-  }, [buscaSku]);
+  }, [buscaSku, placaSelecionadaNome]);
 
   // Tempo médio de impressão da placa escolhida — pedido do Guilherme em
   // 2026-07-24: mostrar como observação na hora de carregar, pra dar uma
@@ -1796,7 +1816,12 @@ function CarregarPlacaForm({
           placeholder="Ex: SUPORTE BMW BRANCO"
           value={buscaSku}
           onChange={(e) => setBuscaSku(e.target.value)}
-          className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs"
+          className={
+            "w-full rounded border px-2 py-1.5 text-xs " +
+            (buscaSku.length > 0 && buscaSku === placaSelecionadaNome
+              ? "border-blue-400 bg-blue-50 font-medium text-blue-900"
+              : "border-gray-300")
+          }
         />
         {buscando && <p className="mt-1 text-xs text-gray-400">Buscando...</p>}
         {resultados.length > 0 && (
@@ -1806,8 +1831,12 @@ function CarregarPlacaForm({
                 <button
                   onClick={() => {
                     setPlacaId(r.placa_id);
+                    // Pedido do Guilherme: manter o SKU escolhido MARCADO
+                    // no próprio campo de busca, em vez de limpar de volta
+                    // pro placeholder — antes fazia setBuscaSku("") e só
+                    // mostrava o nome numa linha azul separada embaixo.
+                    setBuscaSku(`${r.sku} → ${r.placa_nome}`);
                     setPlacaSelecionadaNome(`${r.sku} → ${r.placa_nome}`);
-                    setBuscaSku("");
                     setResultados([]);
                   }}
                   className="block w-full px-2 py-1 text-left hover:bg-gray-50"
@@ -1833,6 +1862,7 @@ function CarregarPlacaForm({
           onChange={(e) => {
             setPlacaId(Number(e.target.value));
             setPlacaSelecionadaNome(null);
+            setBuscaSku("");
           }}
           className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs"
         >
@@ -1845,12 +1875,6 @@ function CarregarPlacaForm({
           ))}
         </select>
       </div>
-
-      {placaSelecionadaNome && (
-        <p className="rounded bg-blue-50 px-2 py-1 text-xs text-blue-800">
-          Selecionado via busca: {placaSelecionadaNome}
-        </p>
-      )}
 
       {placaSelecionada && (
         <p className="rounded bg-gray-50 px-2 py-1 text-xs text-gray-600">
