@@ -9,6 +9,24 @@ import { CorFilamento } from "./placas";
 // corFilamentoDaPlaca em lib/placas.ts).
 export type EstoqueFilamentoRow = Record<CorFilamento, number>;
 
+// Conversão gramas <-> Kg pra exibição — pedido do Guilherme em
+// 2026-07-29: "No painel tem que mostrar em kg e gramas" (o estoque
+// guarda gramas no banco, mas em telão de número grande tipo "60000" é
+// difícil de ler; o operador pensa em Kg). Usa vírgula (padrão BR) e no
+// máximo 2 casas decimais, sem zero à direita forçado — ex: 60000g ->
+// "60", 5050g -> "5,05", 20030g -> "20,03".
+export function formatGramasEmKg(gramas: number): string {
+  return (gramas / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+}
+
+// Inverso — converte o texto que o usuário digitou (em Kg, com vírgula
+// ou ponto) de volta pra gramas, pra gravar no banco do jeito que já
+// era feito antes. Arredonda pro grama mais próximo.
+export function parseKgParaGramas(texto: string): number {
+  const kg = Number(texto.replace(",", ".")) || 0;
+  return Math.round(kg * 1000);
+}
+
 export interface MachineRow {
   id: number;
   nome: string;
