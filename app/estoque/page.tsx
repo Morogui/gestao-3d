@@ -781,6 +781,7 @@ const LABEL_COR_FILAMENTO: Record<CorFilamento, string> = {
   prata: "Prata",
   marrom: "Marrom",
   bege: "Bege",
+  vermelho: "Vermelho",
 };
 
 function FilamentoEditor({
