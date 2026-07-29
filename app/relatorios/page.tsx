@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { formatDiaBR } from "@/lib/date";
+import { labelCorFilamento } from "@/lib/placas";
 
 // Aba Relatórios — pedido do Guilherme em 2026-07-29: "devemos criar
 // uma nova aba com detalhes e gerador de arquivos... que vamos precisar
@@ -153,7 +154,7 @@ function RelatorioMovimentacaoFilamento() {
     for (const grupo of grupos) {
       const linhas = grupo.itens.map((m) => ({
         Data: new Date(m.data).toLocaleDateString("pt-BR"),
-        Cor: m.cor,
+        Cor: labelCorFilamento(m.cor),
         Tipo: LABEL_TIPO_MOVIMENTO[m.tipo],
         Gramas: m.gramas,
         Detalhe: m.detalhe,
@@ -223,7 +224,7 @@ function RelatorioMovimentacaoFilamento() {
                           <td className="px-3 py-1.5 text-gray-600">
                             {new Date(m.data).toLocaleDateString("pt-BR")}
                           </td>
-                          <td className="px-3 py-1.5 capitalize text-gray-700">{m.cor}</td>
+                          <td className="px-3 py-1.5 text-gray-700">{labelCorFilamento(m.cor)}</td>
                           <td className="px-3 py-1.5 text-gray-700">
                             {LABEL_TIPO_MOVIMENTO[m.tipo]}
                           </td>
