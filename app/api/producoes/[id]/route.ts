@@ -1,8 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { corFilamentoDaPlaca } from "@/lib/placas";
+import { corFilamentoDaPlaca, corPetgDe, CORES_COM_PETG, CorFilamento } from "@/lib/placas";
 
 export const dynamic = "force-dynamic";
+
+// Coluna adicionada em 2026-07-29 — ver mesma nota em
+// /api/producoes/route.ts.
+async function garantirColunaMaterial() {
+  await sql`ALTER TABLE producoes ADD COLUMN IF NOT EXISTS material TEXT`;
+}
+
+// Resolve qual entrada de estoque (cor "normal" ou a variante "-petg")
+// deve ser descontada, a partir da cor que o NOME da placa indica +
+// do material que o operador escolheu ao carregar a máquina
+// (producoes.material). Pedido do Guilherme em 2026-07-29: PETG só
+// existe pras 3 cores em CORES_COM_PETG — pra qualquer outra cor (ou
+// quando material não é "PETG"), comporta-se exatamente como antes.
+function corEfetiva(
+  corBase: CorFilamento | null,
+  material: string | null
+): CorFilamento | null {
+  if (!corBase) return null;
+  if (material === "PETG" && CORES_COM_PETG.includes(corBase)) {
+    return corPetgDe(corBase);
+  }
+  return corBase;
+}
 
 // Desconta gramas do estoque de filamento (por cor) — pedido do
 // Guilherme em 2026-07-27: "toda sku vendida tem cor... quando for
@@ -36,6 +59,7 @@ export async function PATCH(
   if (!Number.isInteger(id)) {
     return NextResponse.json({ error: "id inválido" }, { status: 400 });
   }
+  await garantirColunaMaterial();
 
   const body = await request.json();
   const { status, gramasDesperdicadas } = body as {
@@ -59,8 +83,8 @@ export async function PATCH(
       SET status = 'falha_placa', concluido_em = now(),
           gramas_desperdicadas = ${gramasDesperdicadas ?? 0}
       WHERE id = ${id} AND status = 'em_andamento'
-      RETURNING id, placa_id
-    `) as { id: number; placa_id: number }[];
+      RETURNING id, placa_id, material
+    `) as { id: number; placa_id: number; material: string | null }[];
 
     if (rows.length === 0) {
       return NextResponse.json(
@@ -72,12 +96,14 @@ export async function PATCH(
     // Baixa do estoque de filamento por cor — 2026-07-27: numa falha de
     // placa inteira o gasto real é o que o operador informou em
     // gramasDesperdicadas (pode ser menor que o peso total da placa, se
-    // a impressão falhou no meio do caminho).
+    // a impressão falhou no meio do caminho). 2026-07-29: usa a variante
+    // PETG do estoque se foi o material escolhido ao carregar a máquina.
     if (gramasDesperdicadas && gramasDesperdicadas > 0) {
       const placaRows = (await sql`
         SELECT nome FROM placas WHERE id = ${rows[0].placa_id}
       `) as { nome: string }[];
-      const cor = placaRows[0] ? corFilamentoDaPlaca(placaRows[0].nome) : null;
+      const corBase = placaRows[0] ? corFilamentoDaPlaca(placaRows[0].nome) : null;
+      const cor = corEfetiva(corBase, rows[0].material);
       await descontarFilamento(cor, gramasDesperdicadas);
     }
 
@@ -89,8 +115,8 @@ export async function PATCH(
       UPDATE producoes
       SET status = 'concluida', concluido_em = now()
       WHERE id = ${id} AND status = 'em_andamento'
-      RETURNING placa_id, quantidade_placas
-    `) as { placa_id: number; quantidade_placas: string }[];
+      RETURNING placa_id, quantidade_placas, material
+    `) as { placa_id: number; quantidade_placas: string; material: string | null }[];
 
     if (rows.length === 0) {
       return NextResponse.json(
@@ -99,7 +125,7 @@ export async function PATCH(
       );
     }
 
-    const { placa_id: placaId, quantidade_placas: quantidadePlacas } = rows[0];
+    const { placa_id: placaId, quantidade_placas: quantidadePlacas, material } = rows[0];
     const placaRows = (await sql`
       SELECT nome, pecas_por_placa, saida_extra_placa_id, saida_extra_pecas, peso_placa_gramas
       FROM placas WHERE id = ${placaId}
@@ -164,7 +190,8 @@ export async function PATCH(
     let gramasFilamentoDescontadas = 0;
     if (pesoPlacaGramas) {
       gramasFilamentoDescontadas = Number(quantidadePlacas) * pesoPlacaGramas;
-      const cor = corFilamentoDaPlaca(placaRows[0].nome);
+      const corBase = corFilamentoDaPlaca(placaRows[0].nome);
+      const cor = corEfetiva(corBase, material);
       await descontarFilamento(cor, gramasFilamentoDescontadas);
     }
 
