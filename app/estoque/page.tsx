@@ -4,7 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 import { PlacaRow, CORES_FILAMENTO, CorFilamento } from "@/lib/placas";
 import { EstoqueFilamentoRow, formatGramasEmKg, parseKgParaGramas } from "@/lib/producao-types";
 
-type EstoqueRow = PlacaRow & { atualizadoEm: string | null };
+type EstoqueRow = PlacaRow & {
+  atualizadoEm: string | null;
+  // Quanto do "estoque" acima já foi descontado HOJE por vendas cujo
+  // pedido ainda não despachou de verdade na plataforma — pedido do
+  // Guilherme em 2026-07-29. Vem calculado pronto de /api/estoque (ver
+  // buscarPendenteHojePorPlaca lá). Puramente informativo: o número de
+  // estoque já está correto (a baixa acontece no pagamento), isso só
+  // mostra "quanto desse total já tem destino certo hoje".
+  pendenteEnvioHoje: number;
+};
 type Status = "loading" | "ready" | "erro";
 
 interface Movimento {
@@ -347,6 +356,21 @@ export default function EstoquePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Mantém o badge "vendido hoje, ainda não despachado" (coluna Estoque
+  // atual) se atualizando sozinho — pedido do Guilherme em 2026-07-29:
+  // "ir atualizando esse número" conforme os pedidos vão saindo nas
+  // plataformas, sem precisar recarregar a página manualmente. 60s casa
+  // com o mesmo ritmo do cron de pedidos (vercel.json); só recarrega a
+  // LEITURA (carregar), sem repetir a sincronização de baixa automática
+  // aqui (essa já roda no cron de 1 em 1 minuto e não precisa duplicar).
+  useEffect(() => {
+    const t = setInterval(() => {
+      carregar();
+    }, 60000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const placasFiltradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     if (!termo) return placas;
@@ -636,7 +660,17 @@ function LinhaEstoque({
         <td className="px-3 py-2">
           <TierBadge tier={placa.tier} />
         </td>
-        <td className="px-3 py-2 text-right font-semibold text-gray-900">{placa.estoque}</td>
+        <td className="px-3 py-2 text-right font-semibold text-gray-900">
+          {placa.estoque}
+          {placa.pendenteEnvioHoje > 0 && (
+            <span
+              className="ml-1.5 font-normal text-gray-400"
+              title="Já descontado do estoque hoje por vendas cujo pedido ainda não saiu na plataforma — some daqui assim que despachar"
+            >
+              (-{placa.pendenteEnvioHoje} hoje)
+            </span>
+          )}
+        </td>
         <td className="px-3 py-2">
           <div className="flex items-center gap-1.5">
             <input
