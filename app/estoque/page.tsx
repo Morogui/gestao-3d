@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PlacaRow, CORES_FILAMENTO, CorFilamento } from "@/lib/placas";
-import { EstoqueFilamentoRow } from "@/lib/producao-types";
+import { EstoqueFilamentoRow, formatGramasEmKg, parseKgParaGramas } from "@/lib/producao-types";
 
 type EstoqueRow = PlacaRow & { atualizadoEm: string | null };
 type Status = "loading" | "ready" | "erro";
@@ -413,8 +413,9 @@ export default function EstoquePage() {
       <section className="rounded-lg border border-gray-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-gray-900">Estoque de filamento por cor</h2>
         <p className="mb-3 text-xs text-gray-500">
-          Informe o quanto tem em estoque de cada cor (em gramas). Cor deixada
-          em 0 bloqueia automaticamente a fila de prioridade da aba Produção
+          Informe o quanto tem em estoque de cada cor (em Kg — ex: 4,67 =
+          4,67kg). Cor deixada em 0 bloqueia automaticamente a fila de
+          prioridade da aba Produção
           pra todas as placas daquela cor — não precisa subir produto pra
           produção sem ter filamento pra imprimir. A cor de cada placa é
           detectada pelo nome (ex: &quot;Suporte Carro (Prata)&quot;); placas
@@ -792,7 +793,7 @@ function FilamentoEditor({
   const [valores, setValores] = useState<Record<CorFilamento, string>>(() => {
     const inicial = {} as Record<CorFilamento, string>;
     for (const cor of CORES_FILAMENTO) {
-      inicial[cor] = String(filamento[cor] ?? 0);
+      inicial[cor] = formatGramasEmKg(filamento[cor] ?? 0);
     }
     return inicial;
   });
@@ -801,7 +802,7 @@ function FilamentoEditor({
   useEffect(() => {
     const novo = {} as Record<CorFilamento, string>;
     for (const cor of CORES_FILAMENTO) {
-      novo[cor] = String(filamento[cor] ?? 0);
+      novo[cor] = formatGramasEmKg(filamento[cor] ?? 0);
     }
     setValores(novo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -812,7 +813,7 @@ function FilamentoEditor({
     try {
       const novo = {} as EstoqueFilamentoRow;
       for (const cor of CORES_FILAMENTO) {
-        novo[cor] = Math.max(0, Number(valores[cor]) || 0);
+        novo[cor] = Math.max(0, parseKgParaGramas(valores[cor]));
       }
       await onSalvar(novo);
     } finally {
@@ -824,13 +825,15 @@ function FilamentoEditor({
     <div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
         {CORES_FILAMENTO.map((cor) => {
-          const zerado = (Number(valores[cor]) || 0) <= 0;
+          const zerado = parseKgParaGramas(valores[cor]) <= 0;
           return (
             <label key={cor} className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-600">{LABEL_COR_FILAMENTO[cor]}</span>
+              <span className="text-xs font-medium text-gray-600">
+                {LABEL_COR_FILAMENTO[cor]} <span className="font-normal text-gray-400">(Kg)</span>
+              </span>
               <input
-                type="number"
-                min={0}
+                type="text"
+                inputMode="decimal"
                 value={valores[cor]}
                 onChange={(e) => setValores((prev) => ({ ...prev, [cor]: e.target.value }))}
                 className={
