@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { PlacaRow } from "@/lib/placas";
+import { PlacaRow, CORES_FILAMENTO, CorFilamento } from "@/lib/placas";
+import { EstoqueFilamentoRow } from "@/lib/producao-types";
 
 type EstoqueRow = PlacaRow & { atualizadoEm: string | null };
 type Status = "loading" | "ready" | "erro";
@@ -45,6 +46,51 @@ export default function EstoquePage() {
   const [salvando, setSalvando] = useState<Record<number, boolean>>({});
   const [sincronizando, setSincronizando] = useState(false);
   const [sincronizacao, setSincronizacao] = useState<SincronizacaoInfo | null>(null);
+  const [filamento, setFilamento] = useState<EstoqueFilamentoRow | null>(null);
+
+  async function carregarFilamento() {
+    try {
+      const res = await fetch("/api/producao/filamento");
+      if (!res.ok) throw new Error("falha");
+      setFilamento(await res.json());
+    } catch {
+      // silencioso — o card some se não carregar, mas não trava a tela
+    }
+  }
+
+  async function salvarFilamento(novo: EstoqueFilamentoRow) {
+    const res = await fetch("/api/producao/filamento", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(novo),
+    });
+    if (res.ok) {
+      setFilamento(await res.json());
+    }
+  }
+
+  async function registrarPerdaFilamento(
+    cor: CorFilamento,
+    gramas: number,
+    motivo: string
+  ): Promise<string | null> {
+    try {
+      const res = await fetch("/api/producao/perda-filamento", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cor, gramas, motivo }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        return body?.error ?? "não deu pra registrar a perda";
+      }
+      const atualizado = await res.json();
+      setFilamento(atualizado);
+      return null;
+    } catch {
+      return "não deu pra registrar a perda";
+    }
+  }
 
   async function carregar() {
     try {
@@ -76,6 +122,7 @@ export default function EstoquePage() {
   useEffect(() => {
     carregar();
     sincronizarVendas();
+    carregarFilamento();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -141,6 +188,26 @@ export default function EstoquePage() {
         />
         <Card label="Total de peças em estoque" value={String(totalPecas)} />
       </div>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-4">
+        <h2 className="mb-3 text-sm font-semibold text-gray-900">Estoque de filamento por cor</h2>
+        <p className="mb-3 text-xs text-gray-500">
+          Informe o quanto tem em estoque de cada cor (em gramas). Cor deixada
+          em 0 bloqueia automaticamente a fila de prioridade da aba Produção
+          pra todas as placas daquela cor — não precisa subir produto pra
+          produção sem ter filamento pra imprimir. A cor de cada placa é
+          detectada pelo nome (ex: &quot;Suporte Carro (Prata)&quot;); placas
+          sem cor no nome (kits, produtos multicoloridos) contam como
+          &quot;Colorido&quot;.
+        </p>
+        {filamento && <FilamentoEditor filamento={filamento} onSalvar={salvarFilamento} />}
+        <div className="mt-3">
+          <PerdaFilamentoForm onRegistrar={registrarPerdaFilamento} />
+        </div>
+        <div className="mt-3">
+          <HistoricoFilamento />
+        </div>
+      </section>
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm">
         <button
@@ -446,5 +513,271 @@ function OrigemBadge({ tipo }: { tipo: Movimento["tipo"] }) {
     <span className={"rounded px-1.5 py-0.5 text-xs font-semibold " + estilos}>
       {rotulo}
     </span>
+  );
+}
+
+// --- Estoque de filamento — movido da aba Produção em 2026-07-28, pedido
+// do Guilherme: "Na aba de producao devemos ter um campo onde mostre o
+// quanto de filamento temos em estoque isso deve ser em tempo real com o
+// que a gente for dando baixa em producao. O Estoque do filamento deve
+// ser controlado em estoque." Produção agora só mostra o saldo em modo
+// leitura; toda a edição (salvar estoque, registrar perda, ver
+// histórico) vive aqui. ---
+
+const LABEL_COR_FILAMENTO: Record<CorFilamento, string> = {
+  colorido: "Colorido",
+  preto: "Preto",
+  branco: "Branco",
+  prata: "Prata",
+  marrom: "Marrom",
+  bege: "Bege",
+};
+
+function FilamentoEditor({
+  filamento,
+  onSalvar,
+}: {
+  filamento: EstoqueFilamentoRow;
+  onSalvar: (novo: EstoqueFilamentoRow) => void;
+}) {
+  const [valores, setValores] = useState<Record<CorFilamento, string>>(() => {
+    const inicial = {} as Record<CorFilamento, string>;
+    for (const cor of CORES_FILAMENTO) {
+      inicial[cor] = String(filamento[cor] ?? 0);
+    }
+    return inicial;
+  });
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    const novo = {} as Record<CorFilamento, string>;
+    for (const cor of CORES_FILAMENTO) {
+      novo[cor] = String(filamento[cor] ?? 0);
+    }
+    setValores(novo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filamento]);
+
+  async function salvar() {
+    setSalvando(true);
+    try {
+      const novo = {} as EstoqueFilamentoRow;
+      for (const cor of CORES_FILAMENTO) {
+        novo[cor] = Math.max(0, Number(valores[cor]) || 0);
+      }
+      await onSalvar(novo);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+        {CORES_FILAMENTO.map((cor) => {
+          const zerado = (Number(valores[cor]) || 0) <= 0;
+          return (
+            <label key={cor} className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-600">{LABEL_COR_FILAMENTO[cor]}</span>
+              <input
+                type="number"
+                min={0}
+                value={valores[cor]}
+                onChange={(e) => setValores((prev) => ({ ...prev, [cor]: e.target.value }))}
+                className={
+                  "rounded border px-2 py-1.5 text-sm " +
+                  (zerado ? "border-red-300 bg-red-50 text-red-700" : "border-gray-300")
+                }
+              />
+            </label>
+          );
+        })}
+      </div>
+      <button
+        onClick={salvar}
+        disabled={salvando}
+        className="mt-3 rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
+      >
+        {salvando ? "Salvando..." : "Salvar estoque de filamento"}
+      </button>
+    </div>
+  );
+}
+
+function PerdaFilamentoForm({
+  onRegistrar,
+}: {
+  onRegistrar: (cor: CorFilamento, gramas: number, motivo: string) => Promise<string | null>;
+}) {
+  const [cor, setCor] = useState<CorFilamento>("colorido");
+  const [gramas, setGramas] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [sucesso, setSucesso] = useState(false);
+
+  async function registrar() {
+    const valor = Number(gramas);
+    if (!valor || valor <= 0) {
+      setErro("informe uma quantidade em gramas maior que 0");
+      return;
+    }
+    setSalvando(true);
+    setErro(null);
+    setSucesso(false);
+    try {
+      const resultado = await onRegistrar(cor, valor, motivo.trim());
+      if (resultado) {
+        setErro(resultado);
+      } else {
+        setGramas("");
+        setMotivo("");
+        setSucesso(true);
+        setTimeout(() => setSucesso(false), 3000);
+      }
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div>
+      <p className="mb-2 text-xs font-semibold text-gray-700">Registrar perda avulsa de filamento</p>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-gray-500">Cor</span>
+          <select
+            value={cor}
+            onChange={(e) => setCor(e.target.value as CorFilamento)}
+            className="rounded border border-gray-300 px-2 py-1.5 text-sm"
+          >
+            {CORES_FILAMENTO.map((c) => (
+              <option key={c} value={c}>
+                {LABEL_COR_FILAMENTO[c]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-gray-500">Gramas</span>
+          <input
+            type="number"
+            min={0}
+            value={gramas}
+            onChange={(e) => setGramas(e.target.value)}
+            className="w-28 rounded border border-gray-300 px-2 py-1.5 text-sm"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-gray-500">Motivo (opcional)</span>
+          <input
+            type="text"
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            placeholder="ex: rolo estragado, teste de cor..."
+            className="w-56 rounded border border-gray-300 px-2 py-1.5 text-sm"
+          />
+        </label>
+        <button
+          onClick={registrar}
+          disabled={salvando}
+          className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
+        >
+          {salvando ? "Registrando..." : "Registrar perda"}
+        </button>
+      </div>
+      {erro && <p className="mt-1 text-xs text-red-600">{erro}</p>}
+      {sucesso && <p className="mt-1 text-xs text-green-700">Perda registrada.</p>}
+    </div>
+  );
+}
+
+interface MovimentoFilamento {
+  data: string;
+  cor: string;
+  tipo: "producao" | "falha" | "perda_avulsa" | "ajuste_manual" | "compra";
+  gramas: number;
+  detalhe: string;
+}
+
+const LABEL_TIPO_MOVIMENTO_FILAMENTO: Record<MovimentoFilamento["tipo"], string> = {
+  producao: "Produção concluída",
+  falha: "Falha na placa",
+  perda_avulsa: "Perda avulsa",
+  ajuste_manual: "Ajuste manual",
+  compra: "Compra (Financeiro)",
+};
+
+function HistoricoFilamento() {
+  const [aberto, setAberto] = useState(false);
+  const [movimentos, setMovimentos] = useState<MovimentoFilamento[] | "loading" | "erro" | null>(null);
+
+  async function alternar() {
+    if (!aberto && movimentos === null) {
+      setMovimentos("loading");
+      try {
+        const res = await fetch("/api/producao/filamento/historico");
+        if (!res.ok) throw new Error("falha");
+        const data = await res.json();
+        setMovimentos(data.movimentos ?? []);
+      } catch {
+        setMovimentos("erro");
+      }
+    }
+    setAberto((prev) => !prev);
+  }
+
+  return (
+    <div>
+      <button
+        onClick={alternar}
+        className="text-xs font-medium text-blue-600 hover:underline"
+      >
+        {aberto ? "Fechar histórico" : "Ver histórico de movimentação"}
+      </button>
+      {aberto && (
+        <div className="mt-2 overflow-x-auto">
+          {movimentos === "loading" || movimentos === null ? (
+            <p className="text-xs text-gray-400">Carregando histórico...</p>
+          ) : movimentos === "erro" ? (
+            <p className="text-xs text-red-600">Não deu pra carregar o histórico.</p>
+          ) : movimentos.length === 0 ? (
+            <p className="text-xs text-gray-400">Nenhuma movimentação registrada ainda.</p>
+          ) : (
+            <table className="w-full max-w-3xl text-xs">
+              <thead className="text-left uppercase text-gray-400">
+                <tr>
+                  <th className="py-1 pr-3">Quando</th>
+                  <th className="py-1 pr-3">Cor</th>
+                  <th className="py-1 pr-3">Origem</th>
+                  <th className="py-1 pr-3 text-right">Gramas</th>
+                  <th className="py-1">Detalhe</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {movimentos.map((m, i) => (
+                  <tr key={i}>
+                    <td className="py-1 pr-3 whitespace-nowrap text-gray-500">
+                      {new Date(m.data).toLocaleString("pt-BR")}
+                    </td>
+                    <td className="py-1 pr-3">{LABEL_COR_FILAMENTO[m.cor as CorFilamento] ?? m.cor}</td>
+                    <td className="py-1 pr-3">{LABEL_TIPO_MOVIMENTO_FILAMENTO[m.tipo]}</td>
+                    <td
+                      className={
+                        "py-1 pr-3 text-right font-medium " +
+                        (m.gramas > 0 ? "text-green-700" : "text-red-600")
+                      }
+                    >
+                      {m.gramas > 0 ? `+${m.gramas}` : m.gramas}g
+                    </td>
+                    <td className="py-1 text-gray-600">{m.detalhe}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
