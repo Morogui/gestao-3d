@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
+import { todaySP } from "@/lib/date";
+import {
+  calcularViabilidade,
+  janelaAprendida,
+  maquinasAtivas,
+} from "@/lib/capacidade";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +33,15 @@ export interface FullEnvioRow {
   // que compartilham a placa — é isso que vira prioridade extraordinária
   // na aba Produção. Nunca negativo.
   faltantePlaca: number;
+  // Checagem de viabilidade — pedido do Guilherme em 2026-07-29: "conferir
+  // a possibilidade para produção sem comprometer mais de 50% da minha
+  // linha de produção". Ver lib/capacidade.ts pro cálculo completo
+  // (horas necessárias pra imprimir faltantePlaca × capacidade teórica
+  // das máquinas ativas entre hoje e dataLimite).
+  horasNecessarias: number;
+  capacidadeDisponivelHoras: number;
+  percentualComprometido: number;
+  aprovado: boolean;
 }
 
 export async function GET() {
@@ -54,6 +69,22 @@ export async function GET() {
   }
 
   const placaIds = Array.from(new Set(envios.map((e) => e.placa_id)));
+
+  const placasInfoRows = (await sql`
+    SELECT id, pecas_por_placa, tempo_placa_horas FROM placas WHERE id = ANY(${placaIds})
+  `) as { id: number; pecas_por_placa: string; tempo_placa_horas: string }[];
+  const placaInfoPorId = new Map(
+    placasInfoRows.map((r) => [
+      r.id,
+      { pecasPorPlaca: Number(r.pecas_por_placa), tempoPlacaHoras: Number(r.tempo_placa_horas) },
+    ])
+  );
+
+  const [janela, numMaquinasAtivas] = await Promise.all([
+    janelaAprendida(),
+    maquinasAtivas(),
+  ]);
+  const hoje = todaySP();
 
   const estoqueRows = (await sql`
     SELECT placa_id, quantidade_pecas FROM estoque_placas WHERE placa_id = ANY(${placaIds})
@@ -102,18 +133,37 @@ export async function GET() {
     return String(v).slice(0, 10);
   }
 
-  const resultado: FullEnvioRow[] = envios.map((e) => ({
-    id: e.id,
-    sku: e.sku,
-    placaId: e.placa_id,
-    placaNome: e.placa_nome,
-    quantidade: Number(e.quantidade),
-    dataLimite: toPlainDate(e.data_limite),
-    status: e.status as FullEnvioRow["status"],
-    criadoEm: e.criado_em,
-    confirmadoEm: e.confirmado_em,
-    faltantePlaca: faltantePlaca(e.placa_id),
-  }));
+  const resultado: FullEnvioRow[] = envios.map((e) => {
+    const dataLimite = toPlainDate(e.data_limite);
+    const faltante = faltantePlaca(e.placa_id);
+    const info = placaInfoPorId.get(e.placa_id) ?? { pecasPorPlaca: 0, tempoPlacaHoras: 0 };
+    const viabilidade = calcularViabilidade(
+      faltante,
+      info.pecasPorPlaca,
+      info.tempoPlacaHoras,
+      hoje,
+      dataLimite,
+      numMaquinasAtivas,
+      janela
+    );
+
+    return {
+      id: e.id,
+      sku: e.sku,
+      placaId: e.placa_id,
+      placaNome: e.placa_nome,
+      quantidade: Number(e.quantidade),
+      dataLimite,
+      status: e.status as FullEnvioRow["status"],
+      criadoEm: e.criado_em,
+      confirmadoEm: e.confirmado_em,
+      faltantePlaca: faltante,
+      horasNecessarias: viabilidade.horasNecessarias,
+      capacidadeDisponivelHoras: viabilidade.capacidadeDisponivelHoras,
+      percentualComprometido: viabilidade.percentualComprometido,
+      aprovado: viabilidade.aprovado,
+    };
+  });
 
   return NextResponse.json(resultado);
 }
