@@ -1465,7 +1465,7 @@ function PerdaFilamentoForm({
 interface MovimentoFilamento {
   data: string;
   cor: string;
-  tipo: "producao" | "falha" | "perda_avulsa" | "ajuste_manual";
+  tipo: "producao" | "falha" | "perda_avulsa" | "ajuste_manual" | "compra";
   gramas: number;
   detalhe: string;
 }
@@ -1475,6 +1475,7 @@ const LABEL_TIPO_MOVIMENTO_FILAMENTO: Record<MovimentoFilamento["tipo"], string>
   falha: "Falha na placa",
   perda_avulsa: "Perda avulsa",
   ajuste_manual: "Ajuste manual",
+  compra: "Compra (Financeiro)",
 };
 
 // Histórico de movimentação de filamento — pedido do Guilherme em
