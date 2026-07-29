@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { corFilamentoDaPlaca } from "@/lib/placas";
 
@@ -33,7 +33,16 @@ export const dynamic = "force-dynamic";
 //    adicionado em salvar estoque de filamento" — antes a compra só
 //    alimentava o custo médio, sem entrar no saldo; agora soma direto,
 //    então precisa aparecer aqui como entrada (+).
-export async function GET() {
+// ?limit=N — pedido do Guilherme em 2026-07-29 (aba Relatórios): o
+// histórico embutido na aba Estoque só precisa das últimas ~100
+// movimentações, mas o relatório completo (com exportação pra Excel)
+// precisa de TUDO que já aconteceu, não só o topo. Sem o parâmetro,
+// mantém o comportamento antigo (100) pra não mudar nada na aba
+// Estoque; com ?limit=5000 (usado pela aba Relatórios) sobe bem mais.
+export async function GET(request: NextRequest) {
+  const limitParam = Number(request.nextUrl.searchParams.get("limit"));
+  const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 5000) : 100;
+
   const producoesConcluidas = (await sql`
     SELECT p.id, p.concluido_em AS data, p.quantidade_placas,
            pl.nome AS placa_nome, pl.peso_placa_gramas
@@ -41,7 +50,7 @@ export async function GET() {
     JOIN placas pl ON pl.id = p.placa_id
     WHERE p.status = 'concluida' AND pl.peso_placa_gramas IS NOT NULL
     ORDER BY p.concluido_em DESC
-    LIMIT 200
+    LIMIT ${limit}
   `) as {
     id: number;
     data: string;
@@ -56,14 +65,14 @@ export async function GET() {
     JOIN placas pl ON pl.id = p.placa_id
     WHERE p.status = 'falha_placa' AND p.gramas_desperdicadas > 0
     ORDER BY p.concluido_em DESC
-    LIMIT 200
+    LIMIT ${limit}
   `) as { id: number; data: string; gramas_desperdicadas: string; placa_nome: string }[];
 
   const perdasAvulsas = (await sql`
     SELECT cor, gramas, motivo, criado_em AS data
     FROM perdas_filamento_manual
     ORDER BY criado_em DESC
-    LIMIT 100
+    LIMIT ${limit}
   `) as { cor: string; gramas: number; motivo: string | null; data: string }[];
 
   await sql`
@@ -79,14 +88,14 @@ export async function GET() {
     SELECT cor, delta, resultante, criado_em AS data
     FROM ajustes_manuais_filamento
     ORDER BY criado_em DESC
-    LIMIT 100
+    LIMIT ${limit}
   `) as { cor: string; delta: string; resultante: string; data: string }[];
 
   const compras = (await sql`
     SELECT cor, gramas, fornecedor, data_compra AS data
     FROM compras_filamento
     ORDER BY data_compra DESC, id DESC
-    LIMIT 100
+    LIMIT ${limit}
   `) as { cor: string; gramas: string; fornecedor: string | null; data: string }[];
 
   type Movimento = {
@@ -161,5 +170,5 @@ export async function GET() {
 
   movimentos.sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
 
-  return NextResponse.json({ movimentos: movimentos.slice(0, 100) });
+  return NextResponse.json({ movimentos: movimentos.slice(0, limit) });
 }
