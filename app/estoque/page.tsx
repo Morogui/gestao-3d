@@ -1013,22 +1013,13 @@ function ModalAdicionarFilamento({
           </div>
         )}
 
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-2">
           <label className="text-xs text-gray-500">
             Fornecedor
             <input
               value={pedido.fornecedor}
               onChange={(e) => onMudarPedido({ ...pedido, fornecedor: e.target.value })}
               className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-            />
-          </label>
-          <label className="text-xs text-gray-500">
-            Valor total do pedido (R$)
-            <input
-              value={pedido.valorTotal}
-              onChange={(e) => onMudarPedido({ ...pedido, valorTotal: e.target.value })}
-              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-              placeholder="0,00"
             />
           </label>
           <label className="text-xs text-gray-500">
@@ -1041,12 +1032,6 @@ function ModalAdicionarFilamento({
             />
           </label>
         </div>
-
-        {precoPorKg > 0 && (
-          <p className="mt-2 text-xs text-gray-500">
-            Preço final do filamento neste pedido: <span className="font-semibold">{formatBRLEstoque(precoPorKg)}/Kg</span>
-          </p>
-        )}
 
         <div className="mt-2">
           {!aPrazo ? (
@@ -1096,24 +1081,41 @@ function ModalAdicionarFilamento({
           )}
         </div>
 
-        <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
-          <p className="text-sm text-gray-700">
-            Total do pedido: <span className="font-semibold">{formatBRLEstoque(total)}</span>
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={onFechar}
-              className="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={onSalvar}
-              disabled={salvando || itensPedido.length === 0 || !(total > 0)}
-              className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
-            >
-              {salvando ? "Salvando..." : "Salvar pedido"}
-            </button>
+        <div className="mt-4 border-t border-gray-100 pt-3">
+          <label className="block max-w-[200px] text-xs text-gray-500">
+            Valor total do pedido (R$)
+            <input
+              value={pedido.valorTotal}
+              onChange={(e) => onMudarPedido({ ...pedido, valorTotal: e.target.value })}
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+              placeholder="0,00"
+            />
+          </label>
+          {precoPorKg > 0 && (
+            <p className="mt-2 text-xs text-gray-500">
+              Preço final do filamento neste pedido:{" "}
+              <span className="font-semibold">{formatBRLEstoque(precoPorKg)}/Kg</span>
+            </p>
+          )}
+          <div className="mt-3 flex items-center justify-between">
+            <p className="text-sm text-gray-700">
+              Total do pedido: <span className="font-semibold">{formatBRLEstoque(total)}</span>
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={onFechar}
+                className="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={onSalvar}
+                disabled={salvando || itensPedido.length === 0 || !(total > 0)}
+                className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
+              >
+                {salvando ? "Salvando..." : "Salvar pedido"}
+              </button>
+            </div>
           </div>
         </div>
         {erro && <p className="mt-2 text-xs text-red-600">{erro}</p>}
