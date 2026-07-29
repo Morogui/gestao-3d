@@ -13,6 +13,10 @@ type EstoqueRow = PlacaRow & {
   // estoque já está correto (a baixa acontece no pagamento), isso só
   // mostra "quanto desse total já tem destino certo hoje".
   pendenteEnvioHoje: number;
+  // Estoque no Full — separado do local, pedido do Guilherme em
+  // 2026-07-29 ("os estoques são diferentes"). Mesmo número já
+  // usado/ajustável na aba Full (estoque_full_placas); aqui é só leitura.
+  estoqueFull: number;
 };
 type Status = "loading" | "ready" | "erro";
 
@@ -554,6 +558,7 @@ export default function EstoquePage() {
               <th className="px-3 py-2">Placa</th>
               <th className="px-3 py-2">Tier</th>
               <th className="px-3 py-2 text-right">Estoque atual</th>
+              <th className="px-3 py-2 text-right">Estoque no Full</th>
               <th className="px-3 py-2">Ajuste manual</th>
               <th className="px-3 py-2">Atualizado em</th>
               <th className="px-3 py-2"></th>
@@ -671,6 +676,12 @@ function LinhaEstoque({
             </span>
           )}
         </td>
+        <td
+          className="px-3 py-2 text-right text-gray-500"
+          title="Estoque separado, guardado no galpão do Full (ML) — não é descontado pelas vendas locais nem soma com o Estoque atual. Ajustável na aba Full."
+        >
+          {placa.estoqueFull}
+        </td>
         <td className="px-3 py-2">
           <div className="flex items-center gap-1.5">
             <input
@@ -706,7 +717,7 @@ function LinhaEstoque({
       </tr>
       {aberto && (
         <tr>
-          <td colSpan={6} className="bg-gray-50 px-3 py-3">
+          <td colSpan={7} className="bg-gray-50 px-3 py-3">
             <HistoricoMovimentacao historico={historico} />
           </td>
         </tr>
