@@ -260,7 +260,18 @@ export type SkuPlacaMap = Map<string, SkuPlacaEntry[]>;
 export interface NaoIdentificado {
   qtyPeriodo: number;
   qtyFull: number;
-  amostras: { titulo: string; sku: string; quantity: number; isFull: boolean }[];
+  // itemId = MLBxxxx (ML) ou item_id da Shopee — pedido do Guilherme em
+  // 2026-07-28 pra conseguir localizar o anúncio exato na plataforma e
+  // confirmar detalhes (ex: tamanho) de um item não identificado, já que
+  // o título sozinho às vezes é ambíguo (ex: "...Confeitaria 21" sem
+  // indicar qual variação de tamanho).
+  amostras: {
+    titulo: string;
+    sku: string;
+    quantity: number;
+    isFull: boolean;
+    itemId: string;
+  }[];
 }
 
 export interface ResultadoDemanda {
@@ -451,6 +462,7 @@ export function calcularDemandaSemanal(
               sku: item.hasCustomSku ? item.sku : "",
               quantity: item.quantity,
               isFull,
+              itemId: item.itemId,
             });
           }
         }

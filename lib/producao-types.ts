@@ -59,7 +59,16 @@ export interface DemandaPlacaRow {
 export interface NaoIdentificadoRow {
   qtyPeriodo: number;
   qtyFull: number;
-  amostras: { titulo: string; sku: string; quantity: number; isFull: boolean }[];
+  // itemId = MLBxxxx (ML) ou item_id (Shopee) — pra localizar o anúncio
+  // exato na plataforma quando o título sozinho é ambíguo (pedido do
+  // Guilherme em 2026-07-28).
+  amostras: {
+    titulo: string;
+    sku: string;
+    quantity: number;
+    isFull: boolean;
+    itemId: string;
+  }[];
 }
 
 export interface DemandaResult {
