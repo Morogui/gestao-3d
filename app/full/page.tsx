@@ -60,6 +60,11 @@ interface EnvioFull {
   capacidadeDisponivelHoras: number;
   percentualComprometido: number;
   aprovado: boolean;
+  // Pedido do Guilherme em 2026-07-29: produtos compostos (Suporte
+  // Universal, Carro, BMW...) criam um envio por placa componente por
+  // trás, mas precisam aparecer como 1 linha só na tela — grupoId liga
+  // essas linhas. null nos envios de placa única (a maioria).
+  grupoId: string | null;
 }
 
 export default function FullPage() {
@@ -152,39 +157,74 @@ export default function FullPage() {
   // separadamente (isso é produção, não venda), mas o usuário só
   // precisou escolher e preencher uma vez.
   async function criarEnvio(sku: string, placaIds: number[], quantidade: number, dataLimite: string) {
+    // Gera um grupoId só quando há mais de uma placa componente (produto
+    // composto) — é o elo que a tela usa pra mostrar essas linhas juntas
+    // como 1 só (ver EnviosPlanejados abaixo). Envios de placa única
+    // continuam sem grupoId (null), tratados como grupo de 1.
+    const grupoId = placaIds.length > 1 ? `full-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : null;
     for (const placaId of placaIds) {
       await fetch("/api/full/envios", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sku, placaId, quantidade, dataLimite }),
+        body: JSON.stringify({ sku, placaId, quantidade, dataLimite, grupoId }),
       });
     }
     const enviosRes = await fetch("/api/full/envios");
     setEnvios(await enviosRes.json());
   }
 
-  async function confirmarEnvio(id: number) {
-    setEnvios((prev) => prev.filter((e) => e.id !== id));
-    await fetch(`/api/full/envios/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "confirmado" }),
-    });
+  // Confirma um GRUPO inteiro de envios (todas as placas componentes de
+  // um SKU composto, ou só 1 id pros envios de placa única) — pedido do
+  // Guilherme em 2026-07-29: mesma ação precisa cobrir corpo + gancho
+  // juntos, senão fica faltando dar baixa de uma das duas placas.
+  async function confirmarGrupo(ids: number[]) {
+    setEnvios((prev) => prev.filter((e) => !ids.includes(e.id)));
+    for (const id of ids) {
+      await fetch(`/api/full/envios/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "confirmado" }),
+      });
+    }
     const enviosRes = await fetch("/api/full/envios");
     setEnvios(await enviosRes.json());
   }
 
-  // Edita quantidade/data limite de um envio ainda pendente — pedido do
-  // Guilherme em 2026-07-27: "eu coloquei errado e não tem como editar".
-  async function editarEnvio(id: number, quantidade: number, dataLimite: string) {
-    const res = await fetch(`/api/full/envios/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ quantidade, dataLimite }),
-    });
+  // Edita quantidade/data limite de TODAS as placas de um grupo de uma
+  // vez — pedido do Guilherme em 2026-07-27: "eu coloquei errado e não
+  // tem como editar" (agora estendido pra produtos compostos).
+  async function editarGrupo(ids: number[], quantidade: number, dataLimite: string) {
+    let ok = true;
+    for (const id of ids) {
+      const res = await fetch(`/api/full/envios/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quantidade, dataLimite }),
+      });
+      if (!res.ok) ok = false;
+    }
     const enviosRes = await fetch("/api/full/envios");
     setEnvios(await enviosRes.json());
-    return res.ok;
+    return ok;
+  }
+
+  // NOVO — pedido do Guilherme em 2026-07-29: "aqui preciso conseguir
+  // excluir". Não existia nenhum jeito de remover um envio criado por
+  // engano da lista (só Editar/Confirmar). Reaproveita o mesmo mecanismo
+  // de "cancelado" já usado internamente (PATCH status=cancelado), que
+  // o GET já filtra da lista de pendentes — não desconta estoque nenhum,
+  // já que só confirmar faz isso.
+  async function excluirGrupo(ids: number[]) {
+    setEnvios((prev) => prev.filter((e) => !ids.includes(e.id)));
+    for (const id of ids) {
+      await fetch(`/api/full/envios/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "cancelado" }),
+      });
+    }
+    const enviosRes = await fetch("/api/full/envios");
+    setEnvios(await enviosRes.json());
   }
 
   if (status === "desconectado") {
@@ -286,8 +326,9 @@ export default function FullPage() {
         linhas={linhas}
         envios={enviosPendentes}
         onCriar={criarEnvio}
-        onConfirmar={confirmarEnvio}
-        onEditar={editarEnvio}
+        onConfirmar={confirmarGrupo}
+        onEditar={editarGrupo}
+        onExcluir={excluirGrupo}
       />
 
       <div>
@@ -403,18 +444,36 @@ function ViabilidadeBadge({ envio }: { envio: EnvioFull }) {
 // ainda pendentes, cada um com um botão "Confirmar envio" que tira essa
 // produção da linha de frente da fila de prioridade (ver
 // app/producao/page.tsx, critério nº-2).
+// Uma linha da tabela de envios já agrupada — pedido do Guilherme em
+// 2026-07-29: "o suporte universal ainda tem gancho e corpo... mas no
+// planejamento do full mostra só a sku principal". Cada grupo junta
+// todos os full_envios (linhas do banco, uma por placa componente) que
+// compartilham grupoId (produtos compostos) ou, na ausência de
+// grupoId, o próprio id (produtos de placa única — a maioria).
+interface GrupoEnvio {
+  chave: string;
+  ids: number[];
+  sku: string;
+  placaNomes: string[];
+  quantidade: number;
+  dataLimite: string;
+  membros: EnvioFull[];
+}
+
 function EnviosPlanejados({
   linhas,
   envios,
   onCriar,
   onConfirmar,
   onEditar,
+  onExcluir,
 }: {
   linhas: LinhaFull[];
   envios: EnvioFull[];
   onCriar: (sku: string, placaIds: number[], quantidade: number, dataLimite: string) => Promise<void>;
-  onConfirmar: (id: number) => Promise<void>;
-  onEditar: (id: number, quantidade: number, dataLimite: string) => Promise<boolean>;
+  onConfirmar: (ids: number[]) => Promise<void>;
+  onEditar: (ids: number[], quantidade: number, dataLimite: string) => Promise<boolean>;
+  onExcluir: (ids: number[]) => Promise<void>;
 }) {
   const [buscaSku, setBuscaSku] = useState("");
   const [resultados, setResultados] = useState<SkuResult[]>([]);
@@ -424,11 +483,12 @@ function EnviosPlanejados({
   const [quantidade, setQuantidade] = useState("");
   const [dataLimite, setDataLimite] = useState(todaySP());
   const [enviando, setEnviando] = useState(false);
-  const [confirmando, setConfirmando] = useState<Record<number, boolean>>({});
-  const [editando, setEditando] = useState<Record<number, { quantidade: string; dataLimite: string }>>(
+  const [confirmando, setConfirmando] = useState<Record<string, boolean>>({});
+  const [excluindo, setExcluindo] = useState<Record<string, boolean>>({});
+  const [editando, setEditando] = useState<Record<string, { quantidade: string; dataLimite: string }>>(
     {}
   );
-  const [salvandoEdicao, setSalvandoEdicao] = useState<Record<number, boolean>>({});
+  const [salvandoEdicao, setSalvandoEdicao] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (buscaSku.trim().length < 2) {
@@ -478,6 +538,38 @@ function EnviosPlanejados({
     }
     return Array.from(porSku.values());
   }, [resultados]);
+
+  // Mesma lógica de agrupamento da busca acima, agora pra lista de
+  // envios JÁ CRIADOS — junta as linhas que vieram da mesma ação de
+  // "Adicionar envio" (grupoId, ver criarEnvio em app/full/page.tsx) numa
+  // única linha de tabela. Sem grupoId (a maioria dos produtos, de placa
+  // única), cada envio continua sendo seu próprio grupo de 1 — nenhuma
+  // mudança de comportamento pra eles.
+  const grupos = useMemo(() => {
+    const porChave = new Map<string, GrupoEnvio>();
+    for (const e of envios) {
+      const chave = e.grupoId ?? `id-${e.id}`;
+      const existente = porChave.get(chave);
+      if (existente) {
+        existente.ids.push(e.id);
+        existente.membros.push(e);
+        if (!existente.placaNomes.includes(e.placaNome)) {
+          existente.placaNomes.push(e.placaNome);
+        }
+      } else {
+        porChave.set(chave, {
+          chave,
+          ids: [e.id],
+          sku: e.sku,
+          placaNomes: [e.placaNome],
+          quantidade: e.quantidade,
+          dataLimite: e.dataLimite,
+          membros: [e],
+        });
+      }
+    }
+    return Array.from(porChave.values());
+  }, [envios]);
 
   async function enviar() {
     if (!selecionado || !quantidade || Number(quantidade) <= 0 || !dataLimite) return;
@@ -582,7 +674,7 @@ function EnviosPlanejados({
         </button>
       </div>
 
-      {envios.length === 0 ? (
+      {grupos.length === 0 ? (
         <p className="text-xs text-gray-400">Nenhum envio pendente cadastrado.</p>
       ) : (
         <div className="overflow-x-auto rounded border border-gray-200">
@@ -598,13 +690,29 @@ function EnviosPlanejados({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {envios.map((e) => {
-                const emEdicao = editando[e.id];
+              {grupos.map((g) => {
+                const emEdicao = editando[g.chave];
+                const composto = g.membros.length > 1;
+                // "Pior caso" entre os componentes — quem tem mais peças
+                // faltando decide o badge de viabilidade da linha inteira.
+                const pior = g.membros.reduce((a, b) =>
+                  b.percentualComprometido > a.percentualComprometido ? b : a
+                );
+                const algumaFalta = g.membros.some((m) => m.faltantePlaca > 0);
                 return (
-                  <tr key={e.id}>
+                  <tr key={g.chave}>
                     <td className="px-3 py-2">
-                      <p className="font-medium text-gray-900">{e.placaNome}</p>
-                      <p className="text-gray-400">SKU: {e.sku}</p>
+                      {composto ? (
+                        <>
+                          <p className="font-medium text-gray-900">{g.sku}</p>
+                          <p className="text-gray-400">Produção: {g.placaNomes.join(" + ")}</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-medium text-gray-900">{g.membros[0].placaNome}</p>
+                          <p className="text-gray-400">SKU: {g.sku}</p>
+                        </>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-right text-gray-700">
                       {emEdicao ? (
@@ -615,13 +723,13 @@ function EnviosPlanejados({
                           onChange={(ev) =>
                             setEditando((prev) => ({
                               ...prev,
-                              [e.id]: { ...prev[e.id], quantidade: ev.target.value },
+                              [g.chave]: { ...prev[g.chave], quantidade: ev.target.value },
                             }))
                           }
                           className="w-20 rounded border border-gray-300 px-1.5 py-1 text-right text-xs"
                         />
                       ) : (
-                        e.quantidade
+                        g.quantidade
                       )}
                     </td>
                     <td className="px-3 py-2 text-gray-700">
@@ -632,57 +740,70 @@ function EnviosPlanejados({
                           onChange={(ev) =>
                             setEditando((prev) => ({
                               ...prev,
-                              [e.id]: { ...prev[e.id], dataLimite: ev.target.value },
+                              [g.chave]: { ...prev[g.chave], dataLimite: ev.target.value },
                             }))
                           }
                           className="rounded border border-gray-300 px-1.5 py-1 text-xs"
                         />
                       ) : (
-                        formatDiaBR(e.dataLimite)
+                        formatDiaBR(g.dataLimite)
                       )}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      {e.faltantePlaca > 0 ? (
-                        <span className="rounded bg-red-100 px-1.5 py-0.5 font-semibold text-red-700">
-                          faltam {e.faltantePlaca}
-                        </span>
-                      ) : (
+                      {!algumaFalta ? (
                         <span className="text-green-700">coberto</span>
+                      ) : composto ? (
+                        <div className="flex flex-col items-end gap-0.5">
+                          {g.membros
+                            .filter((m) => m.faltantePlaca > 0)
+                            .map((m) => (
+                              <span
+                                key={m.id}
+                                className="rounded bg-red-100 px-1.5 py-0.5 font-semibold text-red-700"
+                              >
+                                {m.placaNome}: faltam {m.faltantePlaca}
+                              </span>
+                            ))}
+                        </div>
+                      ) : (
+                        <span className="rounded bg-red-100 px-1.5 py-0.5 font-semibold text-red-700">
+                          faltam {g.membros[0].faltantePlaca}
+                        </span>
                       )}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <ViabilidadeBadge envio={e} />
+                      <ViabilidadeBadge envio={pior} />
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex justify-end gap-1.5">
                         {emEdicao ? (
                           <>
                             <button
-                              disabled={Boolean(salvandoEdicao[e.id])}
+                              disabled={Boolean(salvandoEdicao[g.chave])}
                               onClick={async () => {
                                 const qtd = Number(emEdicao.quantidade);
                                 if (!qtd || qtd <= 0 || !emEdicao.dataLimite) return;
-                                setSalvandoEdicao((prev) => ({ ...prev, [e.id]: true }));
+                                setSalvandoEdicao((prev) => ({ ...prev, [g.chave]: true }));
                                 try {
-                                  const ok = await onEditar(e.id, qtd, emEdicao.dataLimite);
+                                  const ok = await onEditar(g.ids, qtd, emEdicao.dataLimite);
                                   if (ok) {
                                     setEditando((prev) => {
-                                      const { [e.id]: _removido, ...resto } = prev;
+                                      const { [g.chave]: _removido, ...resto } = prev;
                                       return resto;
                                     });
                                   }
                                 } finally {
-                                  setSalvandoEdicao((prev) => ({ ...prev, [e.id]: false }));
+                                  setSalvandoEdicao((prev) => ({ ...prev, [g.chave]: false }));
                                 }
                               }}
                               className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-40"
                             >
-                              {salvandoEdicao[e.id] ? "Salvando..." : "Salvar"}
+                              {salvandoEdicao[g.chave] ? "Salvando..." : "Salvar"}
                             </button>
                             <button
                               onClick={() =>
                                 setEditando((prev) => {
-                                  const { [e.id]: _removido, ...resto } = prev;
+                                  const { [g.chave]: _removido, ...resto } = prev;
                                   return resto;
                                 })
                               }
@@ -697,7 +818,7 @@ function EnviosPlanejados({
                               onClick={() =>
                                 setEditando((prev) => ({
                                   ...prev,
-                                  [e.id]: { quantidade: String(e.quantidade), dataLimite: e.dataLimite },
+                                  [g.chave]: { quantidade: String(g.quantidade), dataLimite: g.dataLimite },
                                 }))
                               }
                               className="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
@@ -705,18 +826,38 @@ function EnviosPlanejados({
                               Editar
                             </button>
                             <button
-                              disabled={Boolean(confirmando[e.id])}
+                              disabled={Boolean(confirmando[g.chave])}
                               onClick={async () => {
-                                setConfirmando((prev) => ({ ...prev, [e.id]: true }));
+                                setConfirmando((prev) => ({ ...prev, [g.chave]: true }));
                                 try {
-                                  await onConfirmar(e.id);
+                                  await onConfirmar(g.ids);
                                 } finally {
-                                  setConfirmando((prev) => ({ ...prev, [e.id]: false }));
+                                  setConfirmando((prev) => ({ ...prev, [g.chave]: false }));
                                 }
                               }}
                               className="rounded border border-green-300 bg-green-50 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-100 disabled:opacity-40"
                             >
-                              Confirmar envio
+                              {confirmando[g.chave] ? "Confirmando..." : "Confirmar envio"}
+                            </button>
+                            {/* NOVO — pedido do Guilherme em 2026-07-29: "aqui
+                                preciso conseguir excluir". Confirma antes de
+                                apagar pra evitar clique acidental; excluir um
+                                grupo composto remove TODAS as placas
+                                componentes daquele envio de uma vez. */}
+                            <button
+                              disabled={Boolean(excluindo[g.chave])}
+                              onClick={async () => {
+                                if (!window.confirm("Excluir este envio planejado?")) return;
+                                setExcluindo((prev) => ({ ...prev, [g.chave]: true }));
+                                try {
+                                  await onExcluir(g.ids);
+                                } finally {
+                                  setExcluindo((prev) => ({ ...prev, [g.chave]: false }));
+                                }
+                              }}
+                              className="rounded border border-red-300 bg-red-50 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-40"
+                            >
+                              {excluindo[g.chave] ? "Excluindo..." : "Excluir"}
                             </button>
                           </>
                         )}
