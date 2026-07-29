@@ -118,6 +118,19 @@ export async function POST() {
   const pedidosVendidos = todosOsPedidos.filter(pedidoFoiVendido);
 
   for (const pedido of todosOsPedidos) {
+    // Vendas do Full não descontam o estoque físico local — pedido do
+    // Guilherme em 2026-07-29: "as vendas do full não devem dar baixa do
+    // meu estoque físico... até porque os estoques são diferentes". A
+    // peça vendida no Full já tinha saído do estoque local no momento em
+    // que o ENVIO pro Full foi confirmado (ver PATCH
+    // /api/full/envios/[id], que desconta estoque_placas na confirmação)
+    // — descontar de novo aqui, na hora da venda em si, contaria a mesma
+    // peça 2x. O estoque do Full (mostrado à parte na aba Full e, agora,
+    // também na aba Estoque) é um estoque separado, mantido por conta
+    // própria (leitura da API da ML e/ou ajuste manual), não por essa
+    // sincronização.
+    if (pedido.shippingMode === "Full") continue;
+
     const vendido = pedidoFoiVendido(pedido);
 
     if (vendido) {
