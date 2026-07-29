@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { corFilamentoDaPlaca } from "@/lib/placas";
+import { corFilamentoDaPlaca, corPetgDe, CORES_COM_PETG, CorFilamento } from "@/lib/placas";
+
+// Resolve a cor "efetiva" (PLA normal ou variante "-petg") de uma
+// produção — pedido do Guilherme em 2026-07-29 (opção PETG pra
+// preto/branco/vermelho): o histórico tem que separar o consumo de PLA
+// do de PETG, então usa producoes.material (escolhido pelo operador ao
+// carregar a máquina) igual à mesma lógica de
+// /api/producoes/[id]/route.ts.
+function corEfetiva(corBase: CorFilamento | null, material: string | null): CorFilamento | null {
+  if (!corBase) return null;
+  if (material === "PETG" && CORES_COM_PETG.includes(corBase)) return corPetgDe(corBase);
+  return corBase;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -43,8 +55,10 @@ export async function GET(request: NextRequest) {
   const limitParam = Number(request.nextUrl.searchParams.get("limit"));
   const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 5000) : 100;
 
+  await sql`ALTER TABLE producoes ADD COLUMN IF NOT EXISTS material TEXT`;
+
   const producoesConcluidas = (await sql`
-    SELECT p.id, p.concluido_em AS data, p.quantidade_placas,
+    SELECT p.id, p.concluido_em AS data, p.quantidade_placas, p.material,
            pl.nome AS placa_nome, pl.peso_placa_gramas
     FROM producoes p
     JOIN placas pl ON pl.id = p.placa_id
@@ -55,18 +69,25 @@ export async function GET(request: NextRequest) {
     id: number;
     data: string;
     quantidade_placas: string;
+    material: string | null;
     placa_nome: string;
     peso_placa_gramas: string;
   }[];
 
   const producoesFalha = (await sql`
-    SELECT p.id, p.concluido_em AS data, p.gramas_desperdicadas, pl.nome AS placa_nome
+    SELECT p.id, p.concluido_em AS data, p.gramas_desperdicadas, p.material, pl.nome AS placa_nome
     FROM producoes p
     JOIN placas pl ON pl.id = p.placa_id
     WHERE p.status = 'falha_placa' AND p.gramas_desperdicadas > 0
     ORDER BY p.concluido_em DESC
     LIMIT ${limit}
-  `) as { id: number; data: string; gramas_desperdicadas: string; placa_nome: string }[];
+  `) as {
+    id: number;
+    data: string;
+    gramas_desperdicadas: string;
+    material: string | null;
+    placa_nome: string;
+  }[];
 
   const perdasAvulsas = (await sql`
     SELECT cor, gramas, motivo, criado_em AS data
@@ -109,7 +130,7 @@ export async function GET(request: NextRequest) {
   const movimentos: Movimento[] = [];
 
   for (const p of producoesConcluidas) {
-    const cor = corFilamentoDaPlaca(p.placa_nome);
+    const cor = corEfetiva(corFilamentoDaPlaca(p.placa_nome), p.material);
     if (!cor) continue;
     const gramas = Number(p.quantidade_placas) * Number(p.peso_placa_gramas);
     if (gramas <= 0) continue;
@@ -123,7 +144,7 @@ export async function GET(request: NextRequest) {
   }
 
   for (const p of producoesFalha) {
-    const cor = corFilamentoDaPlaca(p.placa_nome);
+    const cor = corEfetiva(corFilamentoDaPlaca(p.placa_nome), p.material);
     if (!cor) continue;
     const gramas = Number(p.gramas_desperdicadas);
     if (gramas <= 0) continue;
