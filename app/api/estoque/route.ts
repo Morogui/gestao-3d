@@ -46,11 +46,13 @@ export async function GET() {
       p.sku_ou_kit, p.frases_correspondencia, p.pecas_por_placa, p.tempo_placa_horas, p.tier,
       p.descontinuada,
       COALESCE(e.quantidade_pecas, 0) AS estoque,
-      e.atualizado_em
+      e.atualizado_em,
+      COALESCE(ef.quantidade_pecas, 0) AS estoque_full
     FROM placas p
     LEFT JOIN estoque_placas e ON e.placa_id = p.id
+    LEFT JOIN estoque_full_placas ef ON ef.placa_id = p.id
     ORDER BY p.numero ASC
-  `) as (DbPlacaRow & { atualizado_em: string | null })[];
+  `) as (DbPlacaRow & { atualizado_em: string | null; estoque_full: number })[];
 
   const pendentePorPlaca = await buscarPendenteHojePorPlaca();
 
@@ -59,6 +61,12 @@ export async function GET() {
       ...toPlacaRow(row),
       atualizadoEm: row.atualizado_em,
       pendenteEnvioHoje: pendentePorPlaca.get(row.id) ?? 0,
+      // Estoque separado, guardado à parte do local — pedido do
+      // Guilherme em 2026-07-29: "os estoques são diferentes". Mesma
+      // tabela (estoque_full_placas) já usada/ajustável na aba Full;
+      // aqui é só leitura, pra dar visão dos dois estoques lado a lado
+      // sem duplicar a edição em duas telas.
+      estoqueFull: Number(row.estoque_full ?? 0),
     }))
   );
 }
