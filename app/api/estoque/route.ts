@@ -1,8 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { DbPlacaRow, toPlacaRow } from "@/lib/placas";
+import { statusIndicaDespachado } from "@/lib/demanda";
+import { todaySP } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
+
+// Quanto já foi descontado do estoque HOJE por vendas que ainda não
+// despacharam de verdade na plataforma — pedido do Guilherme em
+// 2026-07-29: "mostrar em cor mais fraca a quantidade que já foi
+// descontado do meu estoque no dia atual pelas vendas e deve sair da
+// contagem assim que o pedido der saída". A baixa em si já acontece no
+// PAGAMENTO (ver /api/estoque/sincronizar-vendas, 2026-07-24) — isso aqui
+// é só um recorte informativo por cima do mesmo dado: das baixas de HOJE
+// (baixas_estoque_vendas.criado_em, fuso São Paulo), quais ainda não têm
+// o pedido despachado (shipping_status em pedidos_cache). Assim que o
+// pedido despacha, some do badge sozinho na próxima leitura — sem mexer
+// no estoque_placas, que já está correto desde o pagamento.
+async function buscarPendenteHojePorPlaca(): Promise<Map<number, number>> {
+  const hoje = todaySP();
+  const rows = (await sql`
+    SELECT b.placa_id, b.pecas, pc.shipping_status
+    FROM baixas_estoque_vendas b
+    LEFT JOIN pedidos_cache pc
+      ON pc.plataforma = b.plataforma AND pc.pedido_id = b.pedido_id
+    WHERE (b.criado_em AT TIME ZONE 'America/Sao_Paulo')::date = (${hoje}::date)
+  `) as { placa_id: number; pecas: number; shipping_status: string | null }[];
+
+  const mapa = new Map<number, number>();
+  for (const r of rows) {
+    if (statusIndicaDespachado(r.shipping_status)) continue;
+    mapa.set(r.placa_id, (mapa.get(r.placa_id) ?? 0) + Number(r.pecas));
+  }
+  return mapa;
+}
 
 // Igual à /api/placas, mas SEM o filtro "descontinuada = false" — a aba
 // Estoque precisa mostrar e permitir ajustar manualmente até placas
@@ -21,10 +52,13 @@ export async function GET() {
     ORDER BY p.numero ASC
   `) as (DbPlacaRow & { atualizado_em: string | null })[];
 
+  const pendentePorPlaca = await buscarPendenteHojePorPlaca();
+
   return NextResponse.json(
     rows.map((row) => ({
       ...toPlacaRow(row),
       atualizadoEm: row.atualizado_em,
+      pendenteEnvioHoje: pendentePorPlaca.get(row.id) ?? 0,
     }))
   );
 }
