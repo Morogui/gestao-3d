@@ -306,41 +306,6 @@ export default function ProducaoPage() {
     await carregarRapido();
   }
 
-  async function salvarFilamento(novo: EstoqueFilamentoRow) {
-    setFilamento(novo);
-    const salvo = await fetch("/api/producao/filamento", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(novo),
-    }).then((r) => r.json());
-    setFilamento(salvo);
-  }
-
-  // Registra uma perda AVULSA de filamento (fora de uma produção
-  // rastreada) — pedido do Guilherme em 2026-07-26: "coloque um campo
-  // onde eu consiga adicionar perda a parte" + "precisa alimentar qual o
-  // filamento que teve perda, cor do filamento". Desconta na hora do
-  // estoque daquela cor e soma no card "Total já desperdiçado" (ver
-  // /api/producao/perda-filamento). Depois de salvar, recarrega
-  // filamento + consumo pra refletir os dois na tela.
-  async function registrarPerdaFilamento(
-    cor: CorFilamento,
-    gramas: number,
-    motivo: string
-  ): Promise<string | null> {
-    const res = await fetch("/api/producao/perda-filamento", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cor, gramas, motivo: motivo || undefined }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      return data.error ?? "Erro ao registrar perda.";
-    }
-    await carregarRapido();
-    return null;
-  }
-
   useEffect(() => {
     carregarTudo();
   }, []);
@@ -791,28 +756,40 @@ export default function ProducaoPage() {
       <section>
         <h2 className="mb-3 text-sm font-semibold text-gray-900">Estoque de filamento por cor</h2>
         <p className="mb-3 text-xs text-gray-500">
-          Informe o quanto tem em estoque de cada cor (em gramas). Cor deixada
-          em 0 bloqueia automaticamente a fila de prioridade abaixo pra todas
-          as placas daquela cor — não precisa subir produto pra produção sem
-          ter filamento pra imprimir. A cor de cada placa é detectada pelo
-          nome (ex: &quot;Suporte Carro (Prata)&quot;); placas sem cor no
-          nome (kits, produtos multicoloridos) contam como
-          &quot;Colorido&quot;.
+          Visualização em tempo real — atualiza sozinha a cada baixa de
+          produção, falha de placa, perda registrada ou compra. Cor com 0g
+          bloqueia automaticamente a fila de prioridade abaixo pra todas as
+          placas daquela cor. Pra editar o estoque, registrar perda ou ver o
+          histórico de movimentação, use a aba{" "}
+          <Link href="/estoque" className="font-medium text-blue-600 hover:underline">
+            Estoque
+          </Link>
+          .
         </p>
-        {filamento && <FilamentoEditor filamento={filamento} onSalvar={salvarFilamento} />}
-        <div className="mt-3">
-          <PerdaFilamentoForm onRegistrar={registrarPerdaFilamento} />
-        </div>
-        {/* Histórico de movimentação do filamento — pedido do Guilherme em
-            2026-07-28: "tenho que ter uma abinha para ver a movimentacao
-            que esta rolando no meu estoque, qual foi a producao e o que
-            foi consumido". Mesmo padrão de "Ver histórico" já usado na
-            aba Estoque, só que aqui é uma lista única (não por placa) já
-            que o estoque de filamento é por cor. Ver
-            /api/producao/filamento/historico. */}
-        <div className="mt-3">
-          <HistoricoFilamento />
-        </div>
+        {filamento ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+            {CORES_FILAMENTO.map((cor) => {
+              const valor = filamento[cor] ?? 0;
+              const zerado = valor <= 0;
+              return (
+                <div
+                  key={cor}
+                  className={
+                    "rounded border px-3 py-2 " +
+                    (zerado ? "border-red-300 bg-red-50" : "border-gray-200 bg-gray-50")
+                  }
+                >
+                  <p className="text-xs text-gray-500">{LABEL_COR_FILAMENTO[cor]}</p>
+                  <p className={"text-lg font-semibold " + (zerado ? "text-red-700" : "text-gray-900")}>
+                    {valor}g
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400">Carregando estoque de filamento...</p>
+        )}
       </section>
 
       <section>
@@ -1291,6 +1268,13 @@ function ImpressoManualEditor({
 }
 
 // Nomes de exibição das cores controladas — mesma ordem de CORES_FILAMENTO.
+// Usado só pelo card de leitura abaixo; a edição (FilamentoEditor,
+// PerdaFilamentoForm, HistoricoFilamento) mudou pra aba Estoque em
+// 2026-07-28 (pedido do Guilherme: "Na aba de producao devemos ter um
+// campo onde mostre o quanto de filamento temos em estoque isso deve ser
+// em tempo real... O Estoque do filamento deve ser controlado em
+// estoque.") — aqui fica só a visualização, que continua em tempo real
+// porque o state `filamento` já é recarregado a cada carregarRapido().
 const LABEL_COR_FILAMENTO: Record<CorFilamento, string> = {
   colorido: "Colorido",
   preto: "Preto",
@@ -1299,296 +1283,6 @@ const LABEL_COR_FILAMENTO: Record<CorFilamento, string> = {
   marrom: "Marrom",
   bege: "Bege",
 };
-
-// Formulário de estoque de filamento por cor — 6 campos (um por cor
-// controlada), edição local até clicar em Salvar (evita disparar um PUT a
-// cada dígito digitado). Pedido do Guilherme em 2026-07-25: cor em 0
-// bloqueia a fila de prioridade (ver filtro em filaPrioridade acima).
-function FilamentoEditor({
-  filamento,
-  onSalvar,
-}: {
-  filamento: EstoqueFilamentoRow;
-  onSalvar: (novo: EstoqueFilamentoRow) => void;
-}) {
-  const [valores, setValores] = useState<Record<CorFilamento, string>>(() => {
-    const inicial = {} as Record<CorFilamento, string>;
-    for (const cor of CORES_FILAMENTO) inicial[cor] = String(filamento[cor] ?? 0);
-    return inicial;
-  });
-  const [salvando, setSalvando] = useState(false);
-
-  useEffect(() => {
-    const atualizado = {} as Record<CorFilamento, string>;
-    for (const cor of CORES_FILAMENTO) atualizado[cor] = String(filamento[cor] ?? 0);
-    setValores(atualizado);
-  }, [filamento]);
-
-  async function salvar() {
-    setSalvando(true);
-    try {
-      const novo = {} as EstoqueFilamentoRow;
-      for (const cor of CORES_FILAMENTO) novo[cor] = Math.max(0, Number(valores[cor]) || 0);
-      await onSalvar(novo);
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
-        {CORES_FILAMENTO.map((cor) => (
-          <label key={cor} className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500">
-              {LABEL_COR_FILAMENTO[cor]} (g)
-            </span>
-            <input
-              type="number"
-              min={0}
-              value={valores[cor]}
-              onChange={(e) => setValores((prev) => ({ ...prev, [cor]: e.target.value }))}
-              className={
-                "rounded border px-2 py-1 text-sm " +
-                ((Number(valores[cor]) || 0) <= 0
-                  ? "border-red-300 bg-red-50 text-red-700"
-                  : "border-gray-300")
-              }
-            />
-          </label>
-        ))}
-      </div>
-      <div>
-        <button
-          disabled={salvando}
-          onClick={salvar}
-          className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
-        >
-          {salvando ? "Salvando..." : "Salvar estoque de filamento"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// Registro de perda AVULSA de filamento — pedido do Guilherme em
-// 2026-07-26: "coloque um campo onde eu consiga adicionar perda a parte
-// caso eu queira" + "precisa alimentar qual o filamento que teve perda,
-// cor do filamento". Diferente da perda automática (só nasce de uma
-// produção marcada como falha) — aqui é pra qualquer perda avulsa
-// (purga, calibração, filamento emaranhado etc.), com a cor obrigatória
-// pra descontar do estoque certo e um motivo opcional só pra histórico.
-// Desconta o estoque_filamento daquela cor na hora e soma no card "Total
-// já desperdiçado" acima.
-function PerdaFilamentoForm({
-  onRegistrar,
-}: {
-  onRegistrar: (cor: CorFilamento, gramas: number, motivo: string) => Promise<string | null>;
-}) {
-  const [cor, setCor] = useState<CorFilamento>("colorido");
-  const [gramas, setGramas] = useState("");
-  const [motivo, setMotivo] = useState("");
-  const [salvando, setSalvando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-  const [sucesso, setSucesso] = useState(false);
-
-  async function registrar() {
-    const gramasNum = Number(gramas);
-    if (!Number.isFinite(gramasNum) || gramasNum <= 0) {
-      setErro("Informe a quantidade em gramas (maior que 0).");
-      return;
-    }
-    setErro(null);
-    setSucesso(false);
-    setSalvando(true);
-    try {
-      const erroApi = await onRegistrar(cor, gramasNum, motivo.trim());
-      if (erroApi) {
-        setErro(erroApi);
-        return;
-      }
-      setGramas("");
-      setMotivo("");
-      setSucesso(true);
-      setTimeout(() => setSucesso(false), 3000);
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
-      <p className="text-xs font-medium text-gray-600">
-        Registrar perda avulsa de filamento (fora de uma produção — ex: purga,
-        calibração, filamento emaranhado)
-      </p>
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-gray-500">Cor</span>
-          <select
-            value={cor}
-            onChange={(e) => setCor(e.target.value as CorFilamento)}
-            className="rounded border border-gray-300 px-2 py-1.5 text-sm"
-          >
-            {CORES_FILAMENTO.map((c) => (
-              <option key={c} value={c}>
-                {LABEL_COR_FILAMENTO[c]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-gray-500">Gramas</span>
-          <input
-            type="number"
-            min={0}
-            step="1"
-            value={gramas}
-            onChange={(e) => setGramas(e.target.value)}
-            placeholder="0"
-            className="w-24 rounded border border-gray-300 px-2 py-1.5 text-sm"
-          />
-        </label>
-        <label className="flex flex-1 min-w-[180px] flex-col gap-1">
-          <span className="text-xs font-medium text-gray-500">Motivo (opcional)</span>
-          <input
-            type="text"
-            value={motivo}
-            onChange={(e) => setMotivo(e.target.value)}
-            placeholder="ex: purga na troca de cor"
-            maxLength={200}
-            className="rounded border border-gray-300 px-2 py-1.5 text-sm"
-          />
-        </label>
-        <button
-          disabled={salvando}
-          onClick={registrar}
-          className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
-        >
-          {salvando ? "Registrando..." : "Registrar perda"}
-        </button>
-      </div>
-      {erro && <p className="text-xs text-red-600">{erro}</p>}
-      {sucesso && <p className="text-xs text-green-600">Perda registrada e descontada do estoque.</p>}
-    </div>
-  );
-}
-
-interface MovimentoFilamento {
-  data: string;
-  cor: string;
-  tipo: "producao" | "falha" | "perda_avulsa" | "ajuste_manual" | "compra";
-  gramas: number;
-  detalhe: string;
-}
-
-const LABEL_TIPO_MOVIMENTO_FILAMENTO: Record<MovimentoFilamento["tipo"], string> = {
-  producao: "Produção concluída",
-  falha: "Falha na placa",
-  perda_avulsa: "Perda avulsa",
-  ajuste_manual: "Ajuste manual",
-  compra: "Compra (Financeiro)",
-};
-
-// Histórico de movimentação de filamento — pedido do Guilherme em
-// 2026-07-28: "tenho que ter uma abinha para ver a movimentacao que
-// esta rolando no meu estoque, qual foi a producao e o que foi
-// consumido". Busca sob demanda (só ao abrir) em
-// /api/producao/filamento/historico, que une consumo de produção
-// concluída, perda em falha de placa, perda avulsa manual e ajuste
-// manual do campo de estoque — tudo já com cor e detalhe.
-function HistoricoFilamento() {
-  const [aberto, setAberto] = useState(false);
-  const [historico, setHistorico] = useState<
-    MovimentoFilamento[] | "loading" | "erro" | null
-  >(null);
-
-  async function alternar() {
-    if (aberto) {
-      setAberto(false);
-      return;
-    }
-    setAberto(true);
-    if (historico === null) {
-      setHistorico("loading");
-      try {
-        const res = await fetch("/api/producao/filamento/historico");
-        if (!res.ok) throw new Error("falha");
-        const data = await res.json();
-        setHistorico(data.movimentos);
-      } catch {
-        setHistorico("erro");
-      }
-    }
-  }
-
-  return (
-    <div className="rounded-lg border border-gray-200 p-3">
-      <button
-        onClick={alternar}
-        className="text-xs font-medium text-blue-600 hover:underline"
-      >
-        {aberto ? "Fechar histórico" : "Ver histórico de movimentação"}
-      </button>
-      {aberto && (
-        <div className="mt-3">
-          {(historico === "loading" || historico === null) && (
-            <p className="text-xs text-gray-400">Carregando histórico...</p>
-          )}
-          {historico === "erro" && (
-            <p className="text-xs text-red-600">Não deu pra carregar o histórico.</p>
-          )}
-          {Array.isArray(historico) && historico.length === 0 && (
-            <p className="text-xs text-gray-400">
-              Nenhuma movimentação registrada ainda (o estoque atual pode vir de
-              antes desse histórico existir).
-            </p>
-          )}
-          {Array.isArray(historico) && historico.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full max-w-3xl text-xs">
-                <thead className="text-left uppercase text-gray-400">
-                  <tr>
-                    <th className="py-1 pr-3">Quando</th>
-                    <th className="py-1 pr-3">Cor</th>
-                    <th className="py-1 pr-3">Origem</th>
-                    <th className="py-1 pr-3 text-right">Gramas</th>
-                    <th className="py-1">Detalhe</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {historico.map((m, i) => (
-                    <tr key={i}>
-                      <td className="py-1.5 pr-3 whitespace-nowrap text-gray-500">
-                        {new Date(m.data).toLocaleString("pt-BR")}
-                      </td>
-                      <td className="py-1.5 pr-3 whitespace-nowrap text-gray-700">
-                        {LABEL_COR_FILAMENTO[m.cor as CorFilamento] ?? m.cor}
-                      </td>
-                      <td className="py-1.5 pr-3 whitespace-nowrap text-gray-500">
-                        {LABEL_TIPO_MOVIMENTO_FILAMENTO[m.tipo]}
-                      </td>
-                      <td
-                        className={
-                          "py-1.5 pr-3 text-right font-medium whitespace-nowrap " +
-                          (m.gramas < 0 ? "text-red-600" : "text-green-600")
-                        }
-                      >
-                        {m.gramas > 0 ? "+" : ""}
-                        {m.gramas}g
-                      </td>
-                      <td className="py-1.5 text-gray-500">{m.detalhe}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function TierBadge({ tier }: { tier: "A" | "B" | "C" }) {
   return (
