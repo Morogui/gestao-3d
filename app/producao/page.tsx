@@ -8,6 +8,8 @@ import {
   CORES_FILAMENTO,
   CorFilamento,
   corFilamentoDaPlaca,
+  corPetgDe,
+  CORES_COM_PETG,
 } from "@/lib/placas";
 import { horaAtualSP, horasAteProximaAbertura } from "@/lib/date";
 import {
@@ -571,7 +573,13 @@ export default function ProducaoPage() {
         if (!filamento) return true;
         const cor = corFilamentoDaPlaca(item.placa.nome);
         if (!cor) return true;
-        return filamento[cor] > 0;
+        // 2026-07-29: cor pode ter estoque em duas variantes (PLA e
+        // PETG, pras 3 cores em CORES_COM_PETG) — não bloqueia a fila se
+        // QUALQUER uma das duas tiver saldo, já que o operador escolhe o
+        // material na hora de carregar a máquina.
+        const estoquePla = filamento[cor] ?? 0;
+        const estoquePetg = CORES_COM_PETG.includes(cor) ? filamento[corPetgDe(cor)] ?? 0 : 0;
+        return estoquePla + estoquePetg > 0;
       });
 
     const porDiasDeEstoque = (a: FilaPrioridadeItem, b: FilaPrioridadeItem) =>
@@ -628,13 +636,18 @@ export default function ProducaoPage() {
   // liberar o botão, e dispara o refresh de demanda em paralelo sem
   // esperar por ele — a fila de prioridade/aProduzir atualiza sozinha
   // assim que a ML/Shopee responderem, sem travar a tela até lá.
-  async function iniciarProducao(placaId: number, machineId: number, quantidadePlacas: number) {
+  async function iniciarProducao(
+    placaId: number,
+    machineId: number,
+    quantidadePlacas: number,
+    material: "PLA" | "PETG"
+  ) {
     setCarregando((prev) => ({ ...prev, [machineId]: true }));
     try {
       await fetch("/api/producoes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ machineId, placaId, quantidadePlacas }),
+        body: JSON.stringify({ machineId, placaId, quantidadePlacas, material }),
       });
       await carregarRapido();
       carregarDemanda();
@@ -797,7 +810,7 @@ export default function ProducaoPage() {
           .
         </p>
         {filamento ? (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
             {CORES_FILAMENTO.map((cor) => {
               const valor = filamento[cor] ?? 0;
               const zerado = valor <= 0;
@@ -956,7 +969,9 @@ export default function ProducaoPage() {
               pertoDoFechamento={pertoDoFechamento}
               aberturaHora={janela.aberturaHora}
               carregando={Boolean(carregando[machine.id])}
-              onIniciar={(placaId, qtd) => iniciarProducao(placaId, machine.id, qtd)}
+              onIniciar={(placaId, qtd, material) =>
+                iniciarProducao(placaId, machine.id, qtd, material)
+              }
               onConcluir={(id) => concluirProducao(id, machine.id)}
               onCancelar={(id) => cancelarProducao(id, machine.id)}
               onFalhaPlaca={(id, gramas) => falhaPlaca(id, machine.id, gramas)}
@@ -1311,11 +1326,14 @@ function ImpressoManualEditor({
 const LABEL_COR_FILAMENTO: Record<CorFilamento, string> = {
   colorido: "Colorido",
   preto: "Preto",
+  "preto-petg": "Preto (PETG)",
   branco: "Branco",
+  "branco-petg": "Branco (PETG)",
   prata: "Prata",
   marrom: "Marrom",
   bege: "Bege",
   vermelho: "Vermelho",
+  "vermelho-petg": "Vermelho (PETG)",
 };
 
 function PerdaFilamentoForm({
@@ -1531,7 +1549,7 @@ function PrinterCard({
   pertoDoFechamento: boolean;
   aberturaHora: number;
   carregando: boolean;
-  onIniciar: (placaId: number, quantidadePlacas: number) => void;
+  onIniciar: (placaId: number, quantidadePlacas: number, material: "PLA" | "PETG") => void;
   onConcluir: (id: number) => void;
   onCancelar: (id: number) => void;
   onFalhaPlaca: (id: number, gramas: number) => void;
@@ -1564,7 +1582,14 @@ function PrinterCard({
       {producao && placa ? (
         <div className="flex flex-col gap-3">
           <div>
-            <p className="font-medium text-gray-900">{placa.nome}</p>
+            <p className="font-medium text-gray-900">
+              {placa.nome}
+              {producao.material === "PETG" && (
+                <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-semibold text-sky-700">
+                  PETG
+                </span>
+              )}
+            </p>
             <p className="text-xs text-gray-500">
               {producao.quantidade_placas} placa(s) · {placa.pecasPorPlaca} pç/placa ·{" "}
               {totalPecas} peças no total
@@ -1703,7 +1728,7 @@ function CarregarPlacaForm({
   pertoDoFechamento: boolean;
   aberturaHora: number;
   carregando: boolean;
-  onIniciar: (placaId: number, quantidadePlacas: number) => void;
+  onIniciar: (placaId: number, quantidadePlacas: number, material: "PLA" | "PETG") => void;
 }) {
   const [placaId, setPlacaId] = useState<number | "">(filaPrioridade[0]?.placa.id ?? "");
   const [quantidade, setQuantidade] = useState(1);
@@ -1711,6 +1736,16 @@ function CarregarPlacaForm({
   const [resultados, setResultados] = useState<SkuResult[]>([]);
   const [placaSelecionadaNome, setPlacaSelecionadaNome] = useState<string | null>(null);
   const [buscando, setBuscando] = useState(false);
+  // Material da placa carregada — só pergunta pras 3 cores que têm PETG
+  // em estoque separado (ver CORES_COM_PETG em lib/placas.ts). Pedido do
+  // Guilherme em 2026-07-29: "na hora da producao perguntar em qual
+  // material esta usando, deixar uma tag clicavel". Sempre reseta pra
+  // PLA quando troca de placa, pra nunca "vazar" a escolha de uma placa
+  // pra outra sem querer.
+  const [material, setMaterial] = useState<"PLA" | "PETG">("PLA");
+  useEffect(() => {
+    setMaterial("PLA");
+  }, [placaId]);
 
   // Removida a sugestão automática de "carregar Nx pra virar a noite" —
   // pedido do Guilherme em 2026-07-24: na impressora dele só dá pra
@@ -1747,6 +1782,8 @@ function CarregarPlacaForm({
   // noção de quando ela deve terminar (mesmo campo tempoPlacaHoras já
   // usado no cálculo de "Qtd p/ virar a noite" da fila de prioridade).
   const placaSelecionada = placaId ? placaPorId.get(placaId) : undefined;
+  const corBase = placaSelecionada ? corFilamentoDaPlaca(placaSelecionada.nome) : null;
+  const temOpcaoPetg = corBase !== null && CORES_COM_PETG.includes(corBase);
 
   return (
     <div className="flex flex-col gap-2">
@@ -1822,6 +1859,36 @@ function CarregarPlacaForm({
         </p>
       )}
 
+      {temOpcaoPetg && (
+        <div className="flex items-center gap-2 rounded border border-sky-200 bg-sky-50 px-2 py-1.5">
+          <span className="text-xs font-medium text-sky-800">Material:</span>
+          <button
+            type="button"
+            onClick={() => setMaterial("PLA")}
+            className={
+              "rounded-full px-2.5 py-0.5 text-xs font-semibold " +
+              (material === "PLA"
+                ? "bg-sky-600 text-white"
+                : "bg-white text-sky-700 border border-sky-300")
+            }
+          >
+            PLA
+          </button>
+          <button
+            type="button"
+            onClick={() => setMaterial("PETG")}
+            className={
+              "rounded-full px-2.5 py-0.5 text-xs font-semibold " +
+              (material === "PETG"
+                ? "bg-sky-600 text-white"
+                : "bg-white text-sky-700 border border-sky-300")
+            }
+          >
+            PETG
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center gap-2">
         <input
           type="number"
@@ -1832,7 +1899,7 @@ function CarregarPlacaForm({
         />
         <button
           disabled={carregando || !placaId}
-          onClick={() => placaId && onIniciar(placaId, quantidade)}
+          onClick={() => placaId && onIniciar(placaId, quantidade, material)}
           className="flex-1 rounded bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
         >
           {carregando ? "Carregando..." : "Carregar máquina"}
