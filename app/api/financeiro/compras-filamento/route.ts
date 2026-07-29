@@ -151,5 +151,25 @@ export async function POST(request: NextRequest) {
     RETURNING *
   `) as CompraRow[];
 
+  // Soma no estoque de filamento por cor — pedido do Guilherme em
+  // 2026-07-28: "esse numero tem que mudar, e o filamento ser adicionado
+  // em salvar estoque de filamento" — antes, comprar filamento aqui era
+  // só um lançamento financeiro (pro custo médio) e NÃO alterava o saldo
+  // mostrado em "Estoque de filamento por cor" na aba Produção; o
+  // Guilherme tinha que reentrar o total manualmente lá toda vez que
+  // comprava. Agora a compra já soma direto (é filamento que chegou de
+  // verdade), o mesmo padrão de upsert usado em
+  // /api/producao/perda-filamento e /api/producoes/[id]. Pagamento à
+  // vista ou a prazo não muda isso — o filamento chega independente de
+  // quando é pago.
+  if (CORES_FILAMENTO.includes(cor as (typeof CORES_FILAMENTO)[number])) {
+    await sql`
+      INSERT INTO estoque_filamento (cor, quantidade_gramas, atualizado_em)
+      VALUES (${cor}, ${gramas}, now())
+      ON CONFLICT (cor) DO UPDATE
+      SET quantidade_gramas = estoque_filamento.quantidade_gramas + ${gramas}, atualizado_em = now()
+    `;
+  }
+
   return NextResponse.json(serializar(rows[0]), { status: 201 });
 }
