@@ -544,7 +544,7 @@ export default function ProducaoPage() {
       // null, API não respondeu) ou cor não controlada (corFilamentoDaPlaca
       // retorna null — cinza/laranja) nunca são bloqueadas.
       //
-      // EXCEÇÃO: envio do Full pendente (faltaEnvioFull > 0) nunca é
+      // EXCEÇÃO 1: envio do Full pendente (faltaEnvioFull > 0) nunca é
       // bloqueado por esse filtro. Achado real em 2026-07-27: "Suporte
       // Secador de Cabelo (Preto)" tinha envio Full com faltam 23 (aba
       // Full) mas sumia da fila de prioridade porque o filamento preto
@@ -555,12 +555,24 @@ export default function ProducaoPage() {
       // justamente alertar que precisa resolver o filamento (comprar/repor)
       // pra conseguir produzir — escondê-lo por falta de filamento é o
       // oposto do que o Guilherme pediu.
+      //
+      // EXCEÇÃO 2: estoque zerado + venda real recente também nunca é
+      // bloqueado. Achado real em 2026-07-28: "Suporte Mangueira (Preto)"
+      // vendeu na ML, estoque zerado, mas sumiu da fila porque o filamento
+      // preto estava em 0g — bateu de frente com o critério nº1 ("todo
+      // produto vendido tem que ter estoque; se não tiver, prioridade
+      // máxima... isso NUNCA muda", 2026-07-23/24). O filtro de filamento
+      // é pra suprimir SUGESTÃO de produção antecipada sem material, não
+      // pra esconder um estoque zerado com venda de verdade — isso tem
+      // que aparecer sempre, mesmo sem filamento, pra alertar que precisa
+      // repor o material urgente.
       .filter(
         (item) =>
           item.aProduzirEfetivo > 0 || item.faltaDespacho > 0 || item.faltaEnvioFull > 0
       )
       .filter((item) => {
         if (item.faltaEnvioFull > 0) return true;
+        if (item.estoqueProjetado <= 0 && vendeuUltimasDuasSemanas(item.demanda)) return true;
         if (!filamento) return true;
         const cor = corFilamentoDaPlaca(item.placa.nome);
         if (!cor) return true;
