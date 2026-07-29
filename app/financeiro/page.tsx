@@ -53,6 +53,16 @@ interface RascunhoLancamento {
   dataVencimento: string;
   fornecedor: string;
   formaPagamento: string;
+  // À vista ou a prazo — pedido do Guilherme em 2026-07-29: "Para subir
+  // lancamento de dividas ou entrada preciso colocar vendas e elas podem
+  // ter prazo ou ser paga a vista e o mesmo para lancamentos de
+  // fornecedores ou gastos fixos, pagamentos" — mesmo padrão já usado em
+  // compras de filamento (ver novaCompra.formaPagamento abaixo). À
+  // vista: dataVencimento já nasce paga na mesma data (status "pago"
+  // direto). A prazo: dataVencimento é só o vencimento, nasce
+  // "pendente" — marca como pago depois pelo toggle da tabela, igual já
+  // funciona hoje.
+  condicaoPagamento: "a_vista" | "a_prazo";
   arquivoNome?: string | null;
   arquivoMime?: string | null;
   arquivoBase64?: string | null;
@@ -109,6 +119,7 @@ const rascunhoVazio = (tipo: "despesa" | "receita" = "despesa"): RascunhoLancame
   dataVencimento: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10),
   fornecedor: "",
   formaPagamento: "",
+  condicaoPagamento: "a_vista",
 });
 
 export default function FinanceiroPage() {
@@ -285,6 +296,11 @@ export default function FinanceiroPage() {
         dataVencimento: extraido.data || rascunhoVazio().dataVencimento,
         fornecedor: extraido.fornecedor ?? "",
         formaPagamento: extraido.formaPagamento ?? "",
+        // Comprovante lido pela IA normalmente já é de um pagamento
+        // feito — assume à vista por padrão (Guilherme pode trocar pra
+        // "a prazo" na revisão se for o caso, ex: boleto ainda não
+        // pago).
+        condicaoPagamento: "a_vista",
         arquivoNome: data.arquivoNome,
         arquivoMime: data.arquivoMime,
         arquivoBase64: data.arquivoBase64,
@@ -425,6 +441,7 @@ export default function FinanceiroPage() {
             descricao: item.descricao,
             valor: valorNum,
             dataVencimento: rascunho.dataVencimento,
+            dataPagamento: rascunho.condicaoPagamento === "a_vista" ? rascunho.dataVencimento : null,
             fornecedor: rascunho.fornecedor || null,
             formaPagamento: rascunho.formaPagamento || null,
           }),
@@ -458,6 +475,7 @@ export default function FinanceiroPage() {
           descricao: rascunho.descricao,
           valor,
           dataVencimento: rascunho.dataVencimento,
+          dataPagamento: rascunho.condicaoPagamento === "a_vista" ? rascunho.dataVencimento : null,
           fornecedor: rascunho.fornecedor || null,
           formaPagamento: rascunho.formaPagamento || null,
           arquivoNome: rascunho.arquivoNome ?? null,
@@ -1098,7 +1116,23 @@ function FormularioRevisao({
           />
         </label>
         <label className="text-xs text-gray-500">
-          Data de vencimento/pagamento
+          Condição
+          <select
+            value={rascunho.condicaoPagamento}
+            onChange={(e) =>
+              onMudar({
+                ...rascunho,
+                condicaoPagamento: e.target.value as "a_vista" | "a_prazo",
+              })
+            }
+            className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+          >
+            <option value="a_vista">À vista</option>
+            <option value="a_prazo">A prazo</option>
+          </select>
+        </label>
+        <label className="text-xs text-gray-500">
+          {rascunho.condicaoPagamento === "a_vista" ? "Data do pagamento" : "Data de vencimento"}
           <input
             type="date"
             value={rascunho.dataVencimento}
