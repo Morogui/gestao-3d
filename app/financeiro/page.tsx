@@ -10,6 +10,7 @@ import {
 } from "@/lib/financeiro";
 import { CORES_FILAMENTO } from "@/lib/placas";
 import { formatDiaBR } from "@/lib/date";
+import { formatGramasEmKg } from "@/lib/producao-types";
 
 type Status = "loading" | "ready" | "erro";
 
@@ -120,6 +121,14 @@ export default function FinanceiroPage() {
   const [compras, setCompras] = useState<CompraFilamento[]>([]);
   const [custoMedioPorCor, setCustoMedioPorCor] = useState<Record<string, number>>({});
   const [custoMedioGeral, setCustoMedioGeral] = useState<number | null>(null);
+  // Estoque atual de filamento (em gramas, por cor) — pedido do Guilherme
+  // em 2026-07-29: "Na parte do financeiro, deve me mostrar o valor do
+  // meu kg que tenho em estoque". Reusa o mesmo endpoint que a aba
+  // Estoque/Produção já usa pra ler o saldo; aqui só cruza esse saldo
+  // com o custo médio (por cor, ver acima) pra chegar no valor em R$
+  // parado em estoque — não é só "quanto custa o kg", é "quanto vale o
+  // que eu já tenho guardado".
+  const [filamentoEstoque, setFilamentoEstoque] = useState<Record<string, number>>({});
 
   const [rascunho, setRascunho] = useState<RascunhoLancamento | null>(null);
   const [analisando, setAnalisando] = useState(false);
@@ -184,6 +193,16 @@ export default function FinanceiroPage() {
     setCustoMedioGeral(data.custoMedioGeral);
   }
 
+  async function carregarFilamentoEstoque() {
+    try {
+      const res = await fetch("/api/producao/filamento");
+      if (!res.ok) return;
+      setFilamentoEstoque(await res.json());
+    } catch {
+      // silencioso — o bloco de valor em estoque some se não carregar
+    }
+  }
+
   useEffect(() => {
     carregarLancamentos(mes);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -191,7 +210,28 @@ export default function FinanceiroPage() {
 
   useEffect(() => {
     carregarCompras();
+    carregarFilamentoEstoque();
   }, []);
+
+  // Valor em R$ do filamento parado em estoque — pedido do Guilherme em
+  // 2026-07-29: cruza o saldo atual (gramas por cor) com o custo médio
+  // ponderado dessa cor (ou o custo médio geral, se aquela cor ainda não
+  // teve nenhuma compra lançada) pra chegar em "quanto vale o que eu já
+  // tenho guardado", não só "quanto custa o kg".
+  const valorEstoquePorCor = useMemo(() => {
+    const resultado: Record<string, number> = {};
+    for (const cor of CORES_FILAMENTO) {
+      const gramas = filamentoEstoque[cor] ?? 0;
+      const custoPorGrama = custoMedioPorCor[cor] ?? custoMedioGeral ?? 0;
+      resultado[cor] = gramas * custoPorGrama;
+    }
+    return resultado;
+  }, [filamentoEstoque, custoMedioPorCor, custoMedioGeral]);
+
+  const valorEstoqueTotal = useMemo(
+    () => Object.values(valorEstoquePorCor).reduce((soma, v) => soma + v, 0),
+    [valorEstoquePorCor]
+  );
 
   async function carregarComprovantes() {
     setCarregandoComprovantes(true);
@@ -693,6 +733,9 @@ export default function FinanceiroPage() {
         compras={compras}
         custoMedioPorCor={custoMedioPorCor}
         custoMedioGeral={custoMedioGeral}
+        filamentoEstoque={filamentoEstoque}
+        valorEstoquePorCor={valorEstoquePorCor}
+        valorEstoqueTotal={valorEstoqueTotal}
         novaCompra={novaCompra}
         itemAtual={itemAtual}
         itensPedido={itensPedido}
@@ -1227,6 +1270,9 @@ function ComprasFilamento({
   compras,
   custoMedioPorCor,
   custoMedioGeral,
+  filamentoEstoque,
+  valorEstoquePorCor,
+  valorEstoqueTotal,
   novaCompra,
   itemAtual,
   itensPedido,
@@ -1242,6 +1288,9 @@ function ComprasFilamento({
   compras: CompraFilamento[];
   custoMedioPorCor: Record<string, number>;
   custoMedioGeral: number | null;
+  filamentoEstoque: Record<string, number>;
+  valorEstoquePorCor: Record<string, number>;
+  valorEstoqueTotal: number;
   novaCompra: {
     dataCompra: string;
     fornecedor: string;
@@ -1282,6 +1331,48 @@ function ComprasFilamento({
             </p>
           </div>
         ))}
+      </div>
+
+      <div className="mt-1 flex flex-col gap-2 rounded border border-gray-200 bg-gray-50 p-3">
+        <div className="flex items-baseline justify-between">
+          <p className="text-sm font-semibold text-gray-700">Valor do estoque atual de filamento</p>
+          <p className="text-sm font-semibold text-gray-900">{formatBRL(valorEstoqueTotal)}</p>
+        </div>
+        <p className="text-xs text-gray-500">
+          Estoque de cada cor (aba Estoque) × custo médio dessa cor — quanto você tem parado em
+          filamento hoje, em reais.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="text-left uppercase text-gray-500">
+              <tr>
+                <th className="py-1 pr-3">Cor</th>
+                <th className="py-1 pr-3 text-right">Estoque (Kg)</th>
+                <th className="py-1 pr-3 text-right">Custo médio (R$/Kg)</th>
+                <th className="py-1 text-right">Valor em estoque</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {CORES_FILAMENTO.map((cor) => {
+                const custoPorGrama = custoMedioPorCor[cor] ?? custoMedioGeral ?? null;
+                return (
+                  <tr key={cor}>
+                    <td className="py-1 pr-3 capitalize text-gray-700">{cor}</td>
+                    <td className="py-1 pr-3 text-right text-gray-700">
+                      {formatGramasEmKg(filamentoEstoque[cor] ?? 0)}
+                    </td>
+                    <td className="py-1 pr-3 text-right text-gray-700">
+                      {custoPorGrama !== null ? formatBRL(custoPorGrama * 1000) : "sem dados"}
+                    </td>
+                    <td className="py-1 text-right font-medium text-gray-900">
+                      {formatBRL(valorEstoquePorCor[cor] ?? 0)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <p className="text-xs text-gray-500">
