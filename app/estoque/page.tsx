@@ -70,19 +70,26 @@ export default function EstoquePage() {
   }
 
   // Pedido de compra de filamento — abre uma janela (modal) onde dá pra
-  // lançar o pedido inteiro de uma vez: uma ou mais cores (cada uma com
-  // peso e valor), fornecedor, e a data de pagamento — com um botão "+"
-  // pra revelar o campo de vencimento só quando o pedido tem prazo (por
-  // padrão assume à vista, pago na própria data da compra). Pedido do
-  // Guilherme em 2026-07-29: "Para adicionar filamentos, deve ter um
-  // campo onde abra uma janela... Apos ser lançado ele gera demanda para
-  // a aba do financeiro". Cada cor vira uma linha em compras_filamento
-  // (soma o estoque_filamento e alimenta o custo médio, ver
-  // /api/financeiro/compras-filamento) e o pedido inteiro também vira UM
-  // lançamento em financeiro_lancamentos (categoria "Filamento", valor =
-  // soma de todas as cores) pra aparecer no calendário/resumo/despesas
-  // pendentes da aba Financeiro — antes só entrava no estoque, sem gerar
-  // essa "demanda" financeira.
+  // lançar o pedido inteiro de uma vez: uma ou mais cores (cada uma só
+  // com peso — sem valor individual), fornecedor, o VALOR TOTAL do
+  // pedido, e a data de pagamento — com um botão "+" pra revelar o
+  // campo de vencimento só quando o pedido tem prazo (por padrão assume
+  // à vista, pago na própria data da compra). Pedido do Guilherme em
+  // 2026-07-29: "Para adicionar filamentos, deve ter um campo onde abra
+  // uma janela... Apos ser lançado ele gera demanda para a aba do
+  // financeiro"; e depois (mesmo dia): "na hora de adicionar o preco do
+  // filamento, eu devo colocar o preco total do pedido... voce divide o
+  // valor total e ache o preco do filamento final por kg" — ou seja, o
+  // usuário só informa cor+peso de cada item e o total pago pelo pedido
+  // inteiro; o preço por Kg (e o valor de cada cor, pra fins de estoque)
+  // é calculado dividindo o total pelo peso, e depois rateado
+  // proporcionalmente ao peso de cada cor (ver valoresRateados). Cada
+  // cor vira uma linha em compras_filamento (soma o estoque_filamento e
+  // alimenta o custo médio, ver /api/financeiro/compras-filamento) e o
+  // pedido inteiro também vira UM lançamento em financeiro_lancamentos
+  // (categoria "Filamento", valor = total do pedido) pra aparecer no
+  // calendário/resumo/despesas pendentes da aba Financeiro — antes só
+  // entrava no estoque, sem gerar essa "demanda" financeira.
   const hojeISO = () => new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   const [modalAdicionarAberto, setModalAdicionarAberto] = useState(false);
@@ -90,18 +97,19 @@ export default function EstoquePage() {
     cor: "colorido" as CorFilamento,
     pesoKg: "",
     pesoG: "",
-    valorPago: "",
   });
   const [itensPedidoFilamento, setItensPedidoFilamento] = useState<
-    { cor: CorFilamento; pesoKg: string; pesoG: string; valorPago: string }[]
+    { cor: CorFilamento; pesoKg: string; pesoG: string }[]
   >([]);
   const [pedidoFilamento, setPedidoFilamento] = useState<{
     dataCompra: string;
     fornecedor: string;
+    valorTotal: string;
     parcelas: string[];
   }>({
     dataCompra: hojeISO(),
     fornecedor: "",
+    valorTotal: "",
     parcelas: [],
   });
   const [salvandoPedido, setSalvandoPedido] = useState(false);
@@ -149,12 +157,11 @@ export default function EstoquePage() {
 
   function adicionarItemPedidoFilamento() {
     const gramas = gramasDoItemPedido(itemPedidoAtual);
-    const valorPago = Number(itemPedidoAtual.valorPago.replace(",", "."));
-    if (!Number.isFinite(gramas) || gramas <= 0 || !Number.isFinite(valorPago) || valorPago <= 0) {
+    if (!Number.isFinite(gramas) || gramas <= 0) {
       return;
     }
     setItensPedidoFilamento((atual) => [...atual, itemPedidoAtual]);
-    setItemPedidoAtual({ cor: itemPedidoAtual.cor, pesoKg: "", pesoG: "", valorPago: "" });
+    setItemPedidoAtual({ cor: itemPedidoAtual.cor, pesoKg: "", pesoG: "" });
   }
 
   function removerItemPedidoFilamento(indice: number) {
@@ -165,18 +172,56 @@ export default function EstoquePage() {
     setModalAdicionarAberto(false);
     setErroPedido(null);
     setItensPedidoFilamento([]);
-    setItemPedidoAtual({ cor: "colorido", pesoKg: "", pesoG: "", valorPago: "" });
-    setPedidoFilamento({ dataCompra: hojeISO(), fornecedor: "", parcelas: [] });
+    setItemPedidoAtual({ cor: "colorido", pesoKg: "", pesoG: "" });
+    setPedidoFilamento({ dataCompra: hojeISO(), fornecedor: "", valorTotal: "", parcelas: [] });
   }
 
-  const totalPedidoFilamento = itensPedidoFilamento.reduce(
-    (soma, item) => soma + (Number(item.valorPago.replace(",", ".")) || 0),
+  const totalPedidoFilamento = Number(pedidoFilamento.valorTotal.replace(",", ".")) || 0;
+
+  const totalGramasPedido = itensPedidoFilamento.reduce(
+    (soma, item) => soma + gramasDoItemPedido(item),
     0
   );
+
+  // Preço final por Kg do pedido — pedido do Guilherme em 2026-07-29:
+  // "voce divide o valor total e ache o preco do filamento final por
+  // kg". É um preço médio do pedido inteiro (todas as cores juntas),
+  // não por cor — a maioria dos fornecedores cobra um valor único pro
+  // pedido todo, independente da cor.
+  const precoPorKgPedido = totalGramasPedido > 0 ? totalPedidoFilamento / (totalGramasPedido / 1000) : 0;
+
+  // Rateia o valor total do pedido entre as cores proporcionalmente ao
+  // peso de cada uma — cada cor precisa de um valorPago próprio pra
+  // virar uma linha em compras_filamento (estoque + custo médio), mesmo
+  // o usuário só informando o total do pedido. Trabalha em centavos e
+  // joga o resto (arredondamento) na última cor, pra soma bater
+  // exatamente com o total informado.
+  function valoresRateadosPorItem(
+    itens: { pesoKg: string; pesoG: string }[],
+    totalPedido: number
+  ): number[] {
+    const totalGramas = itens.reduce((soma, it) => soma + gramasDoItemPedido(it), 0);
+    if (totalGramas <= 0 || itens.length === 0) return itens.map(() => 0);
+    const totalCentavos = Math.round(totalPedido * 100);
+    let restante = totalCentavos;
+    return itens.map((item, i) => {
+      if (i === itens.length - 1) {
+        return restante / 100;
+      }
+      const gramas = gramasDoItemPedido(item);
+      const centavos = Math.round((gramas / totalGramas) * totalCentavos);
+      restante -= centavos;
+      return centavos / 100;
+    });
+  }
 
   async function salvarPedidoFilamento() {
     if (itensPedidoFilamento.length === 0) {
       setErroPedido("Adicione pelo menos uma cor ao pedido.");
+      return;
+    }
+    if (!(totalPedidoFilamento > 0)) {
+      setErroPedido("Informe o valor total do pedido.");
       return;
     }
     if (pedidoFilamento.parcelas.some((p) => !p)) {
@@ -188,10 +233,12 @@ export default function EstoquePage() {
     try {
       const aPrazo = pedidoFilamento.parcelas.length > 0;
       const primeiraParcela = aPrazo ? pedidoFilamento.parcelas[0] : null;
+      const valoresPorItem = valoresRateadosPorItem(itensPedidoFilamento, totalPedidoFilamento);
 
-      for (const item of itensPedidoFilamento) {
+      for (let i = 0; i < itensPedidoFilamento.length; i++) {
+        const item = itensPedidoFilamento[i];
         const gramas = gramasDoItemPedido(item);
-        const valorPago = Number(item.valorPago.replace(",", "."));
+        const valorPago = valoresPorItem[i];
         const res = await fetch("/api/financeiro/compras-filamento", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -394,6 +441,7 @@ export default function EstoquePage() {
           itensPedido={itensPedidoFilamento}
           pedido={pedidoFilamento}
           total={totalPedidoFilamento}
+          precoPorKg={precoPorKgPedido}
           salvando={salvandoPedido}
           erro={erroPedido}
           onMudarItem={setItemPedidoAtual}
@@ -809,7 +857,6 @@ interface ItemPedidoFilamentoEstoque {
   cor: CorFilamento;
   pesoKg: string;
   pesoG: string;
-  valorPago: string;
 }
 
 function formatBRLEstoque(v: number): string {
@@ -830,6 +877,7 @@ function ModalAdicionarFilamento({
   itensPedido,
   pedido,
   total,
+  precoPorKg,
   salvando,
   erro,
   onMudarItem,
@@ -846,14 +894,20 @@ function ModalAdicionarFilamento({
 }: {
   itemAtual: ItemPedidoFilamentoEstoque;
   itensPedido: ItemPedidoFilamentoEstoque[];
-  pedido: { dataCompra: string; fornecedor: string; parcelas: string[] };
+  pedido: { dataCompra: string; fornecedor: string; valorTotal: string; parcelas: string[] };
   total: number;
+  precoPorKg: number;
   salvando: boolean;
   erro: string | null;
   onMudarItem: (v: ItemPedidoFilamentoEstoque) => void;
   onAdicionarItem: () => void;
   onRemoverItem: (indice: number) => void;
-  onMudarPedido: (v: { dataCompra: string; fornecedor: string; parcelas: string[] }) => void;
+  onMudarPedido: (v: {
+    dataCompra: string;
+    fornecedor: string;
+    valorTotal: string;
+    parcelas: string[];
+  }) => void;
   onAdicionarParcela: () => void;
   onMudarParcela: (indice: number, valor: string) => void;
   onRemoverParcela: (indice: number) => void;
@@ -874,12 +928,13 @@ function ModalAdicionarFilamento({
           </button>
         </div>
         <p className="mb-3 text-xs text-gray-500">
-          Um pedido pode ter várias cores — adicione cada uma abaixo e depois salve o pedido inteiro
-          de uma vez. Isso soma direto no estoque de cada cor e também lança a despesa na aba
-          Financeiro.
+          Um pedido pode ter várias cores — informe a cor e o peso de cada uma abaixo, e depois o
+          valor TOTAL pago pelo pedido inteiro (o preço por Kg é calculado automaticamente
+          dividindo o total pelo peso). Isso soma direto no estoque de cada cor e também lança a
+          despesa na aba Financeiro.
         </p>
 
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <label className="text-xs text-gray-500">
             Cor
             <select
@@ -912,15 +967,6 @@ function ModalAdicionarFilamento({
               placeholder="0"
             />
           </label>
-          <label className="text-xs text-gray-500">
-            Valor pago (R$)
-            <input
-              value={itemAtual.valorPago}
-              onChange={(e) => onMudarItem({ ...itemAtual, valorPago: e.target.value })}
-              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-              placeholder="0,00"
-            />
-          </label>
           <div className="flex items-end">
             <button
               onClick={onAdicionarItem}
@@ -938,7 +984,7 @@ function ModalAdicionarFilamento({
                 <tr>
                   <th className="px-3 py-1.5">Cor</th>
                   <th className="px-3 py-1.5 text-right">Peso</th>
-                  <th className="px-3 py-1.5 text-right">Valor</th>
+                  <th className="px-3 py-1.5 text-right">Valor (rateado)</th>
                   <th className="px-3 py-1.5"></th>
                 </tr>
               </thead>
@@ -948,7 +994,9 @@ function ModalAdicionarFilamento({
                     <td className="px-3 py-1.5">{LABEL_COR_FILAMENTO[item.cor]}</td>
                     <td className="px-3 py-1.5 text-right">{formatPeso(gramasDoItem(item))}</td>
                     <td className="px-3 py-1.5 text-right">
-                      {formatBRLEstoque(Number(item.valorPago.replace(",", ".")) || 0)}
+                      {precoPorKg > 0
+                        ? formatBRLEstoque((gramasDoItem(item) / 1000) * precoPorKg)
+                        : "—"}
                     </td>
                     <td className="px-3 py-1.5 text-right">
                       <button
@@ -965,13 +1013,22 @@ function ModalAdicionarFilamento({
           </div>
         )}
 
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-2">
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
           <label className="text-xs text-gray-500">
             Fornecedor
             <input
               value={pedido.fornecedor}
               onChange={(e) => onMudarPedido({ ...pedido, fornecedor: e.target.value })}
               className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            />
+          </label>
+          <label className="text-xs text-gray-500">
+            Valor total do pedido (R$)
+            <input
+              value={pedido.valorTotal}
+              onChange={(e) => onMudarPedido({ ...pedido, valorTotal: e.target.value })}
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+              placeholder="0,00"
             />
           </label>
           <label className="text-xs text-gray-500">
@@ -984,6 +1041,12 @@ function ModalAdicionarFilamento({
             />
           </label>
         </div>
+
+        {precoPorKg > 0 && (
+          <p className="mt-2 text-xs text-gray-500">
+            Preço final do filamento neste pedido: <span className="font-semibold">{formatBRLEstoque(precoPorKg)}/Kg</span>
+          </p>
+        )}
 
         <div className="mt-2">
           {!aPrazo ? (
@@ -1046,7 +1109,7 @@ function ModalAdicionarFilamento({
             </button>
             <button
               onClick={onSalvar}
-              disabled={salvando || itensPedido.length === 0}
+              disabled={salvando || itensPedido.length === 0 || !(total > 0)}
               className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
             >
               {salvando ? "Salvando..." : "Salvar pedido"}
