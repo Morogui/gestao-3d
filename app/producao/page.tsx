@@ -17,6 +17,7 @@ import {
   DemandaPlacaRow,
   ConsumoResult,
   EstoqueFilamentoRow,
+  formatGramasEmKg,
 } from "@/lib/producao-types";
 
 // Dias de estoque restante no ritmo de venda atual (estoque ÷ venda
@@ -786,7 +787,7 @@ export default function ProducaoPage() {
         <h2 className="mb-3 text-sm font-semibold text-gray-900">Estoque de filamento por cor</h2>
         <p className="mb-3 text-xs text-gray-500">
           Visualização em tempo real — atualiza sozinha a cada baixa de
-          produção, falha de placa, perda registrada ou compra. Cor com 0g
+          produção, falha de placa, perda registrada ou compra. Cor com 0kg
           bloqueia automaticamente a fila de prioridade abaixo pra todas as
           placas daquela cor. Pra editar o estoque, adicionar filamento
           (compra) ou ver o histórico de movimentação, use a aba{" "}
@@ -810,7 +811,7 @@ export default function ProducaoPage() {
                 >
                   <p className="text-xs text-gray-500">{LABEL_COR_FILAMENTO[cor]}</p>
                   <p className={"text-lg font-semibold " + (zerado ? "text-red-700" : "text-gray-900")}>
-                    {valor}g
+                    {formatGramasEmKg(valor)} kg
                   </p>
                 </div>
               );
