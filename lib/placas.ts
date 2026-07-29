@@ -10,13 +10,53 @@
 export const CORES_FILAMENTO = [
   "colorido",
   "preto",
+  "preto-petg",
   "branco",
+  "branco-petg",
   "prata",
   "marrom",
   "bege",
   "vermelho",
+  "vermelho-petg",
 ] as const;
 export type CorFilamento = (typeof CORES_FILAMENTO)[number];
+
+// Cores que hoje têm duas opções de material em estoque separado (PLA e
+// PETG) — pedido do Guilherme em 2026-07-29: "Nos filamentos, temos que
+// adicionar a opcao de Petg na cor preto, branco, vermelho... Os
+// filamentos que temos hoje em registro sao todos PLA". Cada combinação
+// cor+material vira uma entrada PRÓPRIA em CORES_FILAMENTO (ex: "preto"
+// = PLA, "preto-petg" = PETG) — assim TODA a infraestrutura que já era
+// genérica por string de cor (estoque_filamento, compras_filamento,
+// perdas_filamento_manual, custo médio ponderado, histórico de
+// movimentação) passa a suportar PETG sem precisar de uma coluna
+// "material" separada em nenhuma dessas tabelas. Os "-petg" nascem
+// zerados (sem migração de dado — tudo que já estava registrado
+// continua sendo o "preto"/"branco"/"vermelho" comum, ou seja, PLA).
+//
+// A ÚNICA exceção é na hora de CARREGAR uma placa pra produção:
+// corFilamentoDaPlaca() só sabe o nome da placa (ex: "Suporte X
+// (Preto)"), nunca qual material está de fato na impressora — por isso
+// o operador precisa escolher via uma tag PLA/PETG clicável no momento
+// de carregar a máquina (ver CarregarPlacaForm em app/producao/page.tsx
+// e a coluna producoes.material), e corPetgDe() abaixo resolve qual
+// entrada de estoque descontar de fato quando a produção conclui/falha.
+export const CORES_COM_PETG: readonly CorFilamento[] = ["preto", "branco", "vermelho"];
+
+export function corPetgDe(cor: CorFilamento): CorFilamento {
+  return `${cor}-petg` as CorFilamento;
+}
+
+// Rótulo de exibição — deriva "Preto (PETG)" a partir de "preto-petg"
+// sem precisar duplicar entradas nos mapas LABEL_COR_FILAMENTO de cada
+// página. Usado nos lugares que hoje só exibem a cor crua (ex: aba
+// Financeiro).
+export function labelCorFilamento(cor: string): string {
+  const petg = cor.endsWith("-petg");
+  const base = petg ? cor.slice(0, -"-petg".length) : cor;
+  const label = base.charAt(0).toUpperCase() + base.slice(1);
+  return petg ? `${label} (PETG)` : label;
+}
 
 function normalizeCor(s: string): string {
   return s

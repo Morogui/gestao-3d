@@ -46,6 +46,11 @@ export interface ProducaoRow {
   pecas_por_placa: string;
   gramas_desperdicadas: string | null;
   falhas_peca_count: string;
+  // Material escolhido pelo operador ao carregar a máquina — só existe
+  // pra cores com opção PETG (preto/branco/vermelho); null = PLA (padrão
+  // e único material das demais cores). Ver CORES_COM_PETG/corPetgDe em
+  // lib/placas.ts.
+  material: "PLA" | "PETG" | null;
 }
 
 export interface FalhaPecaRow {
