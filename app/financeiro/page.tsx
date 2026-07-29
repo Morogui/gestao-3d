@@ -8,7 +8,7 @@ import {
   LancamentoFinanceiro,
   CompraFilamento,
 } from "@/lib/financeiro";
-import { CORES_FILAMENTO } from "@/lib/placas";
+import { CORES_FILAMENTO, labelCorFilamento } from "@/lib/placas";
 import { formatDiaBR } from "@/lib/date";
 import { formatGramasEmKg } from "@/lib/producao-types";
 
@@ -1325,7 +1325,7 @@ function ComprasFilamento({
         </div>
         {CORES_FILAMENTO.map((cor) => (
           <div key={cor} className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-xs">
-            <p className="capitalize text-gray-500">{cor}</p>
+            <p className="text-gray-500">{labelCorFilamento(cor)}</p>
             <p className="font-semibold text-gray-800">
               {custoMedioPorCor[cor] !== undefined ? `${formatBRL(custoMedioPorCor[cor] * 1000)}/kg` : "sem dados"}
             </p>
@@ -1357,7 +1357,7 @@ function ComprasFilamento({
                 const custoPorGrama = custoMedioPorCor[cor] ?? custoMedioGeral ?? null;
                 return (
                   <tr key={cor}>
-                    <td className="py-1 pr-3 capitalize text-gray-700">{cor}</td>
+                    <td className="py-1 pr-3 text-gray-700">{labelCorFilamento(cor)}</td>
                     <td className="py-1 pr-3 text-right text-gray-700">
                       {formatGramasEmKg(filamentoEstoque[cor] ?? 0)}
                     </td>
@@ -1386,11 +1386,11 @@ function ComprasFilamento({
           <select
             value={itemAtual.cor}
             onChange={(e) => onMudarItem({ ...itemAtual, cor: e.target.value })}
-            className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm capitalize"
+            className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
           >
             {CORES_FILAMENTO.map((c) => (
               <option key={c} value={c}>
-                {c}
+                {labelCorFilamento(c)}
               </option>
             ))}
           </select>
@@ -1446,7 +1446,7 @@ function ComprasFilamento({
             <tbody className="divide-y divide-gray-100">
               {itensPedido.map((item, i) => (
                 <tr key={i}>
-                  <td className="px-3 py-1.5 capitalize">{item.cor}</td>
+                  <td className="px-3 py-1.5">{labelCorFilamento(item.cor)}</td>
                   <td className="px-3 py-1.5 text-right">
                     {formatPeso((Number(item.pesoKg.replace(",", ".")) || 0) * 1000 + (Number(item.pesoG.replace(",", ".")) || 0))}
                   </td>
@@ -1549,7 +1549,7 @@ function ComprasFilamento({
             {compras.map((c) => (
               <tr key={c.id}>
                 <td className="px-3 py-2 text-gray-600">{formatDiaBR(c.dataCompra)}</td>
-                <td className="px-3 py-2 capitalize">{c.cor}</td>
+                <td className="px-3 py-2">{labelCorFilamento(c.cor)}</td>
                 <td className="px-3 py-2 text-right">{formatPeso(c.gramas)}</td>
                 <td className="px-3 py-2 text-right">{formatBRL(c.valorPago)}</td>
                 <td className="px-3 py-2 text-right">{formatBRL((c.valorPago / c.gramas) * 1000)}</td>
