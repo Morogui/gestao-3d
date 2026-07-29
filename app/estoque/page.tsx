@@ -95,14 +95,43 @@ export default function EstoquePage() {
   const [itensPedidoFilamento, setItensPedidoFilamento] = useState<
     { cor: CorFilamento; pesoKg: string; pesoG: string; valorPago: string }[]
   >([]);
-  const [pedidoFilamento, setPedidoFilamento] = useState({
+  const [pedidoFilamento, setPedidoFilamento] = useState<{
+    dataCompra: string;
+    fornecedor: string;
+    parcelas: string[];
+  }>({
     dataCompra: hojeISO(),
     fornecedor: "",
-    temPrazo: false,
-    dataVencimento: "",
+    parcelas: [],
   });
   const [salvandoPedido, setSalvandoPedido] = useState(false);
   const [erroPedido, setErroPedido] = useState<string | null>(null);
+
+  // Prazo de pagamento — pedido do Guilherme em 2026-07-29: "cada empresa
+  // que eu compro me da um prazo, ou a vista, entao tenho que conseguir
+  // colocar +1 prazo, as vezes é 30/50/60". Em vez de um único campo de
+  // vencimento, o pedido guarda uma LISTA de parcelas (só a data de cada
+  // uma) — o botão "+" adiciona quantas parcelas precisar. `parcelas`
+  // vazio = à vista (paga na própria data da compra); uma ou mais
+  // parcelas = a prazo, e o valor total do pedido é dividido igualmente
+  // entre elas na hora de salvar (ver salvarPedidoFilamento).
+  function adicionarParcela() {
+    setPedidoFilamento((atual) => ({ ...atual, parcelas: [...atual.parcelas, ""] }));
+  }
+
+  function mudarParcela(indice: number, valor: string) {
+    setPedidoFilamento((atual) => ({
+      ...atual,
+      parcelas: atual.parcelas.map((p, i) => (i === indice ? valor : p)),
+    }));
+  }
+
+  function removerParcela(indice: number) {
+    setPedidoFilamento((atual) => ({
+      ...atual,
+      parcelas: atual.parcelas.filter((_, i) => i !== indice),
+    }));
+  }
 
   function gramasDoItemPedido(item: { pesoKg: string; pesoG: string }): number {
     const kg = Number(item.pesoKg.replace(",", ".")) || 0;
@@ -137,7 +166,7 @@ export default function EstoquePage() {
     setErroPedido(null);
     setItensPedidoFilamento([]);
     setItemPedidoAtual({ cor: "colorido", pesoKg: "", pesoG: "", valorPago: "" });
-    setPedidoFilamento({ dataCompra: hojeISO(), fornecedor: "", temPrazo: false, dataVencimento: "" });
+    setPedidoFilamento({ dataCompra: hojeISO(), fornecedor: "", parcelas: [] });
   }
 
   const totalPedidoFilamento = itensPedidoFilamento.reduce(
@@ -150,13 +179,16 @@ export default function EstoquePage() {
       setErroPedido("Adicione pelo menos uma cor ao pedido.");
       return;
     }
-    if (pedidoFilamento.temPrazo && !pedidoFilamento.dataVencimento) {
-      setErroPedido("Informe o vencimento do prazo.");
+    if (pedidoFilamento.parcelas.some((p) => !p)) {
+      setErroPedido("Preencha a data de todas as parcelas (ou remova a que ficou em branco).");
       return;
     }
     setSalvandoPedido(true);
     setErroPedido(null);
     try {
+      const aPrazo = pedidoFilamento.parcelas.length > 0;
+      const primeiraParcela = aPrazo ? pedidoFilamento.parcelas[0] : null;
+
       for (const item of itensPedidoFilamento) {
         const gramas = gramasDoItemPedido(item);
         const valorPago = Number(item.valorPago.replace(",", "."));
@@ -169,8 +201,8 @@ export default function EstoquePage() {
             valorPago,
             dataCompra: pedidoFilamento.dataCompra,
             fornecedor: pedidoFilamento.fornecedor || null,
-            formaPagamento: pedidoFilamento.temPrazo ? "a_prazo" : "a_vista",
-            dataVencimento: pedidoFilamento.temPrazo ? pedidoFilamento.dataVencimento : null,
+            formaPagamento: aPrazo ? "a_prazo" : "a_vista",
+            dataVencimento: primeiraParcela,
           }),
         });
         if (!res.ok) throw new Error("falha ao salvar compra");
@@ -179,22 +211,51 @@ export default function EstoquePage() {
       const resumoItens = itensPedidoFilamento
         .map((it) => `${LABEL_COR_FILAMENTO[it.cor]} ${formatPesoPedido(gramasDoItemPedido(it))}`)
         .join(", ");
-      await fetch("/api/financeiro/lancamentos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tipo: "despesa",
-          categoria: "Filamento",
-          descricao: `Compra de filamento — ${resumoItens}`,
-          valor: totalPedidoFilamento,
-          dataVencimento: pedidoFilamento.temPrazo
-            ? pedidoFilamento.dataVencimento
-            : pedidoFilamento.dataCompra,
-          dataPagamento: pedidoFilamento.temPrazo ? null : pedidoFilamento.dataCompra,
-          fornecedor: pedidoFilamento.fornecedor || null,
-          formaPagamento: pedidoFilamento.temPrazo ? "A prazo" : "À vista",
-        }),
-      });
+
+      if (!aPrazo) {
+        await fetch("/api/financeiro/lancamentos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tipo: "despesa",
+            categoria: "Filamento",
+            descricao: `Compra de filamento — ${resumoItens}`,
+            valor: totalPedidoFilamento,
+            dataVencimento: pedidoFilamento.dataCompra,
+            dataPagamento: pedidoFilamento.dataCompra,
+            fornecedor: pedidoFilamento.fornecedor || null,
+            formaPagamento: "À vista",
+          }),
+        });
+      } else {
+        // Divide o total do pedido igualmente entre as parcelas — cada
+        // uma vira um lançamento PRÓPRIO (com sua própria data de
+        // vencimento), pra aparecer certinho no calendário/despesas
+        // pendentes da aba Financeiro, cada uma no seu dia. Trabalha em
+        // centavos e joga o resto (arredondamento) na última parcela, pra
+        // soma bater exatamente com o total do pedido.
+        const totalCentavos = Math.round(totalPedidoFilamento * 100);
+        const n = pedidoFilamento.parcelas.length;
+        const baseCentavos = Math.floor(totalCentavos / n);
+        const resto = totalCentavos - baseCentavos * n;
+        for (let i = 0; i < n; i++) {
+          const valorParcela = (baseCentavos + (i < resto ? 1 : 0)) / 100;
+          await fetch("/api/financeiro/lancamentos", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tipo: "despesa",
+              categoria: "Filamento",
+              descricao: `Compra de filamento (parcela ${i + 1}/${n}) — ${resumoItens}`,
+              valor: valorParcela,
+              dataVencimento: pedidoFilamento.parcelas[i],
+              dataPagamento: null,
+              fornecedor: pedidoFilamento.fornecedor || null,
+              formaPagamento: `A prazo (parcela ${i + 1}/${n})`,
+            }),
+          });
+        }
+      }
 
       await carregarFilamento();
       fecharModalAdicionar();
@@ -339,6 +400,9 @@ export default function EstoquePage() {
           onAdicionarItem={adicionarItemPedidoFilamento}
           onRemoverItem={removerItemPedidoFilamento}
           onMudarPedido={setPedidoFilamento}
+          onAdicionarParcela={adicionarParcela}
+          onMudarParcela={mudarParcela}
+          onRemoverParcela={removerParcela}
           onSalvar={salvarPedidoFilamento}
           onFechar={fecharModalAdicionar}
           formatPeso={formatPesoPedido}
@@ -772,6 +836,9 @@ function ModalAdicionarFilamento({
   onAdicionarItem,
   onRemoverItem,
   onMudarPedido,
+  onAdicionarParcela,
+  onMudarParcela,
+  onRemoverParcela,
   onSalvar,
   onFechar,
   formatPeso,
@@ -779,19 +846,24 @@ function ModalAdicionarFilamento({
 }: {
   itemAtual: ItemPedidoFilamentoEstoque;
   itensPedido: ItemPedidoFilamentoEstoque[];
-  pedido: { dataCompra: string; fornecedor: string; temPrazo: boolean; dataVencimento: string };
+  pedido: { dataCompra: string; fornecedor: string; parcelas: string[] };
   total: number;
   salvando: boolean;
   erro: string | null;
   onMudarItem: (v: ItemPedidoFilamentoEstoque) => void;
   onAdicionarItem: () => void;
   onRemoverItem: (indice: number) => void;
-  onMudarPedido: (v: { dataCompra: string; fornecedor: string; temPrazo: boolean; dataVencimento: string }) => void;
+  onMudarPedido: (v: { dataCompra: string; fornecedor: string; parcelas: string[] }) => void;
+  onAdicionarParcela: () => void;
+  onMudarParcela: (indice: number, valor: string) => void;
+  onRemoverParcela: (indice: number) => void;
   onSalvar: () => void;
   onFechar: () => void;
   formatPeso: (gramas: number) => string;
   gramasDoItem: (item: { pesoKg: string; pesoG: string }) => number;
 }) {
+  const aPrazo = pedido.parcelas.length > 0;
+  const valorPorParcela = aPrazo ? total / pedido.parcelas.length : 0;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-y-auto rounded-lg bg-white p-5">
@@ -903,7 +975,7 @@ function ModalAdicionarFilamento({
             />
           </label>
           <label className="text-xs text-gray-500">
-            {pedido.temPrazo ? "Data da compra" : "Data de pagamento"}
+            {aPrazo ? "Data da compra" : "Data de pagamento"}
             <input
               type="date"
               value={pedido.dataCompra}
@@ -914,29 +986,48 @@ function ModalAdicionarFilamento({
         </div>
 
         <div className="mt-2">
-          {!pedido.temPrazo ? (
+          {!aPrazo ? (
             <button
-              onClick={() => onMudarPedido({ ...pedido, temPrazo: true })}
+              onClick={onAdicionarParcela}
               className="text-xs font-medium text-blue-600 hover:underline"
             >
               + Adicionar prazo (pagamento não é à vista)
             </button>
           ) : (
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="text-xs text-gray-500">
-                Vencimento (a prazo)
-                <input
-                  type="date"
-                  value={pedido.dataVencimento}
-                  onChange={(e) => onMudarPedido({ ...pedido, dataVencimento: e.target.value })}
-                  className="mt-1 rounded border border-gray-300 px-2 py-1.5 text-sm"
-                />
-              </label>
+            <div className="rounded border border-gray-100 bg-gray-50 p-3">
+              <p className="mb-2 text-xs font-medium text-gray-600">
+                Parcelas — cada fornecedor dá um prazo diferente (ex: 30/50/60 dias); adicione
+                quantas precisar, o valor do pedido é dividido igualmente entre elas.
+              </p>
+              <div className="flex flex-col gap-2">
+                {pedido.parcelas.map((data, i) => (
+                  <div key={i} className="flex items-end gap-2">
+                    <label className="text-xs text-gray-500">
+                      Parcela {i + 1} de {pedido.parcelas.length} — Vencimento
+                      <input
+                        type="date"
+                        value={data}
+                        onChange={(e) => onMudarParcela(i, e.target.value)}
+                        className="mt-1 rounded border border-gray-300 px-2 py-1.5 text-sm"
+                      />
+                    </label>
+                    <span className="pb-2 text-xs text-gray-500">
+                      {formatBRLEstoque(valorPorParcela)}
+                    </span>
+                    <button
+                      onClick={() => onRemoverParcela(i)}
+                      className="pb-2 text-xs text-gray-400 hover:text-red-600"
+                    >
+                      remover
+                    </button>
+                  </div>
+                ))}
+              </div>
               <button
-                onClick={() => onMudarPedido({ ...pedido, temPrazo: false, dataVencimento: "" })}
-                className="text-xs text-gray-400 hover:text-red-600"
+                onClick={onAdicionarParcela}
+                className="mt-2 text-xs font-medium text-blue-600 hover:underline"
               >
-                remover prazo (voltar pra à vista)
+                + Adicionar parcela
               </button>
             </div>
           )}
