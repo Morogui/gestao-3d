@@ -9,6 +9,21 @@ import {
 
 export const dynamic = "force-dynamic";
 
+// Coluna adicionada em 2026-07-29 — pedido do Guilherme: produtos
+// compostos (Suporte Universal, Suporte Carro, Suporte BMW etc., que
+// precisam de 1 placa "Corpos" + 1 placa "Ganchos" pra fechar 1 unidade
+// vendida) agora criam VÁRIOS envios de uma vez (um por placa
+// componente — ver POST abaixo e criarEnvio em app/full/page.tsx), mas
+// precisam continuar aparecendo como UMA linha só na tela ("mostrar só
+// a SKU principal"), com Editar/Confirmar/Excluir agindo em todos os
+// componentes juntos. grupo_id é o elo entre essas linhas: mesmo valor
+// pra todas as placas criadas na mesma ação de "Adicionar envio";
+// null/vazio pra envios de placa única (a maioria), que continuam
+// tratados como grupo de 1 (usa o próprio id).
+async function garantirColunaGrupo() {
+  await sql`ALTER TABLE full_envios ADD COLUMN IF NOT EXISTS grupo_id TEXT`;
+}
+
 // Envios planejados do Full — pedido do Guilherme em 2026-07-25: "uma
 // aba onde vou subir meu envio e a data que eu tenho para enviar esse
 // produto... valida em estoque se tenho a quantidade dos produtos a
@@ -27,6 +42,8 @@ export interface FullEnvioRow {
   status: "pendente" | "confirmado" | "cancelado";
   criadoEm: string;
   confirmadoEm: string | null;
+  // Ver garantirColunaGrupo() acima — null pra envios de placa única.
+  grupoId: string | null;
   // Quanto falta produzir pra cobrir TODOS os envios ainda pendentes
   // dessa mesma placa (soma das quantidades), descontando estoque atual
   // + o que já está em produção agora. Mesmo valor em todas as linhas
@@ -45,9 +62,11 @@ export interface FullEnvioRow {
 }
 
 export async function GET() {
+  await garantirColunaGrupo();
+
   const envios = (await sql`
     SELECT fe.id, fe.sku, fe.placa_id, pl.nome AS placa_nome, fe.quantidade,
-      fe.data_limite, fe.status, fe.criado_em, fe.confirmado_em
+      fe.data_limite, fe.status, fe.criado_em, fe.confirmado_em, fe.grupo_id
     FROM full_envios fe
     JOIN placas pl ON pl.id = fe.placa_id
     WHERE fe.status != 'cancelado'
@@ -62,6 +81,7 @@ export async function GET() {
     status: string;
     criado_em: string;
     confirmado_em: string | null;
+    grupo_id: string | null;
   }[];
 
   if (envios.length === 0) {
@@ -162,6 +182,7 @@ export async function GET() {
       capacidadeDisponivelHoras: viabilidade.capacidadeDisponivelHoras,
       percentualComprometido: viabilidade.percentualComprometido,
       aprovado: viabilidade.aprovado,
+      grupoId: e.grupo_id,
     };
   });
 
@@ -170,11 +191,17 @@ export async function GET() {
 
 // Cria um novo envio planejado do Full (data + SKU + quantidade).
 export async function POST(request: NextRequest) {
+  await garantirColunaGrupo();
+
   const body = await request.json();
   const sku = String(body.sku ?? "").trim();
   const placaId = Number(body.placaId);
   const quantidade = Number(body.quantidade);
   const dataLimite = String(body.dataLimite ?? "").trim();
+  // Ver garantirColunaGrupo() acima. Opcional — o front só manda isso
+  // quando o SKU escolhido tem mais de uma placa componente, pra ligar
+  // as linhas criadas juntas na mesma ação de "Adicionar envio".
+  const grupoId = body.grupoId ? String(body.grupoId).trim() : null;
 
   if (!sku || !placaId || !quantidade || quantidade <= 0 || !dataLimite) {
     return NextResponse.json(
@@ -184,8 +211,8 @@ export async function POST(request: NextRequest) {
   }
 
   const rows = await sql`
-    INSERT INTO full_envios (sku, placa_id, quantidade, data_limite, status)
-    VALUES (${sku}, ${placaId}, ${quantidade}, ${dataLimite}, 'pendente')
+    INSERT INTO full_envios (sku, placa_id, quantidade, data_limite, status, grupo_id)
+    VALUES (${sku}, ${placaId}, ${quantidade}, ${dataLimite}, 'pendente', ${grupoId})
     RETURNING id
   `;
 
