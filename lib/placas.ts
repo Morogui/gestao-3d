@@ -14,6 +14,7 @@ export const CORES_FILAMENTO = [
   "prata",
   "marrom",
   "bege",
+  "vermelho",
 ] as const;
 export type CorFilamento = (typeof CORES_FILAMENTO)[number];
 
@@ -45,12 +46,14 @@ const CORES_CONHECIDAS_NO_NOME = [
   "prata",
   "bege",
   "laranja",
+  "vermelho",
+  "vermelha",
 ];
 export function corFilamentoDaPlaca(nome: string): CorFilamento | null {
   const tokens = new Set(normalizeCor(nome).split(" "));
   for (const cor of CORES_CONHECIDAS_NO_NOME) {
     if (tokens.has(cor)) {
-      const mapeada = cor === "preta" ? "preto" : cor;
+      const mapeada = cor === "preta" ? "preto" : cor === "vermelha" ? "vermelho" : cor;
       return (CORES_FILAMENTO as readonly string[]).includes(mapeada)
         ? (mapeada as CorFilamento)
         : null;
