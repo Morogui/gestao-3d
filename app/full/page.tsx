@@ -53,6 +53,13 @@ interface EnvioFull {
   criadoEm: string;
   confirmadoEm: string | null;
   faltantePlaca: number;
+  // Viabilidade de produção sem comprometer mais de 50% da linha —
+  // pedido do Guilherme em 2026-07-29. Ver lib/capacidade.ts (calculado
+  // no servidor, em app/api/full/envios/route.ts).
+  horasNecessarias: number;
+  capacidadeDisponivelHoras: number;
+  percentualComprometido: number;
+  aprovado: boolean;
 }
 
 export default function FullPage() {
@@ -337,6 +344,47 @@ function TierBadge({ tier }: { tier: "A" | "B" | "C" }) {
   );
 }
 
+// Selo de viabilidade de produção — pedido do Guilherme em 2026-07-29:
+// "conferir a possibilidade para produção sem comprometer mais de 50%
+// minha linha de produção, caso não comprometa, podemos aprovar esse
+// produto para envio". O cálculo em si vem pronto do servidor (ver
+// lib/capacidade.ts) — aqui só decide qual selo mostrar:
+// - nada falta produzir → "—" (não compromete nada, não precisa de selo);
+// - data limite não deixa mais tempo de máquina disponível → "sem tempo";
+// - senão, percentual da capacidade teórica da linha que esse envio
+//   tomaria até a data limite, verde (≤50%, aprovado) ou âmbar (>50%,
+//   risco — decisão manual do Guilherme: adiar, dividir ou aceitar mesmo
+//   assim).
+function ViabilidadeBadge({ envio }: { envio: EnvioFull }) {
+  if (envio.faltantePlaca <= 0) {
+    return <span className="text-gray-400">—</span>;
+  }
+  if (!Number.isFinite(envio.percentualComprometido) || envio.capacidadeDisponivelHoras <= 0) {
+    return (
+      <span
+        className="rounded bg-red-100 px-1.5 py-0.5 font-semibold text-red-700"
+        title={`Precisa de ${envio.horasNecessarias.toFixed(1)}h de impressora — a data limite não deixa mais tempo de produção disponível.`}
+      >
+        sem tempo
+      </span>
+    );
+  }
+  const percentual = Math.round(envio.percentualComprometido * 100);
+  return (
+    <span
+      className={
+        "rounded px-1.5 py-0.5 font-semibold " +
+        (envio.aprovado ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-800")
+      }
+      title={`Precisa de ${envio.horasNecessarias.toFixed(1)}h de impressora, de ${envio.capacidadeDisponivelHoras.toFixed(
+        1
+      )}h disponíveis (todas as máquinas ativas) até a data limite.`}
+    >
+      {envio.aprovado ? "aprovado" : "risco"} · {percentual}%
+    </span>
+  );
+}
+
 // Seção de envios planejados do Full — pedido do Guilherme em
 // 2026-07-25. Formulário (data + SKU + quantidade) + lista dos envios
 // ainda pendentes, cada um com um botão "Confirmar envio" que tira essa
@@ -408,7 +456,18 @@ function EnviosPlanejados({
         você precisa preparar. Se o estoque atual + o que já está sendo
         produzido não cobrir a quantidade, essa placa vira prioridade
         extraordinária na fila de produção — acima até do backlog de
-        despacho — até ser produzida ou o envio ser confirmado.
+        despacho — até ser produzida ou o envio ser confirmado. A coluna
+        &quot;Linha de produção&quot; mostra se dá pra produzir o que falta
+        até a data limite sem tomar mais de 50% da capacidade das
+        máquinas (
+        <span className="rounded bg-green-100 px-1 py-0.5 font-semibold text-green-700">
+          aprovado
+        </span>{" "}
+        = pode enviar sem sacrificar a produção normal;{" "}
+        <span className="rounded bg-amber-100 px-1 py-0.5 font-semibold text-amber-800">
+          risco
+        </span>{" "}
+        = decida se adia, divide ou aceita mesmo assim).
       </p>
 
       <div className="mb-4 flex flex-col gap-2 rounded border border-gray-200 bg-gray-50 p-3 sm:flex-row sm:items-end sm:gap-3">
@@ -486,6 +545,7 @@ function EnviosPlanejados({
                 <th className="px-3 py-2 text-right">Quantidade</th>
                 <th className="px-3 py-2">Enviar até</th>
                 <th className="px-3 py-2 text-right">Falta produzir</th>
+                <th className="px-3 py-2 text-right">Linha de produção</th>
                 <th className="px-3 py-2">&nbsp;</th>
               </tr>
             </thead>
@@ -541,6 +601,9 @@ function EnviosPlanejados({
                       ) : (
                         <span className="text-green-700">coberto</span>
                       )}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <ViabilidadeBadge envio={e} />
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex justify-end gap-1.5">
