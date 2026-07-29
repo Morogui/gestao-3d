@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
+import { CORES_FILAMENTO } from "@/lib/placas";
 
 export const dynamic = "force-dynamic";
 
@@ -94,12 +95,27 @@ export async function DELETE(
     return NextResponse.json({ error: "id inválido" }, { status: 400 });
   }
 
-  const rows = await sql`
-    DELETE FROM compras_filamento WHERE id = ${id} RETURNING id
-  `;
+  const rows = (await sql`
+    DELETE FROM compras_filamento WHERE id = ${id} RETURNING id, cor, gramas
+  `) as { id: number; cor: string; gramas: string }[];
 
   if (rows.length === 0) {
     return NextResponse.json({ error: "compra não encontrada" }, { status: 404 });
+  }
+
+  // Desfaz a soma que essa compra tinha feito no estoque de filamento por
+  // cor (ver POST em /api/financeiro/compras-filamento) — senão excluir
+  // um lançamento errado deixaria o saldo inflado pra sempre. GREATEST(0,
+  // ...) evita ficar negativo se o estoque já foi consumido depois da
+  // compra (produção, perda etc.).
+  const cor = rows[0].cor;
+  const gramas = Number(rows[0].gramas);
+  if (CORES_FILAMENTO.includes(cor as (typeof CORES_FILAMENTO)[number]) && gramas > 0) {
+    await sql`
+      UPDATE estoque_filamento
+      SET quantidade_gramas = GREATEST(0, quantidade_gramas - ${gramas}), atualizado_em = now()
+      WHERE cor = ${cor}
+    `;
   }
 
   return NextResponse.json({ ok: true });
