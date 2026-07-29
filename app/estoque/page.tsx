@@ -777,11 +777,14 @@ function OrigemBadge({ tipo }: { tipo: Movimento["tipo"] }) {
 const LABEL_COR_FILAMENTO: Record<CorFilamento, string> = {
   colorido: "Colorido",
   preto: "Preto",
+  "preto-petg": "Preto (PETG)",
   branco: "Branco",
+  "branco-petg": "Branco (PETG)",
   prata: "Prata",
   marrom: "Marrom",
   bege: "Bege",
   vermelho: "Vermelho",
+  "vermelho-petg": "Vermelho (PETG)",
 };
 
 function FilamentoEditor({
@@ -824,7 +827,7 @@ function FilamentoEditor({
 
   return (
     <div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
         {CORES_FILAMENTO.map((cor) => {
           const zerado = parseKgParaGramas(valores[cor]) <= 0;
           return (
