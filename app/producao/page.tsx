@@ -903,7 +903,9 @@ export default function ProducaoPage() {
             {demanda?.naoIdentificadoSemana?.amostras.slice(0, 8).map((a, i) => (
               <li key={i} className="flex items-start justify-between gap-3">
                 <span className="list-disc before:mr-1.5 before:content-['•']">
-                  {a.titulo} {a.sku && `(SKU: ${a.sku})`} — {a.quantity}x
+                  {a.titulo} {a.sku && `(SKU: ${a.sku})`}
+                  {a.itemId && a.itemId !== "—" && ` (item: ${a.itemId})`} —{" "}
+                  {a.quantity}x
                   {a.isFull ? " · Full" : ""}
                 </span>
                 <button
