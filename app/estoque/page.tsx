@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { PlacaRow, CORES_FILAMENTO, CorFilamento } from "@/lib/placas";
+import { PlacaRow, CORES_FILAMENTO, CorFilamento, estoqueVendavel } from "@/lib/placas";
 import { EstoqueFilamentoRow, formatGramasEmKg, parseKgParaGramas } from "@/lib/producao-types";
 
 type EstoqueRow = PlacaRow & {
@@ -385,6 +385,20 @@ export default function EstoquePage() {
     );
   }, [placas, busca]);
 
+  // Pedido do Guilherme em 2026-07-31: "suporte carro branco, suporte
+  // carro branco corpo, suporte carro mista" — nas placas compostas
+  // (corpo + gancho), as duas linhas mostravam o MESMO título
+  // (skuOuKit), diferindo só na legenda cinza pequena embaixo, o que
+  // parecia dois cadastros duplicados do mesmo produto em vez de deixar
+  // claro que são as duas metades controladas separadamente (regra já
+  // correta: estoque só por corpo/gancho, venda desconta 1+1, produção
+  // credita cada placa separada — ver notas em /api/estoque e
+  // /api/producoes/[id]). Aqui calculamos o estoque "vendável" (o mínimo
+  // entre corpo e gancho do grupo, já existente em estoqueVendavel())
+  // pra mostrar como badge em cada linha composta, deixando visível que
+  // as duas linhas se somam pra formar 1 produto vendável.
+  const vendavelPorGrupo = useMemo(() => estoqueVendavel(placas), [placas]);
+
   async function ajustarEstoque(placaId: number, delta: number) {
     if (!delta) return;
     setSalvando((prev) => ({ ...prev, [placaId]: true }));
@@ -571,6 +585,11 @@ export default function EstoquePage() {
                 placa={placa}
                 salvando={Boolean(salvando[placa.id])}
                 onAjustar={(delta) => ajustarEstoque(placa.id, delta)}
+                vendavel={
+                  placa.tipo === "composto" && placa.grupoComposto
+                    ? vendavelPorGrupo.get(placa.grupoComposto) ?? null
+                    : null
+                }
               />
             ))}
           </tbody>
@@ -610,10 +629,14 @@ function LinhaEstoque({
   placa,
   salvando,
   onAjustar,
+  vendavel,
 }: {
   placa: EstoqueRow;
   salvando: boolean;
   onAjustar: (delta: number) => void;
+  // Ver nota em vendavelPorGrupo (EstoquePage) — null pras placas diretas
+  // (não compostas), que não têm essa noção de "metade" nenhuma.
+  vendavel: number | null;
 }) {
   const [valor, setValor] = useState("");
   const [aberto, setAberto] = useState(false);
@@ -651,6 +674,19 @@ function LinhaEstoque({
               sempre temos que ter a sku nao o nome"). */}
           <p className="font-medium text-gray-900">
             {placa.skuOuKit}
+            {placa.tipo === "composto" && placa.papel && (
+              <span
+                className={
+                  "ml-1.5 rounded px-1.5 py-0.5 text-xs font-semibold " +
+                  (placa.papel === "corpo"
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-indigo-100 text-indigo-700")
+                }
+                title="Estoque controlado separado — precisa de 1 corpo + 1 gancho pra fechar 1 unidade vendável"
+              >
+                {placa.papel === "corpo" ? "CORPO" : "GANCHO"}
+              </span>
+            )}
             {placa.descontinuada && (
               <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-normal text-gray-500">
                 Descontinuada
@@ -673,6 +709,14 @@ function LinhaEstoque({
               title="Já descontado do estoque hoje por vendas cujo pedido ainda não saiu na plataforma — some daqui assim que despachar"
             >
               (-{placa.pendenteEnvioHoje} hoje)
+            </span>
+          )}
+          {vendavel !== null && (
+            <span
+              className="mt-0.5 block text-right text-xs font-normal text-gray-400"
+              title="Quanto dá pra vender de fato desse produto agora — trava no menor entre corpo e gancho do grupo"
+            >
+              vendável: {vendavel}
             </span>
           )}
         </td>
