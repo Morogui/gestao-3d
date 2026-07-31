@@ -1678,6 +1678,23 @@ function PrinterCard({
   const placaNome = placa?.nome ?? producao?.placa_nome ?? "";
   const pecasPorPlaca = placa?.pecasPorPlaca ?? Number(producao?.pecas_por_placa ?? 0);
   const totalPecas = producao ? Number(producao.quantidade_placas) * pecasPorPlaca : 0;
+  // Placa "Mista" (papel='corpo' com saída extra pro Gancho Compartilhado)
+  // — pedido do Guilherme em 2026-07-31, olhando o card rodando "Suporte
+  // BMW - Mista (Preto)": "Está mostrando que é feita 3 por placa, mas na
+  // verdade é 3 corpo e 2 ganchos" — o card só mostrava o crédito PRÓPRIO
+  // da placa (pç/placa), sem indicar a saída extra que também é creditada
+  // (em OUTRA placa) quando a produção é concluída (ver saidaExtraPecas
+  // em PATCH /api/producoes/[id]). Mostra a placa de destino da saída
+  // extra pelo nome (via placaPorId), pra deixar claro que concluir essa
+  // impressão credita duas linhas de estoque diferentes.
+  const placaExtra =
+    placa?.saidaExtraPlacaId && placa.saidaExtraPecas
+      ? placaPorId.get(placa.saidaExtraPlacaId)
+      : undefined;
+  const totalPecasExtra =
+    producao && placa?.saidaExtraPecas
+      ? Number(producao.quantidade_placas) * placa.saidaExtraPecas
+      : 0;
 
   return (
     <div className="flex flex-col rounded-lg border border-gray-200 bg-white p-4">
@@ -1708,6 +1725,11 @@ function PrinterCard({
               {producao.quantidade_placas} placa(s) · {pecasPorPlaca} pç/placa ·{" "}
               {totalPecas} peças no total
             </p>
+            {placaExtra && (
+              <p className="text-xs text-amber-700">
+                + {totalPecasExtra} pç de saída extra → {placaExtra.nome}
+              </p>
+            )}
             <p className="text-xs text-gray-400">
               Carregada em {new Date(producao.iniciado_em).toLocaleString("pt-BR")}
             </p>
@@ -1907,6 +1929,15 @@ function CarregarPlacaForm({
   const placaSelecionada = placaId ? placaPorId.get(placaId) : undefined;
   const corBase = placaSelecionada ? corFilamentoDaPlaca(placaSelecionada.nome) : null;
   const temOpcaoPetg = corBase !== null && CORES_COM_PETG.includes(corBase);
+  // Mesmo aviso de saída extra do card "Rodando" (ver ImpressoraCard
+  // acima) — pedido do Guilherme em 2026-07-31: o card só mostrava o
+  // crédito próprio da placa (ex: "3 pç/placa"), escondendo que uma placa
+  // "Mista" também credita peças em OUTRA placa (o Gancho Compartilhado)
+  // quando a produção conclui. Mostrado aqui também, ANTES de carregar,
+  // pra já avisar o operador na hora de escolher a placa, não só depois.
+  const placaExtraSelecionada = placaSelecionada?.saidaExtraPlacaId
+    ? placaPorId.get(placaSelecionada.saidaExtraPlacaId)
+    : undefined;
 
   return (
     <div className="flex flex-col gap-2">
@@ -1983,6 +2014,13 @@ function CarregarPlacaForm({
         <p className="rounded bg-gray-50 px-2 py-1 text-xs text-gray-600">
           Tempo médio de impressão: {formatHora(placaSelecionada.tempoPlacaHoras)}
           {quantidade > 1 ? ` por placa (${quantidade}x = ${formatHora(placaSelecionada.tempoPlacaHoras * quantidade)} no total)` : ""}
+        </p>
+      )}
+
+      {placaExtraSelecionada && placaSelecionada?.saidaExtraPecas && (
+        <p className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800">
+          Ao concluir, também credita {placaSelecionada.saidaExtraPecas * quantidade} pç em{" "}
+          <span className="font-medium">{placaExtraSelecionada.nome}</span> (saída extra)
         </p>
       )}
 
