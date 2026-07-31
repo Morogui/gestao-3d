@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   PlacaRow,
@@ -204,6 +204,13 @@ export default function ProducaoPage() {
   // cruza o horário de fechamento, sem precisar de uma ação manual pra
   // "acordar" a tela — atualiza a cada minuto.
   const [horaTick, setHoraTick] = useState(() => horaAtualSP());
+  // Pedido do Guilherme em 2026-07-31: "na parte de histórico recente,
+  // colocar uma observação em cada placa concluída, quando clicado mostra
+  // número de peças impressas e mostra a movimentação entrando em
+  // estoque" — clicar numa linha da tabela expande um detalhe (sem
+  // precisar de rota nova: os números já existem no cliente, cruzando
+  // ProducaoRow com o cadastro de placas — ver detalheProducao() abaixo).
+  const [producaoExpandidaId, setProducaoExpandidaId] = useState<number | null>(null);
 
   // Refresh "rápido": tudo que NÃO depende de buscar pedidos na ML/Shopee
   // (placas, máquinas, produções, consumo, janela) — normalmente volta em
@@ -376,6 +383,31 @@ export default function ProducaoPage() {
     return map;
   }, [producoesEmAndamento]);
   const producoesRecentes = producoes.filter((p) => p.status !== "em_andamento").slice(0, 15);
+
+  // Detalhe expandido de uma linha do Histórico recente — pedido do
+  // Guilherme em 2026-07-31: "colocar uma observação em cada placa
+  // concluída, quando clicado mostra número de peças impressas e mostra a
+  // movimentação entrando em estoque". Não precisa de rota nova: os
+  // números batem exatamente com o que o PATCH /api/producoes/[id]
+  // credita na hora da conclusão (ver pecasProduzidas/pecasExtraProduzidas
+  // lá) — só que recalculados aqui no cliente cruzando o snapshot salvo em
+  // ProducaoRow (quantidade_placas, pecas_por_placa, falhas_peca_count)
+  // com o cadastro atual da placa (saída extra, pra placas "Mista").
+  function detalheProducao(p: ProducaoRow) {
+    const quantidadePlacas = Number(p.quantidade_placas);
+    const pecasPorPlaca = Number(p.pecas_por_placa);
+    const falhas = Number(p.falhas_peca_count ?? 0);
+    const pecasProduzidas = Math.max(0, quantidadePlacas * pecasPorPlaca - falhas);
+    const placaCadastro = placaPorId.get(p.placa_id);
+    const extra =
+      placaCadastro?.saidaExtraPlacaId && placaCadastro.saidaExtraPecas
+        ? {
+            placaNome: placaPorId.get(placaCadastro.saidaExtraPlacaId)?.nome ?? "placa vinculada",
+            pecas: quantidadePlacas * placaCadastro.saidaExtraPecas,
+          }
+        : null;
+    return { quantidadePlacas, pecasPorPlaca, falhas, pecasProduzidas, extra };
+  }
 
   // Quantas peças de cada placa já estão "a caminho" — sendo produzidas
   // AGORA em alguma impressora rodando. Somado por placa porque mais de
@@ -1204,26 +1236,74 @@ export default function ProducaoPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {producoesRecentes.map((p) => (
-                  <tr key={p.id}>
-                    <td className="px-4 py-2 text-gray-700">{p.machine_nome}</td>
-                    <td className="px-4 py-2 text-gray-700">{p.placa_nome}</td>
-                    <td className="px-4 py-2 text-right">{p.quantidade_placas}</td>
-                    <td className="px-4 py-2">
-                      <StatusLabel status={p.status} />
-                    </td>
-                    <td className="px-4 py-2 text-right text-gray-500">
-                      {p.status === "falha_placa"
-                        ? `${p.gramas_desperdicadas ?? 0}g (placa)`
-                        : Number(p.falhas_peca_count) > 0
-                        ? `${p.falhas_peca_count} peça(s)`
-                        : "—"}
-                    </td>
-                    <td className="px-4 py-2 text-gray-500">
-                      {p.concluido_em ? new Date(p.concluido_em).toLocaleString("pt-BR") : "—"}
-                    </td>
-                  </tr>
-                ))}
+                {producoesRecentes.map((p) => {
+                  const expandida = producaoExpandidaId === p.id;
+                  const clicavel = p.status === "concluida";
+                  const detalhe = clicavel ? detalheProducao(p) : null;
+                  return (
+                    <Fragment key={p.id}>
+                      <tr
+                        onClick={
+                          clicavel
+                            ? () => setProducaoExpandidaId(expandida ? null : p.id)
+                            : undefined
+                        }
+                        className={clicavel ? "cursor-pointer hover:bg-gray-50" : undefined}
+                      >
+                        <td className="px-4 py-2 text-gray-700">{p.machine_nome}</td>
+                        <td className="px-4 py-2 text-gray-700">
+                          {clicavel && (
+                            <span className="mr-1 inline-block text-gray-400">
+                              {expandida ? "▾" : "▸"}
+                            </span>
+                          )}
+                          {p.placa_nome}
+                        </td>
+                        <td className="px-4 py-2 text-right">{p.quantidade_placas}</td>
+                        <td className="px-4 py-2">
+                          <StatusLabel status={p.status} />
+                        </td>
+                        <td className="px-4 py-2 text-right text-gray-500">
+                          {p.status === "falha_placa"
+                            ? `${p.gramas_desperdicadas ?? 0}g (placa)`
+                            : Number(p.falhas_peca_count) > 0
+                            ? `${p.falhas_peca_count} peça(s)`
+                            : "—"}
+                        </td>
+                        <td className="px-4 py-2 text-gray-500">
+                          {p.concluido_em ? new Date(p.concluido_em).toLocaleString("pt-BR") : "—"}
+                        </td>
+                      </tr>
+                      {expandida && detalhe && (
+                        <tr className="bg-blue-50/50">
+                          <td colSpan={6} className="px-4 py-3 text-xs text-gray-700">
+                            <p className="mb-1 font-medium text-gray-900">
+                              {detalhe.pecasProduzidas} peça(s) impressa(s)
+                              {detalhe.falhas > 0 && (
+                                <span className="font-normal text-gray-500">
+                                  {" "}
+                                  ({detalhe.quantidadePlacas} placa(s) × {detalhe.pecasPorPlaca}{" "}
+                                  peça(s)/placa − {detalhe.falhas} com falha)
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-emerald-700">
+                              + {detalhe.pecasProduzidas} peça(s) entraram no estoque de{" "}
+                              <span className="font-medium">{p.placa_nome}</span>
+                            </p>
+                            {detalhe.extra && (
+                              <p className="text-emerald-700">
+                                + {detalhe.extra.pecas} peça(s) entraram no estoque de{" "}
+                                <span className="font-medium">{detalhe.extra.placaNome}</span>{" "}
+                                <span className="text-gray-500">(saída extra da placa mista)</span>
+                              </p>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
