@@ -24,6 +24,40 @@ async function garantirColunaGrupo() {
   await sql`ALTER TABLE full_envios ADD COLUMN IF NOT EXISTS grupo_id TEXT`;
 }
 
+// Coluna adicionada em 2026-07-31 — bug real encontrado pelo Guilherme:
+// "dei baixa agora em 10 unidades do Box 6mm branco e ele não deu baixa
+// de 30un do meu estoque". Causa raiz: "3 SUPORTE BOX 6MM BRANCO" é um
+// SKU de KIT (o catálogo sku_placa tem pecas_por_unidade=3 pra esse SKU
+// específico — 10 unidades vendidas = 30 peças físicas da placa), mas
+// full_envios.quantidade sempre guardou o número de UNIDADES DO SKU
+// (kits), não de peças, e tanto a confirmação (PATCH /[id]) quanto o
+// cálculo de faltantePlaca aqui embaixo tratavam esse número como se já
+// fosse peças — corretos só por coincidência quando pecas_por_unidade=1
+// (a maioria dos produtos, sem kit). Essa coluna guarda o multiplicador
+// exato do SKU escolhido (vem de sku_placa.pecas_por_unidade, capturado
+// no momento de "Adicionar envio" — ver POST abaixo e criarEnvio em
+// app/full/page.tsx), pra converter unidades→peças em todo lugar que
+// precisar. Default 1 preserva o comportamento de sempre pros ~99% dos
+// SKUs sem kit.
+async function garantirColunaPecasPorUnidade() {
+  await sql`ALTER TABLE full_envios ADD COLUMN IF NOT EXISTS pecas_por_unidade INTEGER NOT NULL DEFAULT 1`;
+  // Autocorreção pra envios PENDENTES já cadastrados antes dessa coluna
+  // existir (ainda não confirmados, então ainda dá pra corrigir sem
+  // mexer em estoque nenhum) — casa pelo mesmo par (sku, placa_id) usado
+  // na hora de criar o envio contra o catálogo real (sku_placa). Não
+  // toca em envios já confirmados (a baixa de estoque deles já aconteceu
+  // com o número antigo; corrigir isso é ação manual separada).
+  await sql`
+    UPDATE full_envios fe
+    SET pecas_por_unidade = sp.pecas_por_unidade
+    FROM sku_placa sp
+    WHERE sp.sku = fe.sku AND sp.placa_id = fe.placa_id
+      AND fe.pecas_por_unidade = 1
+      AND sp.pecas_por_unidade != 1
+      AND fe.status = 'pendente'
+  `;
+}
+
 // Envios planejados do Full — pedido do Guilherme em 2026-07-25: "uma
 // aba onde vou subir meu envio e a data que eu tenho para enviar esse
 // produto... valida em estoque se tenho a quantidade dos produtos a
@@ -44,11 +78,17 @@ export interface FullEnvioRow {
   confirmadoEm: string | null;
   // Ver garantirColunaGrupo() acima — null pra envios de placa única.
   grupoId: string | null;
+  // Ver garantirColunaPecasPorUnidade() acima — multiplicador do SKU
+  // (1 pra maioria dos produtos; >1 só pra SKUs de kit, ex: "3 SUPORTE
+  // BOX 6MM BRANCO" = 3). quantidade × pecasPorUnidade = peças físicas
+  // reais que esse envio representa.
+  pecasPorUnidade: number;
   // Quanto falta produzir pra cobrir TODOS os envios ainda pendentes
-  // dessa mesma placa (soma das quantidades), descontando estoque atual
-  // + o que já está em produção agora. Mesmo valor em todas as linhas
-  // que compartilham a placa — é isso que vira prioridade extraordinária
-  // na aba Produção. Nunca negativo.
+  // dessa mesma placa (soma das quantidades × pecasPorUnidade, em
+  // PEÇAS), descontando estoque atual + o que já está em produção
+  // agora. Mesmo valor em todas as linhas que compartilham a placa — é
+  // isso que vira prioridade extraordinária na aba Produção. Nunca
+  // negativo.
   faltantePlaca: number;
   // Checagem de viabilidade — pedido do Guilherme em 2026-07-29: "conferir
   // a possibilidade para produção sem comprometer mais de 50% da minha
@@ -63,10 +103,12 @@ export interface FullEnvioRow {
 
 export async function GET() {
   await garantirColunaGrupo();
+  await garantirColunaPecasPorUnidade();
 
   const envios = (await sql`
     SELECT fe.id, fe.sku, fe.placa_id, pl.nome AS placa_nome, fe.quantidade,
-      fe.data_limite, fe.status, fe.criado_em, fe.confirmado_em, fe.grupo_id
+      fe.data_limite, fe.status, fe.criado_em, fe.confirmado_em, fe.grupo_id,
+      fe.pecas_por_unidade
     FROM full_envios fe
     JOIN placas pl ON pl.id = fe.placa_id
     WHERE fe.status != 'cancelado'
@@ -82,6 +124,7 @@ export async function GET() {
     criado_em: string;
     confirmado_em: string | null;
     grupo_id: string | null;
+    pecas_por_unidade: number;
   }[];
 
   if (envios.length === 0) {
@@ -126,7 +169,11 @@ export async function GET() {
   const pendentePorPlaca = new Map<number, number>();
   for (const e of envios) {
     if (e.status !== "pendente") continue;
-    pendentePorPlaca.set(e.placa_id, (pendentePorPlaca.get(e.placa_id) ?? 0) + Number(e.quantidade));
+    // Ver garantirColunaPecasPorUnidade() — quantidade é em UNIDADES do
+    // SKU, não em peças; multiplica pelo pecas_por_unidade do SKU (1 na
+    // maioria dos casos, >1 só pra kits) pra somar peças de verdade.
+    const pecas = Number(e.quantidade) * Number(e.pecas_por_unidade ?? 1);
+    pendentePorPlaca.set(e.placa_id, (pendentePorPlaca.get(e.placa_id) ?? 0) + pecas);
   }
 
   function faltantePlaca(placaId: number): number {
@@ -183,6 +230,7 @@ export async function GET() {
       percentualComprometido: viabilidade.percentualComprometido,
       aprovado: viabilidade.aprovado,
       grupoId: e.grupo_id,
+      pecasPorUnidade: Number(e.pecas_por_unidade ?? 1),
     };
   });
 
@@ -192,6 +240,7 @@ export async function GET() {
 // Cria um novo envio planejado do Full (data + SKU + quantidade).
 export async function POST(request: NextRequest) {
   await garantirColunaGrupo();
+  await garantirColunaPecasPorUnidade();
 
   const body = await request.json();
   const sku = String(body.sku ?? "").trim();
@@ -202,6 +251,14 @@ export async function POST(request: NextRequest) {
   // quando o SKU escolhido tem mais de uma placa componente, pra ligar
   // as linhas criadas juntas na mesma ação de "Adicionar envio".
   const grupoId = body.grupoId ? String(body.grupoId).trim() : null;
+  // Ver garantirColunaPecasPorUnidade() acima. Opcional (default 1) —
+  // o front manda o pecas_por_unidade exato do SKU escolhido (vem de
+  // /api/skus, que já lê isso de sku_placa), pra converter unidades→peças
+  // corretamente na hora de confirmar o envio e no cálculo de falta
+  // produzir. SKUs sem kit (a maioria) continuam em 1.
+  const pecasPorUnidadeBody = body.pecasPorUnidade !== undefined ? Number(body.pecasPorUnidade) : 1;
+  const pecasPorUnidade =
+    Number.isFinite(pecasPorUnidadeBody) && pecasPorUnidadeBody > 0 ? pecasPorUnidadeBody : 1;
 
   if (!sku || !placaId || !quantidade || quantidade <= 0 || !dataLimite) {
     return NextResponse.json(
@@ -211,8 +268,8 @@ export async function POST(request: NextRequest) {
   }
 
   const rows = await sql`
-    INSERT INTO full_envios (sku, placa_id, quantidade, data_limite, status, grupo_id)
-    VALUES (${sku}, ${placaId}, ${quantidade}, ${dataLimite}, 'pendente', ${grupoId})
+    INSERT INTO full_envios (sku, placa_id, quantidade, data_limite, status, grupo_id, pecas_por_unidade)
+    VALUES (${sku}, ${placaId}, ${quantidade}, ${dataLimite}, 'pendente', ${grupoId}, ${pecasPorUnidade})
     RETURNING id
   `;
 
