@@ -121,7 +121,7 @@ export async function POST() {
       WHERE sku = ${r.sku} AND placa_id = ${r.deId}
       RETURNING id
     `;
-    if (rows.length > 0) repontagens.push(r);
+    if (rows.length > 0) repontagens.push({ sku: r.sku, de: r.deId, para: r.paraId });
   }
 
   const estoqueCorposBranco = await lerEstoque(CORPOS_BRANCO);
