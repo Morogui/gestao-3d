@@ -3,6 +3,15 @@ import { sql } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
+// Coluna adicionada em 2026-07-31 — ver nota completa em
+// ../route.ts::garantirColunaPecasPorUnidade. Duplicada aqui (mesmo
+// padrão já usado pra outras colunas "on-demand" nesse projeto) porque
+// esta rota pode ser chamada isoladamente (ex: teste direto via fetch)
+// sem passar primeiro pelo GET/POST de ../route.ts.
+async function garantirColunaPecasPorUnidade() {
+  await sql`ALTER TABLE full_envios ADD COLUMN IF NOT EXISTS pecas_por_unidade INTEGER NOT NULL DEFAULT 1`;
+}
+
 // Confirma (ou cancela) um envio planejado do Full. Pedido do Guilherme
 // em 2026-07-25: "confirmando o envio do full no botão, essa produção
 // sai da linha de frente" — ao confirmar, o envio para de contar como
@@ -31,6 +40,8 @@ export async function PATCH(
   if (!id) {
     return NextResponse.json({ error: "Informe um id válido." }, { status: 400 });
   }
+
+  await garantirColunaPecasPorUnidade();
 
   // Edição de quantidade/data limite — pedido do Guilherme em 2026-07-27:
   // "eu coloquei errado e não tem como editar". Só é permitido enquanto o
@@ -91,12 +102,26 @@ export async function PATCH(
   // status === "confirmado" — guard "AND status != 'confirmado'" evita
   // dar baixa 2x se o botão for clicado de novo (ex: duplo clique,
   // requisição repetida) num envio que já tinha sido confirmado antes.
+  //
+  // Bug corrigido em 2026-07-31 (pedido do Guilherme: "dei baixa agora em
+  // 10 unidades do Box 6mm branco e ele não deu baixa de 30un do meu
+  // estoque"): `quantidade` é o número de UNIDADES do SKU, não de peças
+  // — pra SKUs de kit (ex: "3 SUPORTE BOX 6MM BRANCO", pecas_por_unidade
+  // = 3 no catálogo sku_placa) a baixa real é quantidade × pecas_por_unidade.
+  // Ver garantirColunaPecasPorUnidade em ../route.ts.
   const rows = (await sql`
     UPDATE full_envios
     SET status = 'confirmado', confirmado_em = now()
     WHERE id = ${id} AND status != 'confirmado'
-    RETURNING id, status, confirmado_em, placa_id, quantidade
-  `) as { id: number; status: string; confirmado_em: string; placa_id: number; quantidade: number }[];
+    RETURNING id, status, confirmado_em, placa_id, quantidade, pecas_por_unidade
+  `) as {
+    id: number;
+    status: string;
+    confirmado_em: string;
+    placa_id: number;
+    quantidade: number;
+    pecas_por_unidade: number | null;
+  }[];
 
   if (rows.length === 0) {
     // Ou o envio não existe, ou já estava confirmado (idempotente: não é
@@ -111,19 +136,23 @@ export async function PATCH(
   }
 
   const envio = rows[0];
+  // Ver nota acima — pecas é a baixa REAL em peças (unidades × multiplicador
+  // do SKU), não a quantidade de unidades bruta.
+  const pecas = Number(envio.quantidade) * Number(envio.pecas_por_unidade ?? 1);
   await sql`
     UPDATE estoque_placas
-    SET quantidade_pecas = GREATEST(0, quantidade_pecas - ${envio.quantidade})
+    SET quantidade_pecas = GREATEST(0, quantidade_pecas - ${pecas})
     WHERE placa_id = ${envio.placa_id}
   `;
   await sql`
     INSERT INTO baixas_estoque_full_envios (envio_id, placa_id, pecas)
-    VALUES (${envio.id}, ${envio.placa_id}, ${envio.quantidade})
+    VALUES (${envio.id}, ${envio.placa_id}, ${pecas})
   `;
 
   return NextResponse.json({
     id: envio.id,
     status: envio.status,
     confirmado_em: envio.confirmado_em,
+    pecasBaixadas: pecas,
   });
 }
