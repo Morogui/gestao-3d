@@ -82,6 +82,24 @@ async function buscarPendenteHojePorPlaca(): Promise<Map<number, number>> {
 // Estoque precisa mostrar e permitir ajustar manualmente até placas
 // descontinuadas (ex: Taça Copa do Mundo, que não produzimos mais mas
 // ainda vende o que sobrou em estoque).
+//
+// Exceção — placas "GANCHO ANTIGO (SUBSTITUÍDO)" com estoque zerado:
+// pedido do Guilherme em 2026-07-31, olhando o BMW (que já estava
+// zerado): "Esse antigo tem que tirar do sistema. Para não confundir na
+// hora da produção e na hora de lançar estoque". Essas são as placas de
+// gancho avulso do Universal/BMW/BYD aposentadas na consolidação do
+// Gancho Compartilhado (ver /api/admin/consolidar-gancho-compartilhado e
+// /api/admin/finalizar-consolidacao-gancho) — mantidas no banco só pelo
+// histórico de movimentação (Ver histórico ainda funciona via link direto
+// se precisar), mas sem motivo pra aparecer na lista assim que zeram de
+// vez: não tem mais peça pra vender nelas, e deixá-las visíveis com
+// "Ajuste manual" habilitado é exatamente o que causou confusão (alguém
+// lançou estoque manual nelas por engano, achando que era o produto
+// certo, e Produção nunca contava essa peça porque só lê /api/placas,
+// que já filtra descontinuada). Filtro só pega esse padrão específico
+// (prefixo do sku_ou_kit + zerado nos dois estoques) — não esconde outras
+// placas descontinuadas com saldo real pra vender (ex: Taça Copa do
+// Mundo) nem essas mesmas 3 antes de zerarem de vez.
 export async function GET() {
   const rows = (await sql`
     SELECT
@@ -94,6 +112,11 @@ export async function GET() {
     FROM placas p
     LEFT JOIN estoque_placas e ON e.placa_id = p.id
     LEFT JOIN estoque_full_placas ef ON ef.placa_id = p.id
+    WHERE NOT (
+      p.sku_ou_kit ILIKE 'GANCHO ANTIGO %'
+      AND COALESCE(e.quantidade_pecas, 0) = 0
+      AND COALESCE(ef.quantidade_pecas, 0) = 0
+    )
     ORDER BY p.numero ASC
   `) as (DbPlacaRow & { atualizado_em: string | null; estoque_full: number })[];
 
