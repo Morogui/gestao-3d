@@ -65,6 +65,10 @@ interface EnvioFull {
   // trás, mas precisam aparecer como 1 linha só na tela — grupoId liga
   // essas linhas. null nos envios de placa única (a maioria).
   grupoId: string | null;
+  // Ver garantirColunaPecasPorUnidade em app/api/full/envios/route.ts —
+  // multiplicador do SKU (1 na maioria; >1 só pra SKUs de kit, ex: "3
+  // SUPORTE BOX 6MM BRANCO" = 3 peças por unidade vendida).
+  pecasPorUnidade: number;
 }
 
 export default function FullPage() {
@@ -156,17 +160,35 @@ export default function FullPage() {
   // tela de produção continua enxergando e cobrando cada placa
   // separadamente (isso é produção, não venda), mas o usuário só
   // precisou escolher e preencher uma vez.
-  async function criarEnvio(sku: string, placaIds: number[], quantidade: number, dataLimite: string) {
+  async function criarEnvio(
+    sku: string,
+    placaIds: number[],
+    quantidade: number,
+    dataLimite: string,
+    pecasPorUnidade: Record<number, number> = {}
+  ) {
     // Gera um grupoId só quando há mais de uma placa componente (produto
     // composto) — é o elo que a tela usa pra mostrar essas linhas juntas
     // como 1 só (ver EnviosPlanejados abaixo). Envios de placa única
     // continuam sem grupoId (null), tratados como grupo de 1.
     const grupoId = placaIds.length > 1 ? `full-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : null;
     for (const placaId of placaIds) {
+      // Ver garantirColunaPecasPorUnidade em app/api/full/envios/route.ts
+      // — pedido do Guilherme em 2026-07-31 depois de descobrir que SKUs
+      // de kit (ex: "3 SUPORTE BOX 6MM BRANCO") não davam baixa
+      // proporcional no estoque. Manda o multiplicador exato daquele SKU
+      // pra essa placa (vem de /api/skus, que já lê de sku_placa).
       await fetch("/api/full/envios", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sku, placaId, quantidade, dataLimite, grupoId }),
+        body: JSON.stringify({
+          sku,
+          placaId,
+          quantidade,
+          dataLimite,
+          grupoId,
+          pecasPorUnidade: pecasPorUnidade[placaId] ?? 1,
+        }),
       });
     }
     const enviosRes = await fetch("/api/full/envios");
@@ -458,6 +480,9 @@ interface GrupoEnvio {
   quantidade: number;
   dataLimite: string;
   membros: EnvioFull[];
+  // Maior multiplicador entre os componentes — pra avisar na tela quando
+  // a quantidade em unidades vira mais peças de verdade (SKU de kit).
+  pecasPorUnidade: number;
 }
 
 function EnviosPlanejados({
@@ -470,16 +495,25 @@ function EnviosPlanejados({
 }: {
   linhas: LinhaFull[];
   envios: EnvioFull[];
-  onCriar: (sku: string, placaIds: number[], quantidade: number, dataLimite: string) => Promise<void>;
+  onCriar: (
+    sku: string,
+    placaIds: number[],
+    quantidade: number,
+    dataLimite: string,
+    pecasPorUnidade?: Record<number, number>
+  ) => Promise<void>;
   onConfirmar: (ids: number[]) => Promise<void>;
   onEditar: (ids: number[], quantidade: number, dataLimite: string) => Promise<boolean>;
   onExcluir: (ids: number[]) => Promise<void>;
 }) {
   const [buscaSku, setBuscaSku] = useState("");
   const [resultados, setResultados] = useState<SkuResult[]>([]);
-  const [selecionado, setSelecionado] = useState<{ sku: string; placaIds: number[]; label: string } | null>(
-    null
-  );
+  const [selecionado, setSelecionado] = useState<{
+    sku: string;
+    placaIds: number[];
+    label: string;
+    pecasPorUnidade: Record<number, number>;
+  } | null>(null);
   const [quantidade, setQuantidade] = useState("");
   const [dataLimite, setDataLimite] = useState(todaySP());
   const [enviando, setEnviando] = useState(false);
@@ -523,7 +557,7 @@ function EnviosPlanejados({
   const sugestoes = useMemo(() => {
     const porSku = new Map<
       string,
-      { sku: string; placaIds: number[]; placaNomes: string[] }
+      { sku: string; placaIds: number[]; placaNomes: string[]; pecasPorUnidade: Record<number, number> }
     >();
     for (const r of resultados) {
       const existente = porSku.get(r.sku);
@@ -532,8 +566,17 @@ function EnviosPlanejados({
           existente.placaIds.push(r.placa_id);
           existente.placaNomes.push(r.placa_nome);
         }
+        existente.pecasPorUnidade[r.placa_id] = Number(r.pecas_por_unidade);
       } else {
-        porSku.set(r.sku, { sku: r.sku, placaIds: [r.placa_id], placaNomes: [r.placa_nome] });
+        porSku.set(r.sku, {
+          sku: r.sku,
+          placaIds: [r.placa_id],
+          placaNomes: [r.placa_nome],
+          // Ver garantirColunaPecasPorUnidade em app/api/full/envios/route.ts
+          // — guarda o multiplicador real (de sku_placa) por placa
+          // componente, pra levar junto quando o envio for criado.
+          pecasPorUnidade: { [r.placa_id]: Number(r.pecas_por_unidade) },
+        });
       }
     }
     return Array.from(porSku.values());
@@ -565,6 +608,7 @@ function EnviosPlanejados({
           quantidade: e.quantidade,
           dataLimite: e.dataLimite,
           membros: [e],
+          pecasPorUnidade: e.pecasPorUnidade,
         });
       }
     }
@@ -575,7 +619,13 @@ function EnviosPlanejados({
     if (!selecionado || !quantidade || Number(quantidade) <= 0 || !dataLimite) return;
     setEnviando(true);
     try {
-      await onCriar(selecionado.sku, selecionado.placaIds, Number(quantidade), dataLimite);
+      await onCriar(
+        selecionado.sku,
+        selecionado.placaIds,
+        Number(quantidade),
+        dataLimite,
+        selecionado.pecasPorUnidade
+      );
       setSelecionado(null);
       setBuscaSku("");
       setQuantidade("");
@@ -629,6 +679,7 @@ function EnviosPlanejados({
                         sku: s.sku,
                         placaIds: s.placaIds,
                         label: s.sku,
+                        pecasPorUnidade: s.pecasPorUnidade,
                       });
                       setResultados([]);
                     }}
@@ -638,6 +689,16 @@ function EnviosPlanejados({
                     {s.placaNomes.length > 1 && (
                       <span className="text-gray-400">
                         (produção: {s.placaNomes.join(" + ")})
+                      </span>
+                    )}
+                    {/* Ver garantirColunaPecasPorUnidade em
+                        app/api/full/envios/route.ts — avisa ANTES de
+                        escolher que esse SKU é kit, já que a quantidade
+                        digitada é em UNIDADES do SKU, não em peças. */}
+                    {Object.values(s.pecasPorUnidade).some((n) => n > 1) && (
+                      <span className="text-amber-700">
+                        {" "}
+                        ({Object.values(s.pecasPorUnidade).find((n) => n > 1)} peças por unidade)
                       </span>
                     )}
                   </button>
@@ -729,7 +790,19 @@ function EnviosPlanejados({
                           className="w-20 rounded border border-gray-300 px-1.5 py-1 text-right text-xs"
                         />
                       ) : (
-                        g.quantidade
+                        <>
+                          {g.quantidade}
+                          {/* Ver garantirColunaPecasPorUnidade em
+                              app/api/full/envios/route.ts — pedido do
+                              Guilherme em 2026-07-31 depois de descobrir
+                              o bug do kit: deixa explícito quantas peças
+                              físicas esse envio representa de verdade. */}
+                          {g.pecasPorUnidade > 1 && (
+                            <span className="ml-1 font-normal text-gray-400">
+                              ({g.quantidade * g.pecasPorUnidade} peças)
+                            </span>
+                          )}
+                        </>
                       )}
                     </td>
                     <td className="px-3 py-2 text-gray-700">
@@ -870,7 +943,108 @@ function EnviosPlanejados({
           </table>
         </div>
       )}
+
+      <div className="mt-3 border-t border-gray-100 pt-3">
+        <MovimentacoesFull />
+      </div>
     </section>
+  );
+}
+
+interface MovimentacaoFull {
+  id: number;
+  data: string;
+  envioId: number;
+  sku: string;
+  placaNome: string;
+  placaNumero: number;
+  quantidadeUnidades: number;
+  pecasPorUnidade: number;
+  pecasBaixadas: number;
+  dataLimiteEnvio: string;
+}
+
+// Extrato de baixas de estoque geradas por envios do Full confirmados —
+// pedido do Guilherme em 2026-07-31: "deve ter... um botão para abrir um
+// [extrato] com as movimentações feitas em estoque, para eu ver o que do
+// full descontou do estoque e de qual sku" (motivado por ter descoberto
+// o bug do kit: "dei baixa agora em 10 unidades do Box 6mm branco e ele
+// não deu baixa de 30un do meu estoque"). Mesmo padrão de "carregar só
+// quando abrir" já usado em HistoricoFilamento (app/estoque/page.tsx).
+function MovimentacoesFull() {
+  const [aberto, setAberto] = useState(false);
+  const [movimentos, setMovimentos] = useState<MovimentacaoFull[] | "loading" | "erro" | null>(
+    null
+  );
+
+  async function alternar() {
+    if (!aberto && movimentos === null) {
+      setMovimentos("loading");
+      try {
+        const res = await fetch("/api/full/envios/movimentacoes");
+        if (!res.ok) throw new Error("falha");
+        setMovimentos(await res.json());
+      } catch {
+        setMovimentos("erro");
+      }
+    }
+    setAberto((prev) => !prev);
+  }
+
+  return (
+    <div>
+      <button onClick={alternar} className="text-xs font-medium text-blue-600 hover:underline">
+        {aberto ? "Fechar movimentações de estoque" : "Ver movimentações de estoque do Full"}
+      </button>
+      {aberto && (
+        <div className="mt-2 overflow-x-auto">
+          {movimentos === "loading" || movimentos === null ? (
+            <p className="text-xs text-gray-400">Carregando movimentações...</p>
+          ) : movimentos === "erro" ? (
+            <p className="text-xs text-red-600">Não deu pra carregar as movimentações.</p>
+          ) : movimentos.length === 0 ? (
+            <p className="text-xs text-gray-400">
+              Nenhum envio do Full confirmado ainda (a baixa só acontece na confirmação, não ao
+              cadastrar o envio).
+            </p>
+          ) : (
+            <table className="w-full max-w-3xl text-xs">
+              <thead className="text-left uppercase text-gray-400">
+                <tr>
+                  <th className="py-1 pr-3">Quando</th>
+                  <th className="py-1 pr-3">SKU</th>
+                  <th className="py-1 pr-3">Placa descontada</th>
+                  <th className="py-1 pr-3 text-right">Unidades</th>
+                  <th className="py-1 pr-3 text-right">Peças descontadas</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {movimentos.map((m) => (
+                  <tr key={m.id}>
+                    <td className="py-1 pr-3 whitespace-nowrap text-gray-500">
+                      {new Date(m.data).toLocaleString("pt-BR")}
+                    </td>
+                    <td className="py-1 pr-3 font-medium text-gray-900">
+                      {m.sku} <span className="font-normal text-gray-400">(envio #{m.envioId})</span>
+                    </td>
+                    <td className="py-1 pr-3 text-gray-600">{m.placaNome}</td>
+                    <td className="py-1 pr-3 text-right text-gray-600">
+                      {m.quantidadeUnidades}
+                      {m.pecasPorUnidade > 1 && (
+                        <span className="text-gray-400"> × {m.pecasPorUnidade}</span>
+                      )}
+                    </td>
+                    <td className="py-1 pr-3 text-right font-semibold text-red-600">
+                      -{m.pecasBaixadas}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
