@@ -595,13 +595,36 @@ export default function ProducaoPage() {
       // pra esconder um estoque zerado com venda de verdade — isso tem
       // que aparecer sempre, mesmo sem filamento, pra alertar que precisa
       // repor o material urgente.
+      // EXCEÇÃO 3 (2026-07-31): placa "Mista" (papel='corpo' com
+      // saidaExtraPlacaId apontando pro Gancho Compartilhado — ex: Suporte
+      // BMW/Universal - Mista) nunca é bloqueada por aProduzirEfetivo=0.
+      // Achado real: "SUPORTE BMW BRANCO/PRETO" vende quase 100% com SKU
+      // exato cadastrado em sku_placa, que aponta direto pra Corpos +
+      // Gancho Compartilhado — então a Mista nunca acumula demanda própria
+      // (nem por SKU exato, que não aponta pra ela, nem por texto, que fica
+      // sem sobra) e sumia da fila inteira, mesmo sendo uma opção de
+      // impressão válida (o Guilherme pediu explicitamente: "na hora da
+      // produção deve se mostrar as placas mista e a placa gancho, o bmw
+      // está assim..." reclamando que só aparecia Corpos). A Mista é uma
+      // ESCOLHA de produção (imprimir corpo+gancho juntos em vez de só
+      // corpo), não uma necessidade própria — por isso fica sempre
+      // disponível pro operador escolher manualmente, mesmo com "a
+      // produzir: 0" na própria linha (a necessidade real já aparece nas
+      // linhas de Corpos e Gancho Compartilhado).
       .filter(
         (item) =>
-          item.aProduzirEfetivo > 0 || item.faltaDespacho > 0 || item.faltaEnvioFull > 0
+          item.aProduzirEfetivo > 0 ||
+          item.faltaDespacho > 0 ||
+          item.faltaEnvioFull > 0 ||
+          Boolean(item.placa.saidaExtraPlacaId)
       )
       .filter((item) => {
         if (item.faltaEnvioFull > 0) return true;
         if (item.estoqueProjetado <= 0 && vendeuUltimasDuasSemanas(item.demanda)) return true;
+        // Mesma EXCEÇÃO 3 acima — a Mista é uma escolha de produção, não
+        // uma sugestão automática por demanda/estoque, então também não
+        // é bloqueada pelo filtro de filamento zerado.
+        if (item.placa.saidaExtraPlacaId) return true;
         if (!filamento) return true;
         const cor = corFilamentoDaPlaca(item.placa.nome);
         if (!cor) return true;
