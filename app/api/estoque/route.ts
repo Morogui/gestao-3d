@@ -1,10 +1,53 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { DbPlacaRow, toPlacaRow } from "@/lib/placas";
+import { DbPlacaRow, toPlacaRow, corFilamentoDaPlaca } from "@/lib/placas";
 import { statusIndicaDespachado } from "@/lib/demanda";
 import { todaySP } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
+
+// Ajusta (soma ou subtrai) gramas no estoque de filamento por cor —
+// pedido do Guilherme em 2026-07-29: "sempre que for lançado o estoque
+// manual, as peças lançadas têm que ser descontadas do meu filamento,
+// com base nas placas de produção que você tem". Mesmo mecanismo já
+// usado quando uma produção é concluída (ver PATCH
+// /api/producoes/[id]/route.ts), só que aqui bidirecional: lançar peças
+// a mais (delta > 0) desconta o filamento equivalente; tirar peças
+// (delta < 0, ex: correção de contagem) devolve o filamento de volta —
+// mesmo padrão de reversão já usado pra vendas canceladas/estornadas.
+// Sem seletor de material aqui (não existe UI de PETG no ajuste manual),
+// então usa sempre a cor base (comportamento igual a antes do PETG
+// existir). Null-safe: placas sem cor controlada (corFilamentoDaPlaca
+// retorna null) ou sem peso/placa cadastrado não mexem em nada.
+async function ajustarFilamentoPorPecas(placaId: number, deltaPecas: number) {
+  const placaRows = (await sql`
+    SELECT nome, pecas_por_placa, peso_placa_gramas FROM placas WHERE id = ${placaId}
+  `) as { nome: string; pecas_por_placa: string; peso_placa_gramas: string | null }[];
+
+  const placa = placaRows[0];
+  if (!placa) return;
+
+  const pecasPorPlaca = Number(placa.pecas_por_placa);
+  const pesoPlacaGramas = placa.peso_placa_gramas ? Number(placa.peso_placa_gramas) : null;
+  if (!pesoPlacaGramas || !pecasPorPlaca) return;
+
+  const cor = corFilamentoDaPlaca(placa.nome);
+  if (!cor) return;
+
+  const gramasPorPeca = pesoPlacaGramas / pecasPorPlaca;
+  const deltaGramas = -deltaPecas * gramasPorPeca; // lançar peças (delta>0) DESCONTA filamento
+
+  await sql`
+    INSERT INTO estoque_filamento (cor, quantidade_gramas, atualizado_em)
+    VALUES (${cor}, 0, now())
+    ON CONFLICT (cor) DO NOTHING
+  `;
+  await sql`
+    UPDATE estoque_filamento
+    SET quantidade_gramas = GREATEST(0, quantidade_gramas + ${deltaGramas}), atualizado_em = now()
+    WHERE cor = ${cor}
+  `;
+}
 
 // Quanto já foi descontado do estoque HOJE por vendas que ainda não
 // despacharam de verdade na plataforma — pedido do Guilherme em
@@ -114,6 +157,10 @@ export async function POST(req: NextRequest) {
     INSERT INTO ajustes_manuais_estoque (placa_id, delta, resultante)
     VALUES (${placaId}, ${delta}, ${rows[0].quantidade_pecas})
   `;
+
+  // Ver ajustarFilamentoPorPecas() acima — pedido do Guilherme em
+  // 2026-07-29.
+  await ajustarFilamentoPorPecas(placaId, delta);
 
   return NextResponse.json(rows[0]);
 }
