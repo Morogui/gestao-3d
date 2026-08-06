@@ -211,6 +211,13 @@ export default function ProducaoPage() {
   // precisar de rota nova: os números já existem no cliente, cruzando
   // ProducaoRow com o cadastro de placas — ver detalheProducao() abaixo).
   const [producaoExpandidaId, setProducaoExpandidaId] = useState<number | null>(null);
+  // Cadastro/renomeação de impressora self-service — pedido do Guilherme
+  // em 2026-08-04: "estou comprando mais [impressoras] e se ficar pedindo
+  // pra você colocar toda hora vou perder tempo". Ver adicionarMaquina/
+  // renomearMaquina abaixo e POST/PATCH em /api/machines.
+  const [mostrarNovaMaquina, setMostrarNovaMaquina] = useState(false);
+  const [nomeNovaMaquina, setNomeNovaMaquina] = useState("");
+  const [salvandoMaquina, setSalvandoMaquina] = useState(false);
 
   // Refresh "rápido": tudo que NÃO depende de buscar pedidos na ML/Shopee
   // (placas, máquinas, produções, consumo, janela) — normalmente volta em
@@ -236,6 +243,37 @@ export default function ProducaoPage() {
     setJanela(janelaRes ?? JANELA_PADRAO);
     setFilamento(filamentoRes);
     setEnviosFull(enviosFullRes);
+  }
+
+  // Ver estado mostrarNovaMaquina/nomeNovaMaquina acima — botão "+ Nova
+  // impressora" na seção Impressoras.
+  async function adicionarMaquina() {
+    const nome = nomeNovaMaquina.trim();
+    if (!nome) return;
+    setSalvandoMaquina(true);
+    try {
+      await fetch("/api/machines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nome }),
+      });
+      setNomeNovaMaquina("");
+      setMostrarNovaMaquina(false);
+      await carregarRapido();
+    } finally {
+      setSalvandoMaquina(false);
+    }
+  }
+
+  async function renomearMaquina(id: number, nome: string) {
+    const nomeLimpo = nome.trim();
+    if (!nomeLimpo) return;
+    await fetch(`/api/machines/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nome: nomeLimpo }),
+    });
+    await carregarRapido();
   }
 
   // Refresh "lento": busca pedidos de 30 dias na ML + Shopee (com
@@ -1012,7 +1050,56 @@ export default function ProducaoPage() {
       )}
 
       <section>
-        <h2 className="mb-3 text-sm font-semibold text-gray-900">Impressoras</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-900">Impressoras</h2>
+          {!mostrarNovaMaquina && (
+            <button
+              onClick={() => setMostrarNovaMaquina(true)}
+              className="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+              title="Cadastrar impressora nova"
+            >
+              + Nova impressora
+            </button>
+          )}
+        </div>
+
+        {/* Cadastro self-service de impressora nova — pedido do Guilherme
+            em 2026-08-04, ver adicionarMaquina() acima. */}
+        {mostrarNovaMaquina && (
+          <div className="mb-3 flex items-center gap-2 rounded border border-gray-200 bg-gray-50 p-2">
+            <input
+              autoFocus
+              value={nomeNovaMaquina}
+              onChange={(e) => setNomeNovaMaquina(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") adicionarMaquina();
+                if (e.key === "Escape") {
+                  setMostrarNovaMaquina(false);
+                  setNomeNovaMaquina("");
+                }
+              }}
+              placeholder="Nome da impressora (ex: Impressora 5)"
+              className="flex-1 rounded border border-gray-300 px-2 py-1 text-sm"
+            />
+            <button
+              onClick={adicionarMaquina}
+              disabled={salvandoMaquina || !nomeNovaMaquina.trim()}
+              className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {salvandoMaquina ? "Salvando..." : "Adicionar"}
+            </button>
+            <button
+              onClick={() => {
+                setMostrarNovaMaquina(false);
+                setNomeNovaMaquina("");
+              }}
+              className="rounded border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100"
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           {machines.map((machine) => (
             <PrinterCard
@@ -1031,6 +1118,7 @@ export default function ProducaoPage() {
               onCancelar={(id) => cancelarProducao(id, machine.id)}
               onFalhaPlaca={(id, gramas) => falhaPlaca(id, machine.id, gramas)}
               onFalhaPeca={(id, desc, gramas) => falhaPeca(id, machine.id, desc, gramas)}
+              onRenomear={renomearMaquina}
             />
           ))}
         </div>
@@ -1644,6 +1732,7 @@ function PrinterCard({
   onCancelar,
   onFalhaPlaca,
   onFalhaPeca,
+  onRenomear,
 }: {
   machine: MachineRow;
   producao?: ProducaoRow;
@@ -1657,12 +1746,26 @@ function PrinterCard({
   onCancelar: (id: number) => void;
   onFalhaPlaca: (id: number, gramas: number) => void;
   onFalhaPeca: (id: number, pecaDescricao: string, gramas: number) => void;
+  onRenomear: (id: number, nome: string) => void;
 }) {
   const [showFalhaPlaca, setShowFalhaPlaca] = useState(false);
   const [showFalhaPeca, setShowFalhaPeca] = useState(false);
   const [gramasPlaca, setGramasPlaca] = useState("");
   const [pecaDescricao, setPecaDescricao] = useState("");
   const [gramasPeca, setGramasPeca] = useState("");
+  // Renomear impressora inline — pedido do Guilherme em 2026-08-04, ver
+  // onRenomear (bate em PATCH /api/machines/[id]).
+  const [editandoNome, setEditandoNome] = useState(false);
+  const [nomeEditado, setNomeEditado] = useState(machine.nome);
+  useEffect(() => {
+    if (!editandoNome) setNomeEditado(machine.nome);
+  }, [machine.nome, editandoNome]);
+
+  function salvarNome() {
+    const nome = nomeEditado.trim();
+    if (nome && nome !== machine.nome) onRenomear(machine.id, nome);
+    setEditandoNome(false);
+  }
 
   // placaPorId vem de /api/placas, que filtra "descontinuada = false" — uma
   // placa que estava rodando e foi descontinuada DEPOIS de carregada na
@@ -1698,8 +1801,46 @@ function PrinterCard({
 
   return (
     <div className="flex flex-col rounded-lg border border-gray-200 bg-white p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <p className="font-semibold text-gray-900">{machine.nome}</p>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        {editandoNome ? (
+          <div className="flex flex-1 items-center gap-1">
+            <input
+              autoFocus
+              value={nomeEditado}
+              onChange={(e) => setNomeEditado(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") salvarNome();
+                if (e.key === "Escape") {
+                  setNomeEditado(machine.nome);
+                  setEditandoNome(false);
+                }
+              }}
+              className="w-full min-w-0 rounded border border-gray-300 px-1 py-0.5 text-sm font-semibold text-gray-900"
+            />
+            <button onClick={salvarNome} className="shrink-0 text-xs font-medium text-green-700" title="Salvar">
+              ✓
+            </button>
+            <button
+              onClick={() => {
+                setNomeEditado(machine.nome);
+                setEditandoNome(false);
+              }}
+              className="shrink-0 text-xs font-medium text-gray-500"
+              title="Cancelar"
+            >
+              ✕
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setEditandoNome(true)}
+            className="group flex items-center gap-1 text-left"
+            title="Renomear impressora"
+          >
+            <p className="font-semibold text-gray-900">{machine.nome}</p>
+            <span className="text-xs text-gray-400 opacity-0 group-hover:opacity-100">✎</span>
+          </button>
+        )}
         <span
           className={
             "rounded-full px-2 py-0.5 text-xs font-medium " +
