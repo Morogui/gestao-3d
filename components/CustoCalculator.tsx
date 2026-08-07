@@ -1,4 +1,4 @@
-"use client";
+undefined"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -18,6 +18,13 @@ import {
 } from "@/lib/storage";
 import ProdutosTable from "./ProdutosTable";
 
+function normalizarBusca(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
+}
+
 const EMPTY_FORM: Omit<ProdutoInput, "id"> = {
   nome: "",
   sku: "",
@@ -34,6 +41,12 @@ export default function CustoCalculator() {
   const [loading, setLoading] = useState(true);
   const [salvandoParams, setSalvandoParams] = useState(false);
   const [paramsSalvos, setParamsSalvos] = useState(true);
+  // Busca de produtos cadastrados — pedido do Guilherme em 2026-08-04,
+  // olhando a tabela crescer (46+ produtos): "Deve ter um campo para
+  // buscar os produtos cadastrados". Filtra por nome OU SKU, sem
+  // acento/maiúscula (mesmo padrão de normalização usado em
+  // lib/demanda.ts) pra achar mesmo digitando diferente do cadastro.
+  const [busca, setBusca] = useState("");
 
   // Carrega dados salvos do banco assim que o componente monta
   useEffect(() => {
@@ -49,6 +62,16 @@ export default function CustoCalculator() {
   }, []);
 
   const preview = useMemo(() => calcularCusto(form, params), [form, params]);
+
+  const produtosFiltrados = useMemo(() => {
+    const alvo = normalizarBusca(busca);
+    if (!alvo) return produtos;
+    return produtos.filter(
+      (p) =>
+        normalizarBusca(p.nome).includes(alvo) ||
+        normalizarBusca(p.sku ?? "").includes(alvo)
+    );
+  }, [produtos, busca]);
 
   function updateForm<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -248,15 +271,49 @@ export default function CustoCalculator() {
 
       {/* Lista de produtos cadastrados */}
       <section>
-        <h2 className="mb-3 text-sm font-semibold text-gray-900">
-          Produtos cadastrados
-        </h2>
-        <ProdutosTable
-          produtos={produtos}
-          params={params}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-        />
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-gray-900">
+            Produtos cadastrados
+            <span className="ml-2 font-normal text-gray-400">
+              ({produtosFiltrados.length}
+              {busca.trim() ? ` de ${produtos.length}` : ""})
+            </span>
+          </h2>
+          <div className="relative w-full sm:w-64">
+            <input
+              type="text"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar por nome ou SKU..."
+              className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-7 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400">
+              🔍
+            </span>
+            {busca && (
+              <button
+                type="button"
+                onClick={() => setBusca("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                title="Limpar busca"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+        {produtos.length > 0 && produtosFiltrados.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-500">
+            Nenhum produto encontrado para &quot;{busca}&quot;.
+          </div>
+        ) : (
+          <ProdutosTable
+            produtos={produtosFiltrados}
+            params={params}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+          />
+        )}
       </section>
     </div>
   );
