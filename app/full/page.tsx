@@ -25,6 +25,10 @@ interface LinhaFull {
   fonteEstoqueFull: "api" | "manual";
   atualizadoEm: string | null;
   recomendacaoEnvio: number;
+  // Multiplicador do SKU (kits) — pedido do Guilherme em 2026-08-07,
+  // pra "Agendar Full" saber criar o envio certo direto (mesmo campo já
+  // usado em full_envios.pecas_por_unidade).
+  pecasPorUnidade: number;
 }
 
 interface SkuResult {
@@ -53,22 +57,30 @@ interface EnvioFull {
   criadoEm: string;
   confirmadoEm: string | null;
   faltantePlaca: number;
-  // Viabilidade de produção sem comprometer mais de 50% da linha —
-  // pedido do Guilherme em 2026-07-29. Ver lib/capacidade.ts (calculado
-  // no servidor, em app/api/full/envios/route.ts).
   horasNecessarias: number;
   capacidadeDisponivelHoras: number;
   percentualComprometido: number;
   aprovado: boolean;
-  // Pedido do Guilherme em 2026-07-29: produtos compostos (Suporte
-  // Universal, Carro, BMW...) criam um envio por placa componente por
-  // trás, mas precisam aparecer como 1 linha só na tela — grupoId liga
-  // essas linhas. null nos envios de placa única (a maioria).
   grupoId: string | null;
-  // Ver garantirColunaPecasPorUnidade em app/api/full/envios/route.ts —
-  // multiplicador do SKU (1 na maioria; >1 só pra SKUs de kit, ex: "3
-  // SUPORTE BOX 6MM BRANCO" = 3 peças por unidade vendida).
   pecasPorUnidade: number;
+}
+
+// Grupo pronto pra revisar no painel "Agendar Full" — pedido do
+// Guilherme em 2026-08-07: "quando clicado no botão, devo colocar qual
+// produto vou enviar, conforme você me recomendar e confirmar a
+// quantidade... tomar cuidado com produtos com parafuso e sem, a
+// recomendação tem que ser conforme o SKU vendido". Cada grupo já é um
+// SKU real (igual às linhas da tabela principal); produtos compostos
+// (corpo+gancho) juntam as placas componentes num só placaIds[], igual
+// já acontece em "Adicionar envio" manual.
+interface GrupoAgendamento {
+  chaveGrupo: string;
+  sku: string;
+  nome: string;
+  placaIds: number[];
+  pecasPorUnidade: Record<number, number>;
+  vendidoFull7d: number;
+  recomendado: number;
 }
 
 export default function FullPage() {
@@ -80,6 +92,17 @@ export default function FullPage() {
   const [busca, setBusca] = useState("");
   const [salvando, setSalvando] = useState<Record<string, boolean>>({});
   const [envios, setEnvios] = useState<EnvioFull[]>([]);
+  // Multiplicador de envio (vendido × X) — pedido do Guilherme em
+  // 2026-08-07: "o envio do full funciona todo produto vendido x 1.3
+  // (esse valor temos que ter um campo para alterar)". Ver
+  // /api/full/config e recomendacaoEnvio em /api/estoque-full.
+  const [multiplicador, setMultiplicador] = useState(1.3);
+  const [multiplicadorInput, setMultiplicadorInput] = useState("1.3");
+  const [salvandoMultiplicador, setSalvandoMultiplicador] = useState(false);
+  // Painel "Agendar Full" — pedido do Guilherme em 2026-08-07: monta o
+  // envio da semana (ex: toda sexta) de uma vez, revisando a
+  // recomendação de cada SKU antes de confirmar a data de envio.
+  const [mostrarAgendamento, setMostrarAgendamento] = useState(false);
 
   async function carregar() {
     try {
@@ -100,6 +123,9 @@ export default function FullPage() {
       setPeriodo(data.periodo);
       setApiDisponivel(Boolean(data.apiDisponivel));
       setUserProductSeller(data.userProductSeller ?? null);
+      const mult = Number(data.multiplicador ?? 1.3);
+      setMultiplicador(mult);
+      setMultiplicadorInput(String(mult).replace(".", ","));
       setEnvios(await enviosRes.json());
       setStatus("ready");
     } catch {
@@ -121,6 +147,39 @@ export default function FullPage() {
     );
   }, [linhas, busca]);
 
+  // Agrupa as linhas com recomendação de envio > 0 pra alimentar o
+  // painel "Agendar Full" — mesmo SKU pode aparecer em mais de uma
+  // linha quando é produto composto (corpo + gancho, ex: Suporte
+  // Universal), já que a mesma venda credita as duas placas
+  // componentes; nesse caso NÃO soma vendidoFull7d/recomendado entre
+  // elas (já é o mesmo número em cada uma — é a mesma venda), só junta
+  // os placaIds pra criar um envio por componente de uma vez.
+  const gruposAgendamento = useMemo(() => {
+    const porChave = new Map<string, GrupoAgendamento>();
+    for (const l of linhas) {
+      if (l.recomendacaoEnvio <= 0) continue;
+      const chaveGrupo = (l.sku || l.titulo || l.nome).toLowerCase();
+      const existente = porChave.get(chaveGrupo);
+      if (existente) {
+        if (!existente.placaIds.includes(l.placaId)) {
+          existente.placaIds.push(l.placaId);
+        }
+        existente.pecasPorUnidade[l.placaId] = l.pecasPorUnidade;
+      } else {
+        porChave.set(chaveGrupo, {
+          chaveGrupo,
+          sku: l.sku || l.nome,
+          nome: l.nome,
+          placaIds: [l.placaId],
+          pecasPorUnidade: { [l.placaId]: l.pecasPorUnidade },
+          vendidoFull7d: l.vendidoFull7d,
+          recomendado: l.recomendacaoEnvio,
+        });
+      }
+    }
+    return Array.from(porChave.values()).sort((a, b) => b.recomendado - a.recomendado);
+  }, [linhas]);
+
   async function ajustarFull(chave: string, placaId: number, delta: number) {
     if (!delta) return;
     setSalvando((prev) => ({ ...prev, [chave]: true }));
@@ -128,13 +187,13 @@ export default function FullPage() {
       const res = await fetch("/api/estoque-full", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ placaId, delta }),
+        body: JSON.stringify({ chave, placaId, delta }),
       });
       if (res.ok) {
         const atualizado = await res.json();
         setLinhas((prev) =>
           prev.map((l) =>
-            l.placaId === placaId
+            l.chave === chave
               ? {
                   ...l,
                   estoqueFullAtual: atualizado.quantidade_pecas,
@@ -149,6 +208,24 @@ export default function FullPage() {
     }
   }
 
+  async function salvarMultiplicador() {
+    const valor = Number(multiplicadorInput.replace(",", "."));
+    if (!Number.isFinite(valor) || valor <= 0) return;
+    setSalvandoMultiplicador(true);
+    try {
+      const res = await fetch("/api/full/config", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ multiplicador: valor }),
+      });
+      if (res.ok) {
+        await carregar();
+      }
+    } finally {
+      setSalvandoMultiplicador(false);
+    }
+  }
+
   // Pedido do Guilherme em 2026-07-29: produtos compostos (ex: Suporte
   // Universal, que precisa de 1 placa "Corpos" + 1 placa "Ganchos" pra
   // fechar 1 unidade vendida) devem aparecer como UMA sugestão só na
@@ -159,7 +236,8 @@ export default function FullPage() {
   // componente, todos com o mesmo sku/quantidade/dataLimite — assim a
   // tela de produção continua enxergando e cobrando cada placa
   // separadamente (isso é produção, não venda), mas o usuário só
-  // precisou escolher e preencher uma vez.
+  // precisou escolher e preencher uma vez. Reaproveitada em 2026-08-07
+  // pelo painel "Agendar Full" — ver confirmarAgendamento abaixo.
   async function criarEnvio(
     sku: string,
     placaIds: number[],
@@ -167,17 +245,8 @@ export default function FullPage() {
     dataLimite: string,
     pecasPorUnidade: Record<number, number> = {}
   ) {
-    // Gera um grupoId só quando há mais de uma placa componente (produto
-    // composto) — é o elo que a tela usa pra mostrar essas linhas juntas
-    // como 1 só (ver EnviosPlanejados abaixo). Envios de placa única
-    // continuam sem grupoId (null), tratados como grupo de 1.
     const grupoId = placaIds.length > 1 ? `full-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : null;
     for (const placaId of placaIds) {
-      // Ver garantirColunaPecasPorUnidade em app/api/full/envios/route.ts
-      // — pedido do Guilherme em 2026-07-31 depois de descobrir que SKUs
-      // de kit (ex: "3 SUPORTE BOX 6MM BRANCO") não davam baixa
-      // proporcional no estoque. Manda o multiplicador exato daquele SKU
-      // pra essa placa (vem de /api/skus, que já lê de sku_placa).
       await fetch("/api/full/envios", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -195,10 +264,20 @@ export default function FullPage() {
     setEnvios(await enviosRes.json());
   }
 
-  // Confirma um GRUPO inteiro de envios (todas as placas componentes de
-  // um SKU composto, ou só 1 id pros envios de placa única) — pedido do
-  // Guilherme em 2026-07-29: mesma ação precisa cobrir corpo + gancho
-  // juntos, senão fica faltando dar baixa de uma das duas placas.
+  // Agenda o Full da semana de uma vez — pedido do Guilherme em
+  // 2026-08-07: "montamos o envio do full na sexta, porém ele é
+  // agendado, então mesmo montando na sexta eu vou te confirmar a data
+  // que vou enviar". Cria um envio (grupo, se composto) por SKU
+  // revisado no painel, todos com a MESMA data de envio escolhida ali.
+  async function confirmarAgendamento(
+    itens: { sku: string; placaIds: number[]; quantidade: number; pecasPorUnidade: Record<number, number> }[],
+    dataLimite: string
+  ) {
+    for (const item of itens) {
+      await criarEnvio(item.sku, item.placaIds, item.quantidade, dataLimite, item.pecasPorUnidade);
+    }
+  }
+
   async function confirmarGrupo(ids: number[]) {
     setEnvios((prev) => prev.filter((e) => !ids.includes(e.id)));
     for (const id of ids) {
@@ -212,9 +291,6 @@ export default function FullPage() {
     setEnvios(await enviosRes.json());
   }
 
-  // Edita quantidade/data limite de TODAS as placas de um grupo de uma
-  // vez — pedido do Guilherme em 2026-07-27: "eu coloquei errado e não
-  // tem como editar" (agora estendido pra produtos compostos).
   async function editarGrupo(ids: number[], quantidade: number, dataLimite: string) {
     let ok = true;
     for (const id of ids) {
@@ -230,12 +306,6 @@ export default function FullPage() {
     return ok;
   }
 
-  // NOVO — pedido do Guilherme em 2026-07-29: "aqui preciso conseguir
-  // excluir". Não existia nenhum jeito de remover um envio criado por
-  // engano da lista (só Editar/Confirmar). Reaproveita o mesmo mecanismo
-  // de "cancelado" já usado internamente (PATCH status=cancelado), que
-  // o GET já filtra da lista de pendentes — não desconta estoque nenhum,
-  // já que só confirmar faz isso.
   async function excluirGrupo(ids: number[]) {
     setEnvios((prev) => prev.filter((e) => !ids.includes(e.id)));
     for (const id of ids) {
@@ -289,6 +359,7 @@ export default function FullPage() {
   const totalAEnviar = linhasFiltradas.reduce((s, l) => s + l.recomendacaoEnvio, 0);
   const pendentes = linhasFiltradas.filter((l) => l.recomendacaoEnvio > 0).length;
   const enviosPendentes = envios.filter((e) => e.status === "pendente");
+  const multiplicadorTexto = String(multiplicador).replace(".", ",");
 
   return (
     <div className="flex flex-col gap-6">
@@ -305,15 +376,19 @@ export default function FullPage() {
           Cada linha da tabela abaixo já é um SKU real (ou o SKU
           cadastrado, quando não houve venda no Full na semana).
           &quot;A enviar&quot; = peças vendidas no Full nos últimos 7 dias
-          (período {periodo?.inicio} a {periodo?.fim}) — repor 1:1 o que
-          saiu. &quot;Estoque no Full&quot; agora é lido automaticamente
+          (período {periodo?.inicio} a {periodo?.fim}) × multiplicador de
+          envio (hoje {multiplicadorTexto}× — ajustável logo abaixo, no
+          bloco &quot;Agendamento semanal do Full&quot;).
+          &quot;Estoque no Full&quot; agora é lido automaticamente
           da API da ML (badge{" "}
           <span className="rounded bg-green-100 px-1 py-0.5 font-semibold text-green-700">API</span>
           ) pros SKUs que tiveram venda na semana — só cai pro valor
           digitado manualmente (badge{" "}
           <span className="rounded bg-gray-200 px-1 py-0.5 font-semibold text-gray-700">Manual</span>
           ) quando não há venda recente ou a leitura da API não retornou
-          nada.
+          nada. Cada SKU real (ex: com/sem parafuso) tem seu próprio
+          valor manual — não é mais compartilhado entre variantes da
+          mesma placa.
           {!apiDisponivel && (
             <>
               {" "}
@@ -344,6 +419,43 @@ export default function FullPage() {
         </p>
       </div>
 
+      <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">Agendamento semanal do Full</h2>
+          <p className="mt-1 text-xs text-gray-500">
+            Monte o envio da semana de uma vez (ex: toda sexta-feira): revise a
+            recomendação de cada SKU e confirme a data que vai enviar. Os
+            produtos entram na lista &quot;Envios planejados&quot; abaixo já
+            como &quot;Agendado&quot;.
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <label className="text-xs font-medium text-gray-500">Multiplicador</label>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={multiplicadorInput}
+            onChange={(e) => setMultiplicadorInput(e.target.value)}
+            className="w-16 rounded border border-gray-300 px-2 py-1.5 text-xs text-right"
+          />
+          <button
+            type="button"
+            onClick={salvarMultiplicador}
+            disabled={salvandoMultiplicador}
+            className="rounded border border-gray-300 px-2 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+          >
+            {salvandoMultiplicador ? "Salvando..." : "Salvar"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMostrarAgendamento(true)}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+          >
+            Agendar Full
+          </button>
+        </div>
+      </div>
+
       <EnviosPlanejados
         linhas={linhas}
         envios={enviosPendentes}
@@ -351,6 +463,13 @@ export default function FullPage() {
         onConfirmar={confirmarGrupo}
         onEditar={editarGrupo}
         onExcluir={excluirGrupo}
+      />
+
+      <AgendamentoFullPanel
+        aberto={mostrarAgendamento}
+        onFechar={() => setMostrarAgendamento(false)}
+        grupos={gruposAgendamento}
+        onConfirmar={confirmarAgendamento}
       />
 
       <div>
@@ -461,17 +580,187 @@ function ViabilidadeBadge({ envio }: { envio: EnvioFull }) {
   );
 }
 
+// Painel "Agendar Full" — pedido do Guilherme em 2026-08-07: gera de uma
+// vez a lista de produtos recomendados (vendido na semana × multiplicador)
+// pra montar o envio do Full, com a quantidade de cada SKU editável antes
+// de confirmar. A data escolhida aqui é única pra todo o lote (é a data
+// que ele vai enviar esse Full, decidida depois de montar fisicamente).
+function AgendamentoFullPanel({
+  aberto,
+  onFechar,
+  grupos,
+  onConfirmar,
+}: {
+  aberto: boolean;
+  onFechar: () => void;
+  grupos: GrupoAgendamento[];
+  onConfirmar: (
+    itens: { sku: string; placaIds: number[]; quantidade: number; pecasPorUnidade: Record<number, number> }[],
+    dataLimite: string
+  ) => Promise<void>;
+}) {
+  const [quantidades, setQuantidades] = useState<Record<string, string>>({});
+  const [incluidos, setIncluidos] = useState<Record<string, boolean>>({});
+  const [dataEnvio, setDataEnvio] = useState(todaySP());
+  const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    if (!aberto) return;
+    setQuantidades(
+      Object.fromEntries(grupos.map((g) => [g.chaveGrupo, String(g.recomendado)]))
+    );
+    setIncluidos(Object.fromEntries(grupos.map((g) => [g.chaveGrupo, true])));
+    setDataEnvio(todaySP());
+  }, [aberto, grupos]);
+
+  if (!aberto) return null;
+
+  const totalSelecionado = grupos
+    .filter((g) => incluidos[g.chaveGrupo])
+    .reduce((soma, g) => soma + (Number(quantidades[g.chaveGrupo]) || 0), 0);
+
+  async function confirmar() {
+    const itens = grupos
+      .filter((g) => incluidos[g.chaveGrupo])
+      .map((g) => ({
+        sku: g.sku,
+        placaIds: g.placaIds,
+        quantidade: Number(quantidades[g.chaveGrupo]) || 0,
+        pecasPorUnidade: g.pecasPorUnidade,
+      }))
+      .filter((item) => item.quantidade > 0);
+    if (itens.length === 0 || !dataEnvio) return;
+    setEnviando(true);
+    try {
+      await onConfirmar(itens, dataEnvio);
+      onFechar();
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-gray-200 p-4">
+          <h2 className="text-sm font-semibold text-gray-900">Agendar Full</h2>
+          <button
+            type="button"
+            onClick={onFechar}
+            className="text-gray-400 hover:text-gray-600"
+            title="Fechar"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="overflow-y-auto p-4">
+          <p className="mb-4 text-xs text-gray-500">
+            Confira o SKU e a quantidade de cada produto antes de agendar —
+            preste atenção nas variações (com/sem parafuso, cor etc.), já que
+            é exatamente esse SKU que você vai preencher no Mercado Livre.
+            Desmarque o que não for enviar dessa vez, ajuste a quantidade se
+            precisar, e escolha a data em que vai enviar esse Full.
+          </p>
+          <div className="mb-4">
+            <label className="mb-1 block text-xs font-medium text-gray-500">
+              Data que vou enviar
+            </label>
+            <input
+              type="date"
+              value={dataEnvio}
+              onChange={(e) => setDataEnvio(e.target.value)}
+              className="rounded border border-gray-300 px-2 py-1.5 text-sm"
+            />
+          </div>
+          {grupos.length === 0 ? (
+            <p className="text-sm text-gray-400">
+              Nenhum produto com recomendação de envio essa semana.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded border border-gray-200">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 text-left font-semibold uppercase text-gray-500">
+                  <tr>
+                    <th className="px-3 py-2">Incluir</th>
+                    <th className="px-3 py-2">Produto / SKU</th>
+                    <th className="px-3 py-2 text-right">Vendido (7d)</th>
+                    <th className="px-3 py-2 text-right">Quantidade a enviar</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {grupos.map((g) => (
+                    <tr key={g.chaveGrupo}>
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(incluidos[g.chaveGrupo])}
+                          onChange={(e) =>
+                            setIncluidos((prev) => ({
+                              ...prev,
+                              [g.chaveGrupo]: e.target.checked,
+                            }))
+                          }
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <p className="font-medium text-gray-900">{g.sku}</p>
+                        <p className="text-gray-400">{g.nome}</p>
+                      </td>
+                      <td className="px-3 py-2 text-right text-gray-700">{g.vendidoFull7d}</td>
+                      <td className="px-3 py-2 text-right">
+                        <input
+                          type="number"
+                          min={0}
+                          value={quantidades[g.chaveGrupo] ?? ""}
+                          onChange={(e) =>
+                            setQuantidades((prev) => ({
+                              ...prev,
+                              [g.chaveGrupo]: e.target.value,
+                            }))
+                          }
+                          className="w-20 rounded border border-gray-300 px-1.5 py-1 text-right text-xs"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center justify-between border-t border-gray-200 p-4">
+          <p className="text-xs text-gray-500">
+            {grupos.filter((g) => incluidos[g.chaveGrupo]).length} produto(s)
+            selecionado(s) · {totalSelecionado} peças no total
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onFechar}
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={enviando || grupos.length === 0}
+              onClick={confirmar}
+              className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-40"
+            >
+              {enviando ? "Agendando..." : "Confirmar agendamento"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Seção de envios planejados do Full — pedido do Guilherme em
 // 2026-07-25. Formulário (data + SKU + quantidade) + lista dos envios
 // ainda pendentes, cada um com um botão "Confirmar envio" que tira essa
 // produção da linha de frente da fila de prioridade (ver
 // app/producao/page.tsx, critério nº-2).
-// Uma linha da tabela de envios já agrupada — pedido do Guilherme em
-// 2026-07-29: "o suporte universal ainda tem gancho e corpo... mas no
-// planejamento do full mostra só a sku principal". Cada grupo junta
-// todos os full_envios (linhas do banco, uma por placa componente) que
-// compartilham grupoId (produtos compostos) ou, na ausência de
-// grupoId, o próprio id (produtos de placa única — a maioria).
 interface GrupoEnvio {
   chave: string;
   ids: number[];
@@ -480,8 +769,6 @@ interface GrupoEnvio {
   quantidade: number;
   dataLimite: string;
   membros: EnvioFull[];
-  // Maior multiplicador entre os componentes — pra avisar na tela quando
-  // a quantidade em unidades vira mais peças de verdade (SKU de kit).
   pecasPorUnidade: number;
 }
 
@@ -530,10 +817,6 @@ function EnviosPlanejados({
       return;
     }
     const timeout = setTimeout(async () => {
-      // agrupar=false: aqui precisamos ver cada SKU real separado (ex: os
-      // 4 SKUs do Suporte Secador de Cabelo — Branco/Preto, com/sem
-      // parafuso —, mesma placa física, anúncios diferentes). A busca da
-      // aba Produção (carregar máquina) continua agrupada por placa.
       const res = await fetch(
         `/api/skus?q=${encodeURIComponent(buscaSku.trim())}&agrupar=false`
       );
@@ -542,18 +825,6 @@ function EnviosPlanejados({
     return () => clearTimeout(timeout);
   }, [buscaSku]);
 
-  // Pedido do Guilherme em 2026-07-29: "para ser vendido precisa de 1
-  // gancho e 1 corpo, mostrar só a sku principal, a produção é outra
-  // coisa" — a busca acima (agrupar=false) traz uma linha por
-  // sku_placa, então um produto composto (Suporte Universal, Suporte
-  // Carro etc.) aparece 2-3x, uma vez por placa componente (corpos,
-  // ganchos, mista...). Pra quem tá planejando um ENVIO (venda), isso
-  // não importa — o que importa é o SKU que vai ser vendido. Aqui
-  // reagrupamos por sku de novo, do lado do cliente, juntando todas as
-  // placas componentes daquele sku numa lista (placaIds); ao confirmar a
-  // sugestão, criamos um envio pra cada placa componente por trás (ver
-  // criarEnvio em app/full/page.tsx), sem o usuário precisar escolher
-  // linha por linha.
   const sugestoes = useMemo(() => {
     const porSku = new Map<
       string,
@@ -572,9 +843,6 @@ function EnviosPlanejados({
           sku: r.sku,
           placaIds: [r.placa_id],
           placaNomes: [r.placa_nome],
-          // Ver garantirColunaPecasPorUnidade em app/api/full/envios/route.ts
-          // — guarda o multiplicador real (de sku_placa) por placa
-          // componente, pra levar junto quando o envio for criado.
           pecasPorUnidade: { [r.placa_id]: Number(r.pecas_por_unidade) },
         });
       }
@@ -582,12 +850,6 @@ function EnviosPlanejados({
     return Array.from(porSku.values());
   }, [resultados]);
 
-  // Mesma lógica de agrupamento da busca acima, agora pra lista de
-  // envios JÁ CRIADOS — junta as linhas que vieram da mesma ação de
-  // "Adicionar envio" (grupoId, ver criarEnvio em app/full/page.tsx) numa
-  // única linha de tabela. Sem grupoId (a maioria dos produtos, de placa
-  // única), cada envio continua sendo seu próprio grupo de 1 — nenhuma
-  // mudança de comportamento pra eles.
   const grupos = useMemo(() => {
     const porChave = new Map<string, GrupoEnvio>();
     for (const e of envios) {
@@ -639,13 +901,14 @@ function EnviosPlanejados({
       <h2 className="mb-1 text-sm font-semibold text-gray-900">Envios planejados do Full</h2>
       <p className="mb-3 text-xs text-gray-500">
         Registre aqui a data limite, o SKU e a quantidade de cada envio que
-        você precisa preparar. Se o estoque atual + o que já está sendo
-        produzido não cobrir a quantidade, essa placa vira prioridade
-        extraordinária na fila de produção — acima até do backlog de
-        despacho — até ser produzida ou o envio ser confirmado. A coluna
-        &quot;Linha de produção&quot; mostra se dá pra produzir o que falta
-        até a data limite sem tomar mais de 50% da capacidade das
-        máquinas (
+        você precisa preparar (ou use o botão &quot;Agendar Full&quot; ali
+        em cima pra montar tudo de uma vez). Se o estoque atual + o que já
+        está sendo produzido não cobrir a quantidade, essa placa vira
+        prioridade extraordinária na fila de produção — acima até do
+        backlog de despacho — até ser produzida ou o envio ser confirmado.
+        A coluna &quot;Linha de produção&quot; mostra se dá pra produzir o
+        que falta até a data limite sem tomar mais de 50% da capacidade
+        das máquinas (
         <span className="rounded bg-green-100 px-1 py-0.5 font-semibold text-green-700">
           aprovado
         </span>{" "}
@@ -691,10 +954,6 @@ function EnviosPlanejados({
                         (produção: {s.placaNomes.join(" + ")})
                       </span>
                     )}
-                    {/* Ver garantirColunaPecasPorUnidade em
-                        app/api/full/envios/route.ts — avisa ANTES de
-                        escolher que esse SKU é kit, já que a quantidade
-                        digitada é em UNIDADES do SKU, não em peças. */}
                     {Object.values(s.pecasPorUnidade).some((n) => n > 1) && (
                       <span className="text-amber-700">
                         {" "}
@@ -754,8 +1013,6 @@ function EnviosPlanejados({
               {grupos.map((g) => {
                 const emEdicao = editando[g.chave];
                 const composto = g.membros.length > 1;
-                // "Pior caso" entre os componentes — quem tem mais peças
-                // faltando decide o badge de viabilidade da linha inteira.
                 const pior = g.membros.reduce((a, b) =>
                   b.percentualComprometido > a.percentualComprometido ? b : a
                 );
@@ -792,11 +1049,6 @@ function EnviosPlanejados({
                       ) : (
                         <>
                           {g.quantidade}
-                          {/* Ver garantirColunaPecasPorUnidade em
-                              app/api/full/envios/route.ts — pedido do
-                              Guilherme em 2026-07-31 depois de descobrir
-                              o bug do kit: deixa explícito quantas peças
-                              físicas esse envio representa de verdade. */}
                           {g.pecasPorUnidade > 1 && (
                             <span className="ml-1 font-normal text-gray-400">
                               ({g.quantidade * g.pecasPorUnidade} peças)
@@ -819,7 +1071,12 @@ function EnviosPlanejados({
                           className="rounded border border-gray-300 px-1.5 py-1 text-xs"
                         />
                       ) : (
-                        formatDiaBR(g.dataLimite)
+                        <>
+                          <span className="mr-1.5 inline-block rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">
+                            Agendado
+                          </span>
+                          {formatDiaBR(g.dataLimite)}
+                        </>
                       )}
                     </td>
                     <td className="px-3 py-2 text-right">
@@ -912,11 +1169,6 @@ function EnviosPlanejados({
                             >
                               {confirmando[g.chave] ? "Confirmando..." : "Confirmar envio"}
                             </button>
-                            {/* NOVO — pedido do Guilherme em 2026-07-29: "aqui
-                                preciso conseguir excluir". Confirma antes de
-                                apagar pra evitar clique acidental; excluir um
-                                grupo composto remove TODAS as placas
-                                componentes daquele envio de uma vez. */}
                             <button
                               disabled={Boolean(excluindo[g.chave])}
                               onClick={async () => {
@@ -964,13 +1216,6 @@ interface MovimentacaoFull {
   dataLimiteEnvio: string;
 }
 
-// Extrato de baixas de estoque geradas por envios do Full confirmados —
-// pedido do Guilherme em 2026-07-31: "deve ter... um botão para abrir um
-// [extrato] com as movimentações feitas em estoque, para eu ver o que do
-// full descontou do estoque e de qual sku" (motivado por ter descoberto
-// o bug do kit: "dei baixa agora em 10 unidades do Box 6mm branco e ele
-// não deu baixa de 30un do meu estoque"). Mesmo padrão de "carregar só
-// quando abrir" já usado em HistoricoFilamento (app/estoque/page.tsx).
 function MovimentacoesFull() {
   const [aberto, setAberto] = useState(false);
   const [movimentos, setMovimentos] = useState<MovimentacaoFull[] | "loading" | "erro" | null>(
