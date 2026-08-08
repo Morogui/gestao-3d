@@ -86,6 +86,19 @@ export async function GET() {
 
   const hoje = todaySP();
   const seteDiasAtras = diasAtras(hoje, 6);
+  // Corrigido em 2026-08-08 — bug real reportado pelo Guilherme: "Suporte
+  // secador com parafuso aparece na montagem e o sem parafuso não". Causa
+  // raiz: variantesPorPlaca (mais abaixo) só descobria quais SKUs/anúncios
+  // reais existem varrendo os pedidos da MESMA janela de 7 dias usada pra
+  // calcular a recomendação de envio — então uma variante sem nenhuma
+  // venda no Full nessa semana específica (ex: "Sem Parafuso Preto", que
+  // vendeu 1x há 10 dias) simplesmente não gerava nenhuma linha, mesmo
+  // sendo um anúncio real e ativo. Agora busca pedidos de uma janela bem
+  // mais larga (30 dias) só pra DESCOBRIR quais variantes existem — a
+  // conta de quanto vendeu/quanto recomendar mandar continua usando
+  // exatamente os últimos 7 dias (ver "dentroDosUltimosSeteDias" mais
+  // abaixo).
+  const trintaDiasAtras = diasAtras(hoje, 29);
 
   const cookieStore = cookies();
   const accessToken = cookieStore.get("ml_access_token")?.value;
@@ -104,7 +117,7 @@ export async function GET() {
   const userProductStatus =
     accessToken && userId ? await checkUserProductSeller(userId, accessToken) : null;
 
-  const result = await getOrdersRange(seteDiasAtras, hoje);
+  const result = await getOrdersRange(trintaDiasAtras, hoje);
   if (!result.connected) {
     return NextResponse.json({ connected: false });
   }
@@ -139,7 +152,17 @@ export async function GET() {
     skuPlacaMap.set(chave, lista);
   }
 
-  const { porPlaca } = calcularDemandaSemanal(result.orders, placas, skuPlacaMap, 7);
+  // Corte de verdade dos "últimos 7 dias" dentro dos pedidos de 30 dias
+  // buscados acima (ver comentário em trintaDiasAtras) — usado tanto pra
+  // manter a demanda semanal (Produção) igual a antes quanto pra decidir
+  // quais pedidos contam em vendidoFull7d/recomendacaoEnvio mais abaixo.
+  const cortesSeteDias = new Date(`${seteDiasAtras}T00:00:00-03:00`).getTime();
+  function dentroDosUltimosSeteDias(dateCreated: string): boolean {
+    return new Date(dateCreated).getTime() >= cortesSeteDias;
+  }
+  const ordersUltimos7Dias = result.orders.filter((o) => dentroDosUltimosSeteDias(o.dateCreated));
+
+  const { porPlaca } = calcularDemandaSemanal(ordersUltimos7Dias, placas, skuPlacaMap, 7);
 
   const estoqueFullRows = (await sql`
     SELECT placa_id, chave, quantidade_pecas, atualizado_em FROM estoque_full_placas
@@ -193,6 +216,7 @@ export async function GET() {
   const variantesPorPlaca = new Map<number, Map<string, VarianteAcumulada>>();
   for (const order of result.orders) {
     const isFull = order.shippingMode === "Full";
+    const dentro7Dias = dentroDosUltimosSeteDias(order.dateCreated);
     for (const item of order.items) {
       if (!item.itemId || item.itemId === "—") continue;
       const placaIds = matchItemToPlacaIds(item, placas, skuPlacaMap);
@@ -219,7 +243,12 @@ export async function GET() {
           variantes.set(varianteKey, acumulada);
         }
         acumulada.itemIds.add(item.itemId);
-        if (isFull) acumulada.vendidoFull7d += item.quantity;
+        // Só conta como vendido na semana se o pedido realmente caiu nos
+        // últimos 7 dias — a variante em si é descoberta numa janela mais
+        // larga (30 dias, ver trintaDiasAtras acima), mas o número de
+        // venda/recomendação de envio tem que continuar refletindo só a
+        // semana, senão a recomendação ficaria inflada.
+        if (isFull && dentro7Dias) acumulada.vendidoFull7d += item.quantity;
       }
     }
   }
