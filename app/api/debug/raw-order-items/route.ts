@@ -4,6 +4,7 @@ import { ML_API_BASE } from "@/lib/mercadolivre";
 
 export const dynamic = "force-dynamic";
 
+// touch
 // Rota de diagnóstico TEMPORÁRIA (2026-08-08) — pra descobrir o formato
 // real que a ML devolve pra pedidos de anúncios com variação (ex:
 // Cortina Com/Sem Parafuso), já que o código atual (lib/ml-orders.ts)
