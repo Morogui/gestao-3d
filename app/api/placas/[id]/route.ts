@@ -41,12 +41,20 @@ export async function PATCH(
   }
 
   const body = await request.json();
-  const { pesoPlacaGramas, saidaExtraPlacaId, saidaExtraPecas, papel, pecasPorPlaca } = body as {
+  const {
+    pesoPlacaGramas,
+    saidaExtraPlacaId,
+    saidaExtraPecas,
+    papel,
+    pecasPorPlaca,
+    descontinuada,
+  } = body as {
     pesoPlacaGramas?: number | null;
     saidaExtraPlacaId?: number | null;
     saidaExtraPecas?: number | null;
     papel?: "corpo" | "gancho" | null;
     pecasPorPlaca?: number;
+    descontinuada?: boolean;
   };
 
   if (
@@ -92,11 +100,19 @@ export async function PATCH(
     );
   }
 
+  if (descontinuada !== undefined && typeof descontinuada !== "boolean") {
+    return NextResponse.json(
+      { error: "descontinuada precisa ser um booleano" },
+      { status: 400 }
+    );
+  }
+
   const temPeso = pesoPlacaGramas !== undefined;
   const temSaidaId = saidaExtraPlacaId !== undefined;
   const temSaidaPecas = saidaExtraPecas !== undefined;
   const temPapel = papel !== undefined;
   const temPecasPorPlaca = pecasPorPlaca !== undefined;
+  const temDescontinuada = descontinuada !== undefined;
 
   const rows = (await sql`
     UPDATE placas
@@ -105,9 +121,10 @@ export async function PATCH(
       saida_extra_placa_id = CASE WHEN ${temSaidaId} THEN ${saidaExtraPlacaId ?? null} ELSE saida_extra_placa_id END,
       saida_extra_pecas = CASE WHEN ${temSaidaPecas} THEN ${saidaExtraPecas ?? null} ELSE saida_extra_pecas END,
       papel = CASE WHEN ${temPapel} THEN ${papel ?? null} ELSE papel END,
-      pecas_por_placa = CASE WHEN ${temPecasPorPlaca} THEN ${pecasPorPlaca ?? null} ELSE pecas_por_placa END
+      pecas_por_placa = CASE WHEN ${temPecasPorPlaca} THEN ${pecasPorPlaca ?? null} ELSE pecas_por_placa END,
+      descontinuada = CASE WHEN ${temDescontinuada} THEN ${descontinuada ?? false} ELSE descontinuada END
     WHERE id = ${id}
-    RETURNING id, peso_placa_gramas, saida_extra_placa_id, saida_extra_pecas, papel, pecas_por_placa
+    RETURNING id, peso_placa_gramas, saida_extra_placa_id, saida_extra_pecas, papel, pecas_por_placa, descontinuada
   `) as {
     id: number;
     peso_placa_gramas: string | null;
@@ -115,6 +132,7 @@ export async function PATCH(
     saida_extra_pecas: string | null;
     papel: string | null;
     pecas_por_placa: string;
+    descontinuada: boolean;
   }[];
 
   if (rows.length === 0) {
