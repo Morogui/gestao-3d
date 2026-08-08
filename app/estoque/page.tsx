@@ -423,6 +423,35 @@ export default function EstoquePage() {
     }
   }
 
+  // Marca/desmarca uma placa como descontinuada direto da aba Estoque —
+  // pedido do Guilherme em 2026-08-08, depois de ver "6X2.5 21 FATIAS"
+  // (que ele apagou da aba Custo, achando que isso já bastava) continuar
+  // no topo da fila de prioridade de Produção. Custo (tabela produtos,
+  // só usada pro cálculo de preço) e Produção (tabela placas, dona da
+  // fila) são catálogos separados sem vínculo no banco — apagar em Custo
+  // nunca mexe em placas. Até agora "descontinuada" só existia via edição
+  // direta no banco; agora dá pra alternar por aqui, sem precisar de mim.
+  async function alternarDescontinuada(placaId: number, descontinuada: boolean) {
+    setSalvando((prev) => ({ ...prev, [placaId]: true }));
+    try {
+      const res = await fetch(`/api/placas/${placaId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ descontinuada }),
+      });
+      if (res.ok) {
+        const atualizado = await res.json();
+        setPlacas((prev) =>
+          prev.map((p) =>
+            p.id === placaId ? { ...p, descontinuada: atualizado.descontinuada } : p
+          )
+        );
+      }
+    } finally {
+      setSalvando((prev) => ({ ...prev, [placaId]: false }));
+    }
+  }
+
   if (status === "loading") {
     return (
       <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
@@ -585,6 +614,7 @@ export default function EstoquePage() {
                 placa={placa}
                 salvando={Boolean(salvando[placa.id])}
                 onAjustar={(delta) => ajustarEstoque(placa.id, delta)}
+                onAlternarDescontinuada={(v) => alternarDescontinuada(placa.id, v)}
                 vendavel={
                   placa.tipo === "composto" && placa.grupoComposto
                     ? vendavelPorGrupo.get(placa.grupoComposto) ?? null
@@ -629,11 +659,13 @@ function LinhaEstoque({
   placa,
   salvando,
   onAjustar,
+  onAlternarDescontinuada,
   vendavel,
 }: {
   placa: EstoqueRow;
   salvando: boolean;
   onAjustar: (delta: number) => void;
+  onAlternarDescontinuada: (novoValor: boolean) => void;
   // Ver nota em vendavelPorGrupo (EstoquePage) — null pras placas diretas
   // (não compostas), que não têm essa noção de "metade" nenhuma.
   vendavel: number | null;
@@ -692,6 +724,19 @@ function LinhaEstoque({
                 Descontinuada
               </span>
             )}
+            <button
+              type="button"
+              onClick={() => onAlternarDescontinuada(!placa.descontinuada)}
+              disabled={salvando}
+              className="ml-2 text-xs font-medium text-blue-600 hover:underline disabled:opacity-40"
+              title={
+                placa.descontinuada
+                  ? "Reativar — volta a entrar na fila de prioridade de Produção"
+                  : "Descontinuar — para de entrar na fila de produção, mas mantém o estoque restante aqui e na aba Full"
+              }
+            >
+              {placa.descontinuada ? "Reativar" : "Descontinuar"}
+            </button>
           </p>
           <p className="text-xs text-gray-400">
             {placa.nome}
