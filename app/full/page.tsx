@@ -77,6 +77,13 @@ interface GrupoAgendamento {
   chaveGrupo: string;
   sku: string;
   nome: string;
+  // Texto real do anúncio da ML que gerou essa recomendação — pedido do
+  // Guilherme em 2026-08-08: quando uma placa tem mais de 1 SKU real
+  // vendido (ex: Cortina Com Parafuso x Sem Parafuso), os grupos ficavam
+  // com o MESMO rótulo genérico (nome da placa) na tela de agendar,
+  // impossível de diferenciar qual linha é qual SKU. Mostrado como
+  // "Anúncio ML: ..." no painel, igual já faz a tabela principal da aba.
+  titulo: string;
   placaIds: number[];
   pecasPorUnidade: Record<number, number>;
   vendidoFull7d: number;
@@ -170,6 +177,7 @@ export default function FullPage() {
           chaveGrupo,
           sku: l.sku || l.nome,
           nome: l.nome,
+          titulo: l.titulo,
           placaIds: [l.placaId],
           pecasPorUnidade: { [l.placaId]: l.pecasPorUnidade },
           vendidoFull7d: l.vendidoFull7d,
@@ -705,6 +713,9 @@ function AgendamentoFullPanel({
                       <td className="px-3 py-2">
                         <p className="font-medium text-gray-900">{g.sku}</p>
                         <p className="text-gray-400">{g.nome}</p>
+                        {g.titulo && (
+                          <p className="mt-0.5 text-blue-700">Anúncio ML: {g.titulo}</p>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-right text-gray-700">{g.vendidoFull7d}</td>
                       <td className="px-3 py-2 text-right">
