@@ -37,6 +37,18 @@ export function middleware(req: NextRequest) {
   return NextResponse.next();
 }
 
+// Corrigido em 2026-08-10 — bug real reportado pelo Guilherme: "não está
+// puxando pedidos Shopee". Causa raiz: o matcher abaixo cobria TUDO,
+// inclusive /api — então o cron da Vercel (que chama
+// /api/pedidos/sincronizar de 1 em 1 minuto batendo no host interno de
+// cada deploy, tipo gestao-3d-6czpm5gir-morolar.vercel.app, não no
+// domínio canônico) caía direto no redirect 308 acima. O
+// vercel-cron/webhooks não seguem redirect, então a sincronização
+// automática nunca rodava de verdade — só quando alguém abria o site e
+// disparava manualmente. Rotas /api nunca são "bookmarkadas" pelo
+// Guilherme no navegador (o bug original era só de navegação de página),
+// então excluir /api daqui resolve sem reabrir o problema do loop de
+// OAuth.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/).*)"],
 };
