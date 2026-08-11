@@ -5,50 +5,50 @@ import { PlacaRow, CORES_FILAMENTO, CorFilamento, estoqueVendavel } from "@/lib/
 import { EstoqueFilamentoRow, formatGramasEmKg, parseKgParaGramas } from "@/lib/producao-types";
 
 type EstoqueRow = PlacaRow & {
-    atualizadoEm: string | null;
-    // Quanto do "estoque" acima já foi descontado HOJE por vendas cujo
-    // pedido ainda não despachou de verdade na plataforma — pedido do
-    // Guilherme em 2026-07-29. Vem calculado pronto de /api/estoque (ver
-    // buscarPendenteHojePorPlaca lá). Puramente informativo: o número de
-    // estoque já está correto (a baixa acontece no pagamento), isso só
-    // mostra "quanto desse total já tem destino certo hoje".
-    pendenteEnvioHoje: number;
-    // Estoque no Full — separado do local, pedido do Guilherme em
-    // 2026-07-29 ("os estoques são diferentes"). Mesmo número já
-    // usado/ajustável na aba Full (estoque_full_placas); aqui é só leitura.
-    estoqueFull: number;
+  atualizadoEm: string | null;
+  // Quanto do "estoque" acima já foi descontado HOJE por vendas cujo
+  // pedido ainda não despachou de verdade na plataforma — pedido do
+  // Guilherme em 2026-07-29. Vem calculado pronto de /api/estoque (ver
+  // buscarPendenteHojePorPlaca lá). Puramente informativo: o número de
+  // estoque já está correto (a baixa acontece no pagamento), isso só
+  // mostra "quanto desse total já tem destino certo hoje".
+  pendenteEnvioHoje: number;
+  // Estoque no Full — separado do local, pedido do Guilherme em
+  // 2026-07-29 ("os estoques são diferentes"). Mesmo número já
+  // usado/ajustável na aba Full (estoque_full_placas); aqui é só leitura.
+  estoqueFull: number;
 };
 type Status = "loading" | "ready" | "erro";
 
 interface Movimento {
-    data: string;
-    tipo: "venda" | "producao" | "manual" | "full";
-    quantidade: number;
-    detalhe: string;
+  data: string;
+  tipo: "venda" | "producao" | "manual" | "full";
+  quantidade: number;
+  detalhe: string;
 }
 
 interface SincronizacaoInfo {
-    connected: boolean;
-    pedidosVerificados?: number;
-    combosNovos?: number;
-    pecasBaixadas?: number;
-    combosRevertidos?: number;
-    pecasDevolvidas?: number;
+  connected: boolean;
+  pedidosVerificados?: number;
+  combosNovos?: number;
+  pecasBaixadas?: number;
+  combosRevertidos?: number;
+  pecasDevolvidas?: number;
 }
 
 // Compra de filamento vinda de /api/financeiro/compras-filamento — usada
 // aqui só pra listar os pedidos que ainda não chegaram (chegou=false) e
 // deixar confirmar a chegada. Ver PedidosFilamentoACaminho.
 interface CompraFilamentoRow {
-    id: number;
-    cor: CorFilamento;
-    gramas: number;
-    valorPago: number;
-    dataCompra: string;
-    fornecedor: string | null;
-    chegou: boolean;
-    dataChegada: string | null;
-    pedidoId: string | null;
+  id: number;
+  cor: CorFilamento;
+  gramas: number;
+  valorPago: number;
+  dataCompra: string;
+  fornecedor: string | null;
+  chegou: boolean;
+  dataChegada: string | null;
+  pedidoId: string | null;
 }
 
 // Aba Estoque: lista todas as placas (inclusive descontinuadas, como a
@@ -68,33 +68,33 @@ interface CompraFilamentoRow {
 // descontado for cancelado/estornado depois, a peça volta sozinha (ver
 // combosRevertidos/pecasDevolvidas abaixo).
 export default function EstoquePage() {
-    const [status, setStatus] = useState<Status>("loading");
-    const [placas, setPlacas] = useState<EstoqueRow[]>([]);
-    const [busca, setBusca] = useState("");
-    const [salvando, setSalvando] = useState<Record<number, boolean>>({});
-    const [sincronizando, setSincronizando] = useState(false);
-    const [sincronizacao, setSincronizacao] = useState<SincronizacaoInfo | null>(null);
-    const [filamento, setFilamento] = useState<EstoqueFilamentoRow | null>(null);
+  const [status, setStatus] = useState<Status>("loading");
+  const [placas, setPlacas] = useState<EstoqueRow[]>([]);
+  const [busca, setBusca] = useState("");
+  const [salvando, setSalvando] = useState<Record<number, boolean>>({});
+  const [sincronizando, setSincronizando] = useState(false);
+  const [sincronizacao, setSincronizacao] = useState<SincronizacaoInfo | null>(null);
+  const [filamento, setFilamento] = useState<EstoqueFilamentoRow | null>(null);
 
   async function carregarFilamento() {
-        try {
-                const res = await fetch("/api/producao/filamento");
-                if (!res.ok) throw new Error("falha");
-                setFilamento(await res.json());
-        } catch {
-                // silencioso — o card some se não carregar, mas não trava a tela
-        }
+    try {
+      const res = await fetch("/api/producao/filamento");
+      if (!res.ok) throw new Error("falha");
+      setFilamento(await res.json());
+    } catch {
+      // silencioso — o card some se não carregar, mas não trava a tela
+    }
   }
 
   async function salvarFilamento(novo: EstoqueFilamentoRow) {
-        const res = await fetch("/api/producao/filamento", {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(novo),
-        });
-        if (res.ok) {
-                setFilamento(await res.json());
-        }
+    const res = await fetch("/api/producao/filamento", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(novo),
+    });
+    if (res.ok) {
+      setFilamento(await res.json());
+    }
   }
 
   // Pedido de compra de filamento — abre uma janela (modal) onde dá pra
@@ -121,49 +121,49 @@ export default function EstoquePage() {
   const hojeISO = () => new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   const [modalAdicionarAberto, setModalAdicionarAberto] = useState(false);
-    const [itemPedidoAtual, setItemPedidoAtual] = useState({
-          cor: "colorido" as CorFilamento,
-          pesoKg: "",
-          pesoG: "",
-    });
-    const [itensPedidoFilamento, setItensPedidoFilamento] = useState<
+  const [itemPedidoAtual, setItemPedidoAtual] = useState({
+    cor: "colorido" as CorFilamento,
+    pesoKg: "",
+    pesoG: "",
+  });
+  const [itensPedidoFilamento, setItensPedidoFilamento] = useState<
     { cor: CorFilamento; pesoKg: string; pesoG: string }[]
-        >([]);
-    const [pedidoFilamento, setPedidoFilamento] = useState<{
-          dataCompra: string;
-          fornecedor: string;
-          valorTotal: string;
-          parcelas: string[];
-          // Chegada — pedido do Guilherme em 2026-08-11: "comprei filamento no
-          // dia 7, porem ele nao chegou, entao nao entrou em estoque,
-          // precisava conseguir lançar a compra e quando ele chegar eu
-          // conseguir lançar ele". `chegou` true (padrão) = comportamento de
-          // sempre: o pedido já está em mãos, credita o estoque na hora.
-          // Desmarcado = só registra a compra (financeiro + custo médio ficam
-          // pendentes de chegada); o estoque só é somado quando confirmar em
-          // "Pedidos de filamento a caminho" (ver confirmarChegadaPedido).
-          chegou: boolean;
-    }>({
-          dataCompra: hojeISO(),
-          fornecedor: "",
-          valorTotal: "",
-          parcelas: [],
-          chegou: true,
-    });
-    const [salvandoPedido, setSalvandoPedido] = useState(false);
-    const [erroPedido, setErroPedido] = useState<string | null>(null);
-    const [comprasFilamento, setComprasFilamento] = useState<CompraFilamentoRow[]>([]);
-    const [confirmandoChegada, setConfirmandoChegada] = useState<Record<string, boolean>>({});
+  >([]);
+  const [pedidoFilamento, setPedidoFilamento] = useState<{
+    dataCompra: string;
+    fornecedor: string;
+    valorTotal: string;
+    parcelas: string[];
+    // Chegada — pedido do Guilherme em 2026-08-11: "comprei filamento no
+    // dia 7, porem ele nao chegou, entao nao entrou em estoque,
+    // precisava conseguir lançar a compra e quando ele chegar eu
+    // conseguir lançar ele". `chegou` true (padrão) = comportamento de
+    // sempre: o pedido já está em mãos, credita o estoque na hora.
+    // Desmarcado = só registra a compra (financeiro + custo médio ficam
+    // pendentes de chegada); o estoque só é somado quando confirmar em
+    // "Pedidos de filamento a caminho" (ver confirmarChegadaPedido).
+    chegou: boolean;
+  }>({
+    dataCompra: hojeISO(),
+    fornecedor: "",
+    valorTotal: "",
+    parcelas: [],
+    chegou: true,
+  });
+  const [salvandoPedido, setSalvandoPedido] = useState(false);
+  const [erroPedido, setErroPedido] = useState<string | null>(null);
+  const [comprasFilamento, setComprasFilamento] = useState<CompraFilamentoRow[]>([]);
+  const [confirmandoChegada, setConfirmandoChegada] = useState<Record<string, boolean>>({});
 
   async function carregarComprasFilamento() {
-        try {
-                const res = await fetch("/api/financeiro/compras-filamento");
-                if (!res.ok) throw new Error("falha");
-                const data = await res.json();
-                setComprasFilamento(data.compras ?? []);
-        } catch {
-                // silencioso — a seção de pedidos a caminho só some se não carregar
-        }
+    try {
+      const res = await fetch("/api/financeiro/compras-filamento");
+      if (!res.ok) throw new Error("falha");
+      const data = await res.json();
+      setComprasFilamento(data.compras ?? []);
+    } catch {
+      // silencioso — a seção de pedidos a caminho só some se não carregar
+    }
   }
 
   // Confirma que um pedido (ou grupo de cores do mesmo pedido) chegou de
@@ -172,20 +172,20 @@ export default function EstoquePage() {
   // salvarPedidoFilamento), então confirma uma por uma; o crédito no
   // estoque_filamento acontece no PATCH (ver [id]/route.ts).
   async function confirmarChegadaPedido(chave: string, ids: number[]) {
-        setConfirmandoChegada((atual) => ({ ...atual, [chave]: true }));
-        try {
-                for (const id of ids) {
-                          await fetch(`/api/financeiro/compras-filamento/${id}`, {
-                                      method: "PATCH",
-                                      headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({ chegou: true }),
-                          });
-                }
-                await carregarComprasFilamento();
-                await carregarFilamento();
-        } finally {
-                setConfirmandoChegada((atual) => ({ ...atual, [chave]: false }));
-        }
+    setConfirmandoChegada((atual) => ({ ...atual, [chave]: true }));
+    try {
+      for (const id of ids) {
+        await fetch(`/api/financeiro/compras-filamento/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chegou: true }),
+        });
+      }
+      await carregarComprasFilamento();
+      await carregarFilamento();
+    } finally {
+      setConfirmandoChegada((atual) => ({ ...atual, [chave]: false }));
+    }
   }
 
   // Prazo de pagamento — pedido do Guilherme em 2026-07-29: "cada empresa
@@ -197,70 +197,70 @@ export default function EstoquePage() {
   // parcelas = a prazo, e o valor total do pedido é dividido igualmente
   // entre elas na hora de salvar (ver salvarPedidoFilamento).
   function adicionarParcela() {
-        setPedidoFilamento((atual) => ({ ...atual, parcelas: [...atual.parcelas, ""] }));
+    setPedidoFilamento((atual) => ({ ...atual, parcelas: [...atual.parcelas, ""] }));
   }
 
   function mudarParcela(indice: number, valor: string) {
-        setPedidoFilamento((atual) => ({
-                ...atual,
-                parcelas: atual.parcelas.map((p, i) => (i === indice ? valor : p)),
-        }));
+    setPedidoFilamento((atual) => ({
+      ...atual,
+      parcelas: atual.parcelas.map((p, i) => (i === indice ? valor : p)),
+    }));
   }
 
   function removerParcela(indice: number) {
-        setPedidoFilamento((atual) => ({
-                ...atual,
-                parcelas: atual.parcelas.filter((_, i) => i !== indice),
-        }));
+    setPedidoFilamento((atual) => ({
+      ...atual,
+      parcelas: atual.parcelas.filter((_, i) => i !== indice),
+    }));
   }
 
   function gramasDoItemPedido(item: { pesoKg: string; pesoG: string }): number {
-        const kg = Number(item.pesoKg.replace(",", ".")) || 0;
-        const g = Number(item.pesoG.replace(",", ".")) || 0;
-        return kg * 1000 + g;
+    const kg = Number(item.pesoKg.replace(",", ".")) || 0;
+    const g = Number(item.pesoG.replace(",", ".")) || 0;
+    return kg * 1000 + g;
   }
 
   function formatPesoPedido(totalGramas: number): string {
-        const kg = Math.floor(totalGramas / 1000);
-        const resto = Math.round(totalGramas - kg * 1000);
-        if (kg === 0) return `${resto}g`;
-        if (resto === 0) return `${kg}kg`;
-        return `${kg}kg ${resto}g`;
+    const kg = Math.floor(totalGramas / 1000);
+    const resto = Math.round(totalGramas - kg * 1000);
+    if (kg === 0) return `${resto}g`;
+    if (resto === 0) return `${kg}kg`;
+    return `${kg}kg ${resto}g`;
   }
 
   function adicionarItemPedidoFilamento() {
-        const gramas = gramasDoItemPedido(itemPedidoAtual);
-        if (!Number.isFinite(gramas) || gramas <= 0) {
-                return;
-        }
-        setItensPedidoFilamento((atual) => [...atual, itemPedidoAtual]);
-        setItemPedidoAtual({ cor: itemPedidoAtual.cor, pesoKg: "", pesoG: "" });
+    const gramas = gramasDoItemPedido(itemPedidoAtual);
+    if (!Number.isFinite(gramas) || gramas <= 0) {
+      return;
+    }
+    setItensPedidoFilamento((atual) => [...atual, itemPedidoAtual]);
+    setItemPedidoAtual({ cor: itemPedidoAtual.cor, pesoKg: "", pesoG: "" });
   }
 
   function removerItemPedidoFilamento(indice: number) {
-        setItensPedidoFilamento((atual) => atual.filter((_, i) => i !== indice));
+    setItensPedidoFilamento((atual) => atual.filter((_, i) => i !== indice));
   }
 
   function fecharModalAdicionar() {
-        setModalAdicionarAberto(false);
-        setErroPedido(null);
-        setItensPedidoFilamento([]);
-        setItemPedidoAtual({ cor: "colorido", pesoKg: "", pesoG: "" });
-        setPedidoFilamento({
-                dataCompra: hojeISO(),
-                fornecedor: "",
-                valorTotal: "",
-                parcelas: [],
-                chegou: true,
-        });
+    setModalAdicionarAberto(false);
+    setErroPedido(null);
+    setItensPedidoFilamento([]);
+    setItemPedidoAtual({ cor: "colorido", pesoKg: "", pesoG: "" });
+    setPedidoFilamento({
+      dataCompra: hojeISO(),
+      fornecedor: "",
+      valorTotal: "",
+      parcelas: [],
+      chegou: true,
+    });
   }
 
   const totalPedidoFilamento = Number(pedidoFilamento.valorTotal.replace(",", ".")) || 0;
 
   const totalGramasPedido = itensPedidoFilamento.reduce(
-        (soma, item) => soma + gramasDoItemPedido(item),
-        0
-      );
+    (soma, item) => soma + gramasDoItemPedido(item),
+    0
+  );
 
   // Preço final por Kg do pedido — pedido do Guilherme em 2026-07-29:
   // "voce divide o valor total e ache o preco do filamento final por
@@ -276,163 +276,163 @@ export default function EstoquePage() {
   // joga o resto (arredondamento) na última cor, pra soma bater
   // exatamente com o total informado.
   function valoresRateadosPorItem(
-        itens: { pesoKg: string; pesoG: string }[],
-        totalPedido: number
-      ): number[] {
-        const totalGramas = itens.reduce((soma, it) => soma + gramasDoItemPedido(it), 0);
-        if (totalGramas <= 0 || itens.length === 0) return itens.map(() => 0);
-        const totalCentavos = Math.round(totalPedido * 100);
-        let restante = totalCentavos;
-        return itens.map((item, i) => {
-                if (i === itens.length - 1) {
-                          return restante / 100;
-                }
-                const gramas = gramasDoItemPedido(item);
-                const centavos = Math.round((gramas / totalGramas) * totalCentavos);
-                restante -= centavos;
-                return centavos / 100;
-        });
+    itens: { pesoKg: string; pesoG: string }[],
+    totalPedido: number
+  ): number[] {
+    const totalGramas = itens.reduce((soma, it) => soma + gramasDoItemPedido(it), 0);
+    if (totalGramas <= 0 || itens.length === 0) return itens.map(() => 0);
+    const totalCentavos = Math.round(totalPedido * 100);
+    let restante = totalCentavos;
+    return itens.map((item, i) => {
+      if (i === itens.length - 1) {
+        return restante / 100;
+      }
+      const gramas = gramasDoItemPedido(item);
+      const centavos = Math.round((gramas / totalGramas) * totalCentavos);
+      restante -= centavos;
+      return centavos / 100;
+    });
   }
 
   async function salvarPedidoFilamento() {
-        if (itensPedidoFilamento.length === 0) {
-                setErroPedido("Adicione pelo menos uma cor ao pedido.");
-                return;
-        }
-        if (!(totalPedidoFilamento > 0)) {
-                setErroPedido("Informe o valor total do pedido.");
-                return;
-        }
-        if (pedidoFilamento.parcelas.some((p) => !p)) {
-                setErroPedido("Preencha a data de todas as parcelas (ou remova a que ficou em branco).");
-                return;
-        }
-        setSalvandoPedido(true);
-        setErroPedido(null);
-        try {
-                const aPrazo = pedidoFilamento.parcelas.length > 0;
-                const primeiraParcela = aPrazo ? pedidoFilamento.parcelas[0] : null;
-                const valoresPorItem = valoresRateadosPorItem(itensPedidoFilamento, totalPedidoFilamento);
-                // Um id gerado no cliente só pra agrupar as várias cores desse
-          // MESMO "Salvar pedido" (cada cor vira uma linha própria em
-          // compras_filamento) — deixa confirmar a chegada do pedido inteiro
-          // de uma vez em vez de cor por cor. Ver PedidosFilamentoACaminho.
-          const pedidoIdCliente = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    if (itensPedidoFilamento.length === 0) {
+      setErroPedido("Adicione pelo menos uma cor ao pedido.");
+      return;
+    }
+    if (!(totalPedidoFilamento > 0)) {
+      setErroPedido("Informe o valor total do pedido.");
+      return;
+    }
+    if (pedidoFilamento.parcelas.some((p) => !p)) {
+      setErroPedido("Preencha a data de todas as parcelas (ou remova a que ficou em branco).");
+      return;
+    }
+    setSalvandoPedido(true);
+    setErroPedido(null);
+    try {
+      const aPrazo = pedidoFilamento.parcelas.length > 0;
+      const primeiraParcela = aPrazo ? pedidoFilamento.parcelas[0] : null;
+      const valoresPorItem = valoresRateadosPorItem(itensPedidoFilamento, totalPedidoFilamento);
+      // Um id gerado no cliente só pra agrupar as várias cores desse
+      // MESMO "Salvar pedido" (cada cor vira uma linha própria em
+      // compras_filamento) — deixa confirmar a chegada do pedido inteiro
+      // de uma vez em vez de cor por cor. Ver PedidosFilamentoACaminho.
+      const pedidoIdCliente = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-          for (let i = 0; i < itensPedidoFilamento.length; i++) {
-                    const item = itensPedidoFilamento[i];
-                    const gramas = gramasDoItemPedido(item);
-                    const valorPago = valoresPorItem[i];
-                    const res = await fetch("/api/financeiro/compras-filamento", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                              cor: item.cor,
-                                              gramas,
-                                              valorPago,
-                                              dataCompra: pedidoFilamento.dataCompra,
-                                              fornecedor: pedidoFilamento.fornecedor || null,
-                                              formaPagamento: aPrazo ? "a_prazo" : "a_vista",
-                                              dataVencimento: primeiraParcela,
-                                              chegou: pedidoFilamento.chegou,
-                                              pedidoId: pedidoIdCliente,
-                                }),
-                    });
-                    if (!res.ok) throw new Error("falha ao salvar compra");
-          }
+      for (let i = 0; i < itensPedidoFilamento.length; i++) {
+        const item = itensPedidoFilamento[i];
+        const gramas = gramasDoItemPedido(item);
+        const valorPago = valoresPorItem[i];
+        const res = await fetch("/api/financeiro/compras-filamento", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cor: item.cor,
+            gramas,
+            valorPago,
+            dataCompra: pedidoFilamento.dataCompra,
+            fornecedor: pedidoFilamento.fornecedor || null,
+            formaPagamento: aPrazo ? "a_prazo" : "a_vista",
+            dataVencimento: primeiraParcela,
+            chegou: pedidoFilamento.chegou,
+            pedidoId: pedidoIdCliente,
+          }),
+        });
+        if (!res.ok) throw new Error("falha ao salvar compra");
+      }
 
-          const resumoItens = itensPedidoFilamento
-                  .map((it) => `${LABEL_COR_FILAMENTO[it.cor]} ${formatPesoPedido(gramasDoItemPedido(it))}`)
-                  .join(", ");
+      const resumoItens = itensPedidoFilamento
+        .map((it) => `${LABEL_COR_FILAMENTO[it.cor]} ${formatPesoPedido(gramasDoItemPedido(it))}`)
+        .join(", ");
 
-          if (!aPrazo) {
-                    await fetch("/api/financeiro/lancamentos", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                              tipo: "despesa",
-                                              categoria: "Filamento",
-                                              descricao: `Compra de filamento — ${resumoItens}`,
-                                              valor: totalPedidoFilamento,
-                                              dataVencimento: pedidoFilamento.dataCompra,
-                                              dataPagamento: pedidoFilamento.dataCompra,
-                                              fornecedor: pedidoFilamento.fornecedor || null,
-                                              formaPagamento: "À vista",
-                                }),
-                    });
-          } else {
-                    // Divide o total do pedido igualmente entre as parcelas — cada
-                  // uma vira um lançamento PRÓPRIO (com sua própria data de
-                  // vencimento), pra aparecer certinho no calendário/despesas
-                  // pendentes da aba Financeiro, cada uma no seu dia. Trabalha em
-                  // centavos e joga o resto (arredondamento) na última parcela, pra
-                  // soma bater exatamente com o total do pedido.
-                  const totalCentavos = Math.round(totalPedidoFilamento * 100);
-                    const n = pedidoFilamento.parcelas.length;
-                    const baseCentavos = Math.floor(totalCentavos / n);
-                    const resto = totalCentavos - baseCentavos * n;
-                    for (let i = 0; i < n; i++) {
-                                const valorParcela = (baseCentavos + (i < resto ? 1 : 0)) / 100;
-                                await fetch("/api/financeiro/lancamentos", {
-                                              method: "POST",
-                                              headers: { "Content-Type": "application/json" },
-                                              body: JSON.stringify({
-                                                              tipo: "despesa",
-                                                              categoria: "Filamento",
-                                                              descricao: `Compra de filamento (parcela ${i + 1}/${n}) — ${resumoItens}`,
-                                                              valor: valorParcela,
-                                                              dataVencimento: pedidoFilamento.parcelas[i],
-                                                              dataPagamento: null,
-                                                              fornecedor: pedidoFilamento.fornecedor || null,
-                                                              formaPagamento: `A prazo (parcela ${i + 1}/${n})`,
-                                              }),
-                                });
-                    }
-          }
-
-          await carregarFilamento();
-                await carregarComprasFilamento();
-                fecharModalAdicionar();
-        } catch {
-                setErroPedido("Não deu pra salvar o pedido. Tente de novo.");
-        } finally {
-                setSalvandoPedido(false);
+      if (!aPrazo) {
+        await fetch("/api/financeiro/lancamentos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tipo: "despesa",
+            categoria: "Filamento",
+            descricao: `Compra de filamento — ${resumoItens}`,
+            valor: totalPedidoFilamento,
+            dataVencimento: pedidoFilamento.dataCompra,
+            dataPagamento: pedidoFilamento.dataCompra,
+            fornecedor: pedidoFilamento.fornecedor || null,
+            formaPagamento: "À vista",
+          }),
+        });
+      } else {
+        // Divide o total do pedido igualmente entre as parcelas — cada
+        // uma vira um lançamento PRÓPRIO (com sua própria data de
+        // vencimento), pra aparecer certinho no calendário/despesas
+        // pendentes da aba Financeiro, cada uma no seu dia. Trabalha em
+        // centavos e joga o resto (arredondamento) na última parcela, pra
+        // soma bater exatamente com o total do pedido.
+        const totalCentavos = Math.round(totalPedidoFilamento * 100);
+        const n = pedidoFilamento.parcelas.length;
+        const baseCentavos = Math.floor(totalCentavos / n);
+        const resto = totalCentavos - baseCentavos * n;
+        for (let i = 0; i < n; i++) {
+          const valorParcela = (baseCentavos + (i < resto ? 1 : 0)) / 100;
+          await fetch("/api/financeiro/lancamentos", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tipo: "despesa",
+              categoria: "Filamento",
+              descricao: `Compra de filamento (parcela ${i + 1}/${n}) — ${resumoItens}`,
+              valor: valorParcela,
+              dataVencimento: pedidoFilamento.parcelas[i],
+              dataPagamento: null,
+              fornecedor: pedidoFilamento.fornecedor || null,
+              formaPagamento: `A prazo (parcela ${i + 1}/${n})`,
+            }),
+          });
         }
+      }
+
+      await carregarFilamento();
+      await carregarComprasFilamento();
+      fecharModalAdicionar();
+    } catch {
+      setErroPedido("Não deu pra salvar o pedido. Tente de novo.");
+    } finally {
+      setSalvandoPedido(false);
+    }
   }
 
   async function carregar() {
-        try {
-                const res = await fetch("/api/estoque");
-                if (!res.ok) throw new Error("falha");
-                setPlacas(await res.json());
-                setStatus("ready");
-        } catch {
-                setStatus("erro");
-        }
+    try {
+      const res = await fetch("/api/estoque");
+      if (!res.ok) throw new Error("falha");
+      setPlacas(await res.json());
+      setStatus("ready");
+    } catch {
+      setStatus("erro");
+    }
   }
 
   async function sincronizarVendas() {
-        setSincronizando(true);
-        try {
-                const res = await fetch("/api/estoque/sincronizar-vendas", { method: "POST" });
-                const info = (await res.json()) as SincronizacaoInfo;
-                setSincronizacao(info);
-                if (info.connected && ((info.combosNovos ?? 0) > 0 || (info.combosRevertidos ?? 0) > 0)) {
-                          await carregar();
-                }
-        } catch {
-                setSincronizacao({ connected: false });
-        } finally {
-                setSincronizando(false);
-        }
+    setSincronizando(true);
+    try {
+      const res = await fetch("/api/estoque/sincronizar-vendas", { method: "POST" });
+      const info = (await res.json()) as SincronizacaoInfo;
+      setSincronizacao(info);
+      if (info.connected && ((info.combosNovos ?? 0) > 0 || (info.combosRevertidos ?? 0) > 0)) {
+        await carregar();
+      }
+    } catch {
+      setSincronizacao({ connected: false });
+    } finally {
+      setSincronizando(false);
+    }
   }
 
   useEffect(() => {
-        carregar();
-        sincronizarVendas();
-        carregarFilamento();
-        carregarComprasFilamento();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+    carregar();
+    sincronizarVendas();
+    carregarFilamento();
+    carregarComprasFilamento();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Mantém o badge "vendido hoje, ainda não despachado" (coluna Estoque
@@ -443,21 +443,21 @@ export default function EstoquePage() {
   // LEITURA (carregar), sem repetir a sincronização de baixa automática
   // aqui (essa já roda no cron de 1 em 1 minuto e não precisa duplicar).
   useEffect(() => {
-        const t = setInterval(() => {
-                carregar();
-        }, 60000);
-        return () => clearInterval(t);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+    const t = setInterval(() => {
+      carregar();
+    }, 60000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const placasFiltradas = useMemo(() => {
-        const termo = busca.trim().toLowerCase();
-        if (!termo) return placas;
-        return placas.filter(
-                (p) =>
-                          p.nome.toLowerCase().includes(termo) ||
-                          p.skuOuKit.toLowerCase().includes(termo)
-              );
+    const termo = busca.trim().toLowerCase();
+    if (!termo) return placas;
+    return placas.filter(
+      (p) =>
+        p.nome.toLowerCase().includes(termo) ||
+        p.skuOuKit.toLowerCase().includes(termo)
+    );
   }, [placas, busca]);
 
   // Pedido do Guilherme em 2026-07-31: "suporte carro branco, suporte
@@ -475,27 +475,27 @@ export default function EstoquePage() {
   const vendavelPorGrupo = useMemo(() => estoqueVendavel(placas), [placas]);
 
   async function ajustarEstoque(placaId: number, delta: number) {
-        if (!delta) return;
-        setSalvando((prev) => ({ ...prev, [placaId]: true }));
-        try {
-                const res = await fetch("/api/estoque", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ placaId, delta }),
-                });
-                if (res.ok) {
-                          const atualizado = await res.json();
-                          setPlacas((prev) =>
-                                      prev.map((p) =>
-                                                    p.id === placaId
-                                                             ? { ...p, estoque: atualizado.quantidade_pecas, atualizadoEm: atualizado.atualizado_em }
-                                                      : p
-                                                         )
-                                            );
-                }
-        } finally {
-                setSalvando((prev) => ({ ...prev, [placaId]: false }));
-        }
+    if (!delta) return;
+    setSalvando((prev) => ({ ...prev, [placaId]: true }));
+    try {
+      const res = await fetch("/api/estoque", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ placaId, delta }),
+      });
+      if (res.ok) {
+        const atualizado = await res.json();
+        setPlacas((prev) =>
+          prev.map((p) =>
+            p.id === placaId
+              ? { ...p, estoque: atualizado.quantidade_pecas, atualizadoEm: atualizado.atualizado_em }
+              : p
+          )
+        );
+      }
+    } finally {
+      setSalvando((prev) => ({ ...prev, [placaId]: false }));
+    }
   }
 
   // Marca/desmarca uma placa como descontinuada direto da aba Estoque —
@@ -507,392 +507,392 @@ export default function EstoquePage() {
   // nunca mexe em placas. Até agora "descontinuada" só existia via edição
   // direta no banco; agora dá pra alternar por aqui, sem precisar de mim.
   async function alternarDescontinuada(placaId: number, descontinuada: boolean) {
-        setSalvando((prev) => ({ ...prev, [placaId]: true }));
-        try {
-                const res = await fetch(`/api/placas/${placaId}`, {
-                          method: "PATCH",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ descontinuada }),
-                });
-                if (res.ok) {
-                          const atualizado = await res.json();
-                          setPlacas((prev) =>
-                                      prev.map((p) =>
-                                                    p.id === placaId ? { ...p, descontinuada: atualizado.descontinuada } : p
-                                                         )
-                                            );
-                }
-        } finally {
-                setSalvando((prev) => ({ ...prev, [placaId]: false }));
-        }
+    setSalvando((prev) => ({ ...prev, [placaId]: true }));
+    try {
+      const res = await fetch(`/api/placas/${placaId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ descontinuada }),
+      });
+      if (res.ok) {
+        const atualizado = await res.json();
+        setPlacas((prev) =>
+          prev.map((p) =>
+            p.id === placaId ? { ...p, descontinuada: atualizado.descontinuada } : p
+          )
+        );
+      }
+    } finally {
+      setSalvando((prev) => ({ ...prev, [placaId]: false }));
+    }
   }
 
   if (status === "loading") {
-        return (
-                <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
-                        Carregando estoque...
-                </div>div>
-              );
-  }
-  
-    if (status === "erro") {
-          return (
-                  <div className="rounded-lg border border-dashed border-red-300 bg-white p-8 text-center text-red-600">
-                          Não deu pra carregar o estoque. Tente recarregar a página.
-                  </div>div>
-                );
-    }
-  
-    const totalPecas = placasFiltradas.reduce((soma, p) => soma + p.estoque, 0);
-  
     return (
-          <div className="flex flex-col gap-6">
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                        <Card label="Placas cadastradas" value={String(placas.length)} />
-                        <Card
-                                    label="Descontinuadas (só vender estoque)"
-                                    value={String(placas.filter((p) => p.descontinuada).length)}
-                                  />
-                        <Card label="Total de peças em estoque" value={String(totalPecas)} />
-                </div>div>
-          
-                <section className="rounded-lg border border-gray-200 bg-white p-4">
-                        <h2 className="mb-3 text-sm font-semibold text-gray-900">Estoque de filamento por cor</h2>h2>
-                        <p className="mb-3 text-xs text-gray-500">
-                                  Informe o quanto tem em estoque de cada cor (em Kg — ex: 4,67 =
-                                  4,67kg). Cor deixada em 0 bloqueia automaticamente a fila de
-                                  prioridade da aba Produção
-                                  pra todas as placas daquela cor — não precisa subir produto pra
-                                  produção sem ter filamento pra imprimir. A cor de cada placa é
-                                  detectada pelo nome (ex: &quot;Suporte Carro (Prata)&quot;); placas
-                                  sem cor no nome (kits, produtos multicoloridos) contam como
-                                  &quot;Colorido&quot;. Pra registrar perda avulsa, use a aba Produção.
-                        </p>p>
-                  {filamento && <FilamentoEditor filamento={filamento} onSalvar={salvarFilamento} />}
-                        <div className="mt-3">
-                                  <button
-                                                onClick={() => setModalAdicionarAberto(true)}
-                                                className="rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                                              >
-                                              + Adicionar filamento
-                                  </button>button>
-                        </div>div>
-                        <PedidosFilamentoACaminho
-                                    compras={comprasFilamento}
-                                    onConfirmar={confirmarChegadaPedido}
-                                    confirmando={confirmandoChegada}
-                                  />
-                        <div className="mt-3">
-                                  <HistoricoFilamento />
-                        </div>div>
-                </section>section>
-          
-            {modalAdicionarAberto && (
-                    <ModalAdicionarFilamento
-                                itemAtual={itemPedidoAtual}
-                                itensPedido={itensPedidoFilamento}
-                                pedido={pedidoFilamento}
-                                total={totalPedidoFilamento}
-                                precoPorKg={precoPorKgPedido}
-                                salvando={salvandoPedido}
-                                erro={erroPedido}
-                                onMudarItem={setItemPedidoAtual}
-                                onAdicionarItem={adicionarItemPedidoFilamento}
-                                onRemoverItem={removerItemPedidoFilamento}
-                                onMudarPedido={setPedidoFilamento}
-                                onAdicionarParcela={adicionarParcela}
-                                onMudarParcela={mudarParcela}
-                                onRemoverParcela={removerParcela}
-                                onSalvar={salvarPedidoFilamento}
-                                onFechar={fecharModalAdicionar}
-                                formatPeso={formatPesoPedido}
-                                gramasDoItem={gramasDoItemPedido}
-                              />
-                  )}
-          
-                <div className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm">
-                        <button
-                                    onClick={sincronizarVendas}
-                                    disabled={sincronizando}
-                                    className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
-                                  >
-                          {sincronizando ? "Sincronizando..." : "Sincronizar vendas agora"}
-                        </button>button>
-                  {sincronizacao && !sincronizacao.connected && (
-                      <span className="text-xs text-red-600">
-                                  Não deu pra sincronizar — ML e Shopee parecem desconectados.
-                                  Reconecte na aba Vendas.
-                      </span>span>
-                        )}
-                  {sincronizacao && sincronizacao.connected && (
-                      <span className="text-xs text-gray-500">
-                        {sincronizacao.pedidosVerificados ?? 0} pedido(s) vendido(s)
-                                  verificado(s) (últimos {10} dias) ·{" "}
-                                  <span className="font-medium text-gray-700">
-                                    {sincronizacao.combosNovos ?? 0} baixa(s) nova(s)
-                                  </span>span>{" "}
-                                  · {sincronizacao.pecasBaixadas ?? 0} peça(s) descontada(s) agora
-                        {(sincronizacao.combosRevertidos ?? 0) > 0 && (
-                                      <>
-                                        {" "}
-                                                      ·{" "}
-                                                      <span className="font-medium text-amber-700">
-                                                        {sincronizacao.combosRevertidos} pedido(s) cancelado(s)/estornado(s)
-                                                      </span>span>{" "}
-                                                      devolveram {sincronizacao.pecasDevolvidas ?? 0} peça(s) ao estoque
-                                      </>>
-                                    )}
-                                  .
-                      </span>span>
-                        )}
-                </div>div>
-                <p className="-mt-4 text-xs text-gray-400">
-                        A baixa automática desconta pedidos assim que contam como
-                        &quot;vendido&quot; pela API (ML: pago/parcialmente pago; Shopee:
-                        qualquer status exceto não pago/cancelado) — não espera o envio.
-                        Se um pedido já descontado for cancelado ou estornado depois, a
-                        peça volta pro estoque sozinha na próxima sincronização. Ela roda
-                        sozinha sempre que essa aba é aberta, e você também pode forçar
-                        com o botão acima. Cada pedido só é descontado uma vez, mesmo
-                        rodando várias vezes.
-                </p>p>
-          
-                <div>
-                        <input
-                                    type="text"
-                                    placeholder="Buscar por nome ou SKU..."
-                                    value={busca}
-                                    onChange={(e) => setBusca(e.target.value)}
-                                    className="w-full max-w-sm rounded border border-gray-300 px-3 py-2 text-sm"
-                                  />
-                </div>div>
-          
-                <p className="text-xs text-gray-500">
-                        O ajuste manual soma (ou subtrai, se você digitar um número
-                        negativo) ao estoque atual da placa — grava direto na mesma tabela
-                        que a aba Produção usa, então o número aparece igual nas duas
-                        telas.
-                </p>p>
-          
-                <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-                        <table className="w-full text-sm">
-                                  <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
-                                              <tr>
-                                                            <th className="px-3 py-2">Placa</th>th>
-                                                            <th className="px-3 py-2">Tier</th>th>
-                                                            <th className="px-3 py-2 text-right">Estoque atual</th>th>
-                                                            <th className="px-3 py-2 text-right">Estoque no Full</th>th>
-                                                            <th className="px-3 py-2">Ajuste manual</th>th>
-                                                            <th className="px-3 py-2">Atualizado em</th>th>
-                                                            <th className="px-3 py-2"></th>th>
-                                              </tr>tr>
-                                  </thead>thead>
-                                  <tbody className="divide-y divide-gray-100">
-                                    {placasFiltradas.map((placa) => (
-                          <LinhaEstoque
-                                            key={placa.id}
-                                            placa={placa}
-                                            salvando={Boolean(salvando[placa.id])}
-                                            onAjustar={(delta) => ajustarEstoque(placa.id, delta)}
-                                            onAlternarDescontinuada={(v) => alternarDescontinuada(placa.id, v)}
-                                            vendavel={
-                                                                placa.tipo === "composto" && placa.grupoComposto
-                                                                  ? vendavelPorGrupo.get(placa.grupoComposto) ?? null
-                                                                  : null
-                                            }
-                                          />
-                        ))}
-                                  </tbody>tbody>
-                        </table>table>
-                </div>div>
-          </div>div>
-        );
+      <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
+        Carregando estoque...
+      </div>
+    );
+  }
+
+  if (status === "erro") {
+    return (
+      <div className="rounded-lg border border-dashed border-red-300 bg-white p-8 text-center text-red-600">
+        Não deu pra carregar o estoque. Tente recarregar a página.
+      </div>
+    );
+  }
+
+  const totalPecas = placasFiltradas.reduce((soma, p) => soma + p.estoque, 0);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <Card label="Placas cadastradas" value={String(placas.length)} />
+        <Card
+          label="Descontinuadas (só vender estoque)"
+          value={String(placas.filter((p) => p.descontinuada).length)}
+        />
+        <Card label="Total de peças em estoque" value={String(totalPecas)} />
+      </div>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-4">
+        <h2 className="mb-3 text-sm font-semibold text-gray-900">Estoque de filamento por cor</h2>
+        <p className="mb-3 text-xs text-gray-500">
+          Informe o quanto tem em estoque de cada cor (em Kg — ex: 4,67 =
+          4,67kg). Cor deixada em 0 bloqueia automaticamente a fila de
+          prioridade da aba Produção
+          pra todas as placas daquela cor — não precisa subir produto pra
+          produção sem ter filamento pra imprimir. A cor de cada placa é
+          detectada pelo nome (ex: &quot;Suporte Carro (Prata)&quot;); placas
+          sem cor no nome (kits, produtos multicoloridos) contam como
+          &quot;Colorido&quot;. Pra registrar perda avulsa, use a aba Produção.
+        </p>
+        {filamento && <FilamentoEditor filamento={filamento} onSalvar={salvarFilamento} />}
+        <div className="mt-3">
+          <button
+            onClick={() => setModalAdicionarAberto(true)}
+            className="rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          >
+            + Adicionar filamento
+          </button>
+        </div>
+        <PedidosFilamentoACaminho
+          compras={comprasFilamento}
+          onConfirmar={confirmarChegadaPedido}
+          confirmando={confirmandoChegada}
+        />
+        <div className="mt-3">
+          <HistoricoFilamento />
+        </div>
+      </section>
+
+      {modalAdicionarAberto && (
+        <ModalAdicionarFilamento
+          itemAtual={itemPedidoAtual}
+          itensPedido={itensPedidoFilamento}
+          pedido={pedidoFilamento}
+          total={totalPedidoFilamento}
+          precoPorKg={precoPorKgPedido}
+          salvando={salvandoPedido}
+          erro={erroPedido}
+          onMudarItem={setItemPedidoAtual}
+          onAdicionarItem={adicionarItemPedidoFilamento}
+          onRemoverItem={removerItemPedidoFilamento}
+          onMudarPedido={setPedidoFilamento}
+          onAdicionarParcela={adicionarParcela}
+          onMudarParcela={mudarParcela}
+          onRemoverParcela={removerParcela}
+          onSalvar={salvarPedidoFilamento}
+          onFechar={fecharModalAdicionar}
+          formatPeso={formatPesoPedido}
+          gramasDoItem={gramasDoItemPedido}
+        />
+      )}
+
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm">
+        <button
+          onClick={sincronizarVendas}
+          disabled={sincronizando}
+          className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
+        >
+          {sincronizando ? "Sincronizando..." : "Sincronizar vendas agora"}
+        </button>
+        {sincronizacao && !sincronizacao.connected && (
+          <span className="text-xs text-red-600">
+            Não deu pra sincronizar — ML e Shopee parecem desconectados.
+            Reconecte na aba Vendas.
+          </span>
+        )}
+        {sincronizacao && sincronizacao.connected && (
+          <span className="text-xs text-gray-500">
+            {sincronizacao.pedidosVerificados ?? 0} pedido(s) vendido(s)
+            verificado(s) (últimos {10} dias) ·{" "}
+            <span className="font-medium text-gray-700">
+              {sincronizacao.combosNovos ?? 0} baixa(s) nova(s)
+            </span>{" "}
+            · {sincronizacao.pecasBaixadas ?? 0} peça(s) descontada(s) agora
+            {(sincronizacao.combosRevertidos ?? 0) > 0 && (
+              <>
+                {" "}
+                ·{" "}
+                <span className="font-medium text-amber-700">
+                  {sincronizacao.combosRevertidos} pedido(s) cancelado(s)/estornado(s)
+                </span>{" "}
+                devolveram {sincronizacao.pecasDevolvidas ?? 0} peça(s) ao estoque
+              </>
+            )}
+            .
+          </span>
+        )}
+      </div>
+      <p className="-mt-4 text-xs text-gray-400">
+        A baixa automática desconta pedidos assim que contam como
+        &quot;vendido&quot; pela API (ML: pago/parcialmente pago; Shopee:
+        qualquer status exceto não pago/cancelado) — não espera o envio.
+        Se um pedido já descontado for cancelado ou estornado depois, a
+        peça volta pro estoque sozinha na próxima sincronização. Ela roda
+        sozinha sempre que essa aba é aberta, e você também pode forçar
+        com o botão acima. Cada pedido só é descontado uma vez, mesmo
+        rodando várias vezes.
+      </p>
+
+      <div>
+        <input
+          type="text"
+          placeholder="Buscar por nome ou SKU..."
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          className="w-full max-w-sm rounded border border-gray-300 px-3 py-2 text-sm"
+        />
+      </div>
+
+      <p className="text-xs text-gray-500">
+        O ajuste manual soma (ou subtrai, se você digitar um número
+        negativo) ao estoque atual da placa — grava direto na mesma tabela
+        que a aba Produção usa, então o número aparece igual nas duas
+        telas.
+      </p>
+
+      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
+            <tr>
+              <th className="px-3 py-2">Placa</th>
+              <th className="px-3 py-2">Tier</th>
+              <th className="px-3 py-2 text-right">Estoque atual</th>
+              <th className="px-3 py-2 text-right">Estoque no Full</th>
+              <th className="px-3 py-2">Ajuste manual</th>
+              <th className="px-3 py-2">Atualizado em</th>
+              <th className="px-3 py-2"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {placasFiltradas.map((placa) => (
+              <LinhaEstoque
+                key={placa.id}
+                placa={placa}
+                salvando={Boolean(salvando[placa.id])}
+                onAjustar={(delta) => ajustarEstoque(placa.id, delta)}
+                onAlternarDescontinuada={(v) => alternarDescontinuada(placa.id, v)}
+                vendavel={
+                  placa.tipo === "composto" && placa.grupoComposto
+                    ? vendavelPorGrupo.get(placa.grupoComposto) ?? null
+                    : null
+                }
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 function Card({ label, value }: { label: string; value: string }) {
-    return (
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
-                <p className="text-xs text-gray-500">{label}</p>p>
-                <p className="text-xl font-semibold text-gray-900">{value}</p>p>
-          </div>div>
-        );
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <p className="text-xs text-gray-500">{label}</p>
+      <p className="text-xl font-semibold text-gray-900">{value}</p>
+    </div>
+  );
 }
 
 function TierBadge({ tier }: { tier: "A" | "B" | "C" }) {
-    return (
-          <span
-                  className={
-                            "rounded px-1.5 py-0.5 text-xs font-semibold " +
-                            (tier === "A"
-                                       ? "bg-green-100 text-green-700"
-                                       : tier === "B"
-                                       ? "bg-blue-100 text-blue-700"
-                                       : "bg-gray-100 text-gray-600")
-                  }
-                >
-            {tier}
-          </span>span>
-        );
+  return (
+    <span
+      className={
+        "rounded px-1.5 py-0.5 text-xs font-semibold " +
+        (tier === "A"
+          ? "bg-green-100 text-green-700"
+          : tier === "B"
+          ? "bg-blue-100 text-blue-700"
+          : "bg-gray-100 text-gray-600")
+      }
+    >
+      {tier}
+    </span>
+  );
 }
 
 function LinhaEstoque({
-    placa,
-    salvando,
-    onAjustar,
-    onAlternarDescontinuada,
-    vendavel,
+  placa,
+  salvando,
+  onAjustar,
+  onAlternarDescontinuada,
+  vendavel,
 }: {
-    placa: EstoqueRow;
-    salvando: boolean;
-    onAjustar: (delta: number) => void;
-    onAlternarDescontinuada: (novoValor: boolean) => void;
-    // Ver nota em vendavelPorGrupo (EstoquePage) — null pras placas diretas
-    // (não compostas), que não têm essa noção de "metade" nenhuma.
-    vendavel: number | null;
+  placa: EstoqueRow;
+  salvando: boolean;
+  onAjustar: (delta: number) => void;
+  onAlternarDescontinuada: (novoValor: boolean) => void;
+  // Ver nota em vendavelPorGrupo (EstoquePage) — null pras placas diretas
+  // (não compostas), que não têm essa noção de "metade" nenhuma.
+  vendavel: number | null;
 }) {
-    const [valor, setValor] = useState("");
-    const [aberto, setAberto] = useState(false);
-    const [historico, setHistorico] = useState<Movimento[] | "loading" | "erro" | null>(
-          null
-        );
-  
-    async function alternarHistorico() {
-          if (aberto) {
-                  setAberto(false);
-                  return;
-          }
-          setAberto(true);
-          if (historico === null) {
-                  setHistorico("loading");
-                  try {
-                            const res = await fetch(`/api/estoque/${placa.id}/historico`);
-                            if (!res.ok) throw new Error("falha");
-                            const data = await res.json();
-                            setHistorico(data.movimentos);
-                  } catch {
-                            setHistorico("erro");
-                  }
-          }
+  const [valor, setValor] = useState("");
+  const [aberto, setAberto] = useState(false);
+  const [historico, setHistorico] = useState<Movimento[] | "loading" | "erro" | null>(
+    null
+  );
+
+  async function alternarHistorico() {
+    if (aberto) {
+      setAberto(false);
+      return;
     }
-  
-    return (
-          <>
-                <tr className="hover:bg-gray-50">
-                        <td className="px-3 py-2">
-                          {/* SKU em cima (negrito) — é o código/descrição real do produto
-                                        (ex: "STAM-01 BEGE | Suporte Organizador..."), o que o
-                                                      Guilherme usa pra identificar o item de verdade. O nome
-                                                                    "amigável" vira legenda embaixo (pedido 2026-07-23: "aqui
-                                                                                  sempre temos que ter a sku nao o nome"). */}
-                                  <p className="font-medium text-gray-900">
-                                    {placa.skuOuKit}
-                                    {placa.tipo === "composto" && placa.papel && (
-                          <span
-                                            className={
-                                                                "ml-1.5 rounded px-1.5 py-0.5 text-xs font-semibold " +
-                                                                (placa.papel === "corpo"
-                                                                                     ? "bg-amber-100 text-amber-700"
-                                                                                     : "bg-indigo-100 text-indigo-700")
-                                            }
-                                            title="Estoque controlado separado — precisa de 1 corpo + 1 gancho pra fechar 1 unidade vendável"
-                                          >
-                            {placa.papel === "corpo" ? "CORPO" : "GANCHO"}
-                          </span>span>
-                                              )}
-                                    {placa.descontinuada && (
-                          <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-normal text-gray-500">
-                                          Descontinuada
-                          </span>span>
-                                              )}
-                                              <button
-                                                              type="button"
-                                                              onClick={() => onAlternarDescontinuada(!placa.descontinuada)}
-                                                              disabled={salvando}
-                                                              className="ml-2 text-xs font-medium text-blue-600 hover:underline disabled:opacity-40"
-                                                              title={
-                                                                                placa.descontinuada
-                                                                                  ? "Reativar — volta a entrar na fila de prioridade de Produção"
-                                                                                  : "Descontinuar — para de entrar na fila de produção, mas mantém o estoque restante aqui e na aba Full"
-                                                              }
-                                                            >
-                                                {placa.descontinuada ? "Reativar" : "Descontinuar"}
-                                              </button>button>
-                                  </p>p>
-                                  <p className="text-xs text-gray-400">
-                                    {placa.nome}
-                                    {placa.tipo === "composto" ? ` · ${placa.papel} de ${placa.grupoComposto}` : ""}
-                                  </p>p>
-                        </td>td>
-                        <td className="px-3 py-2">
-                                  <TierBadge tier={placa.tier} />
-                        </td>td>
-                        <td className="px-3 py-2 text-right font-semibold text-gray-900">
-                          {placa.estoque}
-                          {placa.pendenteEnvioHoje > 0 && (
-                        <span
-                                        className="ml-1.5 font-normal text-gray-400"
-                                        title="Já descontado do estoque hoje por vendas cujo pedido ainda não saiu na plataforma — some daqui assim que despachar"
-                                      >
-                                      (-{placa.pendenteEnvioHoje} hoje)
-                        </span>span>
-                                  )}
-                          {vendavel !== null && (
-                        <span
-                                        className="mt-0.5 block text-right text-xs font-normal text-gray-400"
-                                        title="Quanto dá pra vender de fato desse produto agora — trava no menor entre corpo e gancho do grupo"
-                                      >
-                                      vendável: {vendavel}
-                        </span>span>
-                                  )}
-                        </td>td>
-                        <td
-                                    className="px-3 py-2 text-right text-gray-500"
-                                    title="Estoque separado, guardado no galpão do Full (ML) — não é descontado pelas vendas locais nem soma com o Estoque atual. Ajustável na aba Full."
-                                  >
-                          {placa.estoqueFull}
-                        </td>td>
-                        <td className="px-3 py-2">
-                                  <div className="flex items-center gap-1.5">
-                                              <input
-                                                              type="number"
-                                                              placeholder="+/- qtd"
-                                                              value={valor}
-                                                              onChange={(e) => setValor(e.target.value)}
-                                                              className="w-24 rounded border border-gray-300 px-2 py-1 text-xs"
-                                                            />
-                                              <button
-                                                              disabled={salvando || !valor || Number(valor) === 0}
-                                                              onClick={() => {
-                                                                                onAjustar(Number(valor));
-                                                                                setValor("");
-                                                              }}
-                                                              className="rounded bg-gray-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
-                                                            >
-                                                            Aplicar
-                                              </button>button>
-                                  </div>div>
-                        </td>td>
-                        <td className="px-3 py-2 text-xs text-gray-400">
-                          {placa.atualizadoEm ? new Date(placa.atualizadoEm).toLocaleString("pt-BR") : "—"}
-                        </td>td>
-                        <td className="px-3 py-2 text-right">
-                                  <button
-                                                onClick={alternarHistorico}
-                                                className="whitespace-nowrap text-xs font-medium text-blue-600 hover:underline"
-                                              >
-                                    {aberto ? "Fechar" : "Ver histórico"}
-                                  </button>button>
-                        </td>td>
-                </tr>tr>
-            {aberto && (
-                    <tr>
-                              <td colSpan={7} className="bg-gray-50 px-3 py-3">
-                                          <HistoricoMovimentacao historico={historico} />
-                              </td>td>
-                    </tr>tr>
-                )}
-          </>>
-        );
+    setAberto(true);
+    if (historico === null) {
+      setHistorico("loading");
+      try {
+        const res = await fetch(`/api/estoque/${placa.id}/historico`);
+        if (!res.ok) throw new Error("falha");
+        const data = await res.json();
+        setHistorico(data.movimentos);
+      } catch {
+        setHistorico("erro");
+      }
+    }
+  }
+
+  return (
+    <>
+      <tr className="hover:bg-gray-50">
+        <td className="px-3 py-2">
+          {/* SKU em cima (negrito) — é o código/descrição real do produto
+              (ex: "STAM-01 BEGE | Suporte Organizador..."), o que o
+              Guilherme usa pra identificar o item de verdade. O nome
+              "amigável" vira legenda embaixo (pedido 2026-07-23: "aqui
+              sempre temos que ter a sku nao o nome"). */}
+          <p className="font-medium text-gray-900">
+            {placa.skuOuKit}
+            {placa.tipo === "composto" && placa.papel && (
+              <span
+                className={
+                  "ml-1.5 rounded px-1.5 py-0.5 text-xs font-semibold " +
+                  (placa.papel === "corpo"
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-indigo-100 text-indigo-700")
+                }
+                title="Estoque controlado separado — precisa de 1 corpo + 1 gancho pra fechar 1 unidade vendável"
+              >
+                {placa.papel === "corpo" ? "CORPO" : "GANCHO"}
+              </span>
+            )}
+            {placa.descontinuada && (
+              <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-normal text-gray-500">
+                Descontinuada
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => onAlternarDescontinuada(!placa.descontinuada)}
+              disabled={salvando}
+              className="ml-2 text-xs font-medium text-blue-600 hover:underline disabled:opacity-40"
+              title={
+                placa.descontinuada
+                  ? "Reativar — volta a entrar na fila de prioridade de Produção"
+                  : "Descontinuar — para de entrar na fila de produção, mas mantém o estoque restante aqui e na aba Full"
+              }
+            >
+              {placa.descontinuada ? "Reativar" : "Descontinuar"}
+            </button>
+          </p>
+          <p className="text-xs text-gray-400">
+            {placa.nome}
+            {placa.tipo === "composto" ? ` · ${placa.papel} de ${placa.grupoComposto}` : ""}
+          </p>
+        </td>
+        <td className="px-3 py-2">
+          <TierBadge tier={placa.tier} />
+        </td>
+        <td className="px-3 py-2 text-right font-semibold text-gray-900">
+          {placa.estoque}
+          {placa.pendenteEnvioHoje > 0 && (
+            <span
+              className="ml-1.5 font-normal text-gray-400"
+              title="Já descontado do estoque hoje por vendas cujo pedido ainda não saiu na plataforma — some daqui assim que despachar"
+            >
+              (-{placa.pendenteEnvioHoje} hoje)
+            </span>
+          )}
+          {vendavel !== null && (
+            <span
+              className="mt-0.5 block text-right text-xs font-normal text-gray-400"
+              title="Quanto dá pra vender de fato desse produto agora — trava no menor entre corpo e gancho do grupo"
+            >
+              vendável: {vendavel}
+            </span>
+          )}
+        </td>
+        <td
+          className="px-3 py-2 text-right text-gray-500"
+          title="Estoque separado, guardado no galpão do Full (ML) — não é descontado pelas vendas locais nem soma com o Estoque atual. Ajustável na aba Full."
+        >
+          {placa.estoqueFull}
+        </td>
+        <td className="px-3 py-2">
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              placeholder="+/- qtd"
+              value={valor}
+              onChange={(e) => setValor(e.target.value)}
+              className="w-24 rounded border border-gray-300 px-2 py-1 text-xs"
+            />
+            <button
+              disabled={salvando || !valor || Number(valor) === 0}
+              onClick={() => {
+                onAjustar(Number(valor));
+                setValor("");
+              }}
+              className="rounded bg-gray-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
+            >
+              Aplicar
+            </button>
+          </div>
+        </td>
+        <td className="px-3 py-2 text-xs text-gray-400">
+          {placa.atualizadoEm ? new Date(placa.atualizadoEm).toLocaleString("pt-BR") : "—"}
+        </td>
+        <td className="px-3 py-2 text-right">
+          <button
+            onClick={alternarHistorico}
+            className="whitespace-nowrap text-xs font-medium text-blue-600 hover:underline"
+          >
+            {aberto ? "Fechar" : "Ver histórico"}
+          </button>
+        </td>
+      </tr>
+      {aberto && (
+        <tr>
+          <td colSpan={7} className="bg-gray-50 px-3 py-3">
+            <HistoricoMovimentacao historico={historico} />
+          </td>
+        </tr>
+      )}
+    </>
+  );
 }
 
 // Histórico de movimentação — pedido do Guilherme em 2026-07-24: ele
@@ -901,83 +901,83 @@ function LinhaEstoque({
 // mexem no estoque (venda automática, produção concluída, ajuste manual)
 // numa única linha do tempo por placa — ver /api/estoque/[placaId]/historico.
 function HistoricoMovimentacao({
-    historico,
+  historico,
 }: {
-    historico: Movimento[] | "loading" | "erro" | null;
+  historico: Movimento[] | "loading" | "erro" | null;
 }) {
-    if (historico === "loading" || historico === null) {
-          return <p className="text-xs text-gray-400">Carregando histórico...</p>p>;
-    }
-    if (historico === "erro") {
-          return <p className="text-xs text-red-600">Não deu pra carregar o histórico.</p>p>;
-    }
-    if (historico.length === 0) {
-          return (
-                  <p className="text-xs text-gray-400">
-                          Nenhuma movimentação registrada ainda pra essa placa (o valor atual pode vir de
-                          antes desse histórico existir).
-                  </p>p>
-                );
-    }
+  if (historico === "loading" || historico === null) {
+    return <p className="text-xs text-gray-400">Carregando histórico...</p>;
+  }
+  if (historico === "erro") {
+    return <p className="text-xs text-red-600">Não deu pra carregar o histórico.</p>;
+  }
+  if (historico.length === 0) {
     return (
-          <div className="overflow-x-auto">
-                <table className="w-full max-w-2xl text-xs">
-                        <thead className="text-left uppercase text-gray-400">
-                                  <tr>
-                                              <th className="py-1 pr-3">Quando</th>th>
-                                              <th className="py-1 pr-3">Origem</th>th>
-                                              <th className="py-1 pr-3 text-right">Qtd</th>th>
-                                              <th className="py-1">Detalhe</th>th>
-                                  </tr>tr>
-                        </thead>thead>
-                        <tbody className="divide-y divide-gray-200">
-                          {historico.map((m, i) => (
-                        <tr key={i}>
-                                      <td className="py-1 pr-3 whitespace-nowrap text-gray-500">
-                                        {new Date(m.data).toLocaleString("pt-BR")}
-                                      </td>td>
-                                      <td className="py-1 pr-3">
-                                                      <OrigemBadge tipo={m.tipo} />
-                                      </td>td>
-                                      <td
-                                                        className={
-                                                                            "py-1 pr-3 text-right font-medium " +
-                                                                            (m.quantidade > 0 ? "text-green-700" : "text-red-600")
-                                                        }
-                                                      >
-                                        {m.quantidade > 0 ? `+${m.quantidade}` : m.quantidade}
-                                      </td>td>
-                                      <td className="py-1 text-gray-600">{m.detalhe}</td>td>
-                        </tr>tr>
-                      ))}
-                        </tbody>tbody>
-                </table>table>
-          </div>div>
-        );
+      <p className="text-xs text-gray-400">
+        Nenhuma movimentação registrada ainda pra essa placa (o valor atual pode vir de
+        antes desse histórico existir).
+      </p>
+    );
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full max-w-2xl text-xs">
+        <thead className="text-left uppercase text-gray-400">
+          <tr>
+            <th className="py-1 pr-3">Quando</th>
+            <th className="py-1 pr-3">Origem</th>
+            <th className="py-1 pr-3 text-right">Qtd</th>
+            <th className="py-1">Detalhe</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          {historico.map((m, i) => (
+            <tr key={i}>
+              <td className="py-1 pr-3 whitespace-nowrap text-gray-500">
+                {new Date(m.data).toLocaleString("pt-BR")}
+              </td>
+              <td className="py-1 pr-3">
+                <OrigemBadge tipo={m.tipo} />
+              </td>
+              <td
+                className={
+                  "py-1 pr-3 text-right font-medium " +
+                  (m.quantidade > 0 ? "text-green-700" : "text-red-600")
+                }
+              >
+                {m.quantidade > 0 ? `+${m.quantidade}` : m.quantidade}
+              </td>
+              <td className="py-1 text-gray-600">{m.detalhe}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function OrigemBadge({ tipo }: { tipo: Movimento["tipo"] }) {
-    const estilos =
-          tipo === "venda"
-            ? "bg-red-100 text-red-700"
-            : tipo === "producao"
-            ? "bg-green-100 text-green-700"
-            : tipo === "full"
-            ? "bg-purple-100 text-purple-700"
-            : "bg-amber-100 text-amber-700";
-    const rotulo =
-          tipo === "venda"
-            ? "Venda"
-            : tipo === "producao"
-            ? "Produção"
-            : tipo === "full"
-            ? "Envio Full"
-            : "Manual";
-    return (
-          <span className={"rounded px-1.5 py-0.5 text-xs font-semibold " + estilos}>
-            {rotulo}
-          </span>span>
-        );
+  const estilos =
+    tipo === "venda"
+      ? "bg-red-100 text-red-700"
+      : tipo === "producao"
+      ? "bg-green-100 text-green-700"
+      : tipo === "full"
+      ? "bg-purple-100 text-purple-700"
+      : "bg-amber-100 text-amber-700";
+  const rotulo =
+    tipo === "venda"
+      ? "Venda"
+      : tipo === "producao"
+      ? "Produção"
+      : tipo === "full"
+      ? "Envio Full"
+      : "Manual";
+  return (
+    <span className={"rounded px-1.5 py-0.5 text-xs font-semibold " + estilos}>
+      {rotulo}
+    </span>
+  );
 }
 
 // --- Estoque de filamento — movido da aba Produção em 2026-07-28, pedido
@@ -989,99 +989,99 @@ function OrigemBadge({ tipo }: { tipo: Movimento["tipo"] }) {
 // histórico) vive aqui. ---
 
 const LABEL_COR_FILAMENTO: Record<CorFilamento, string> = {
-    colorido: "Colorido",
-    preto: "Preto",
-    "preto-petg": "Preto (PETG)",
-    branco: "Branco",
-    "branco-petg": "Branco (PETG)",
-    prata: "Prata",
-    marrom: "Marrom",
-    bege: "Bege",
-    vermelho: "Vermelho",
-    "vermelho-petg": "Vermelho (PETG)",
+  colorido: "Colorido",
+  preto: "Preto",
+  "preto-petg": "Preto (PETG)",
+  branco: "Branco",
+  "branco-petg": "Branco (PETG)",
+  prata: "Prata",
+  marrom: "Marrom",
+  bege: "Bege",
+  vermelho: "Vermelho",
+  "vermelho-petg": "Vermelho (PETG)",
 };
 
 function FilamentoEditor({
-    filamento,
-    onSalvar,
+  filamento,
+  onSalvar,
 }: {
-    filamento: EstoqueFilamentoRow;
-    onSalvar: (novo: EstoqueFilamentoRow) => void;
+  filamento: EstoqueFilamentoRow;
+  onSalvar: (novo: EstoqueFilamentoRow) => void;
 }) {
-    const [valores, setValores] = useState<Record<CorFilamento, string>>(() => {
-          const inicial = {} as Record<CorFilamento, string>;
-          for (const cor of CORES_FILAMENTO) {
-                  inicial[cor] = formatGramasEmKg(filamento[cor] ?? 0);
-          }
-          return inicial;
-    });
-    const [salvando, setSalvando] = useState(false);
-  
-    useEffect(() => {
-          const novo = {} as Record<CorFilamento, string>;
-          for (const cor of CORES_FILAMENTO) {
-                  novo[cor] = formatGramasEmKg(filamento[cor] ?? 0);
-          }
-          setValores(novo);
-          // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filamento]);
-  
-    async function salvar() {
-          setSalvando(true);
-          try {
-                  const novo = {} as EstoqueFilamentoRow;
-                  for (const cor of CORES_FILAMENTO) {
-                            novo[cor] = Math.max(0, parseKgParaGramas(valores[cor]));
-                  }
-                  await onSalvar(novo);
-          } finally {
-                  setSalvando(false);
-          }
+  const [valores, setValores] = useState<Record<CorFilamento, string>>(() => {
+    const inicial = {} as Record<CorFilamento, string>;
+    for (const cor of CORES_FILAMENTO) {
+      inicial[cor] = formatGramasEmKg(filamento[cor] ?? 0);
     }
-  
-    return (
-          <div>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-                  {CORES_FILAMENTO.map((cor) => {
-                      const zerado = parseKgParaGramas(valores[cor]) <= 0;
-                      return (
-                                    <label key={cor} className="flex flex-col gap-1">
-                                                  <span className="text-xs font-medium text-gray-600">
-                                                    {LABEL_COR_FILAMENTO[cor]} <span className="font-normal text-gray-400">(Kg)</span>span>
-                                                  </span>span>
-                                                  <input
-                                                                    type="text"
-                                                                    inputMode="decimal"
-                                                                    value={valores[cor]}
-                                                                    onChange={(e) => setValores((prev) => ({ ...prev, [cor]: e.target.value }))}
-                                                                    className={
-                                                                                        "rounded border px-2 py-1.5 text-sm " +
-                                                                                        (zerado ? "border-red-300 bg-red-50 text-red-700" : "border-gray-300")
-                                                                    }
-                                                                  />
-                                    </label>label>
-                                  );
-          })}
-                </div>div>
-                <button
-                          onClick={salvar}
-                          disabled={salvando}
-                          className="mt-3 rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
-                        >
-                  {salvando ? "Salvando..." : "Salvar estoque de filamento"}
-                </button>button>
-          </div>div>
-        );
+    return inicial;
+  });
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    const novo = {} as Record<CorFilamento, string>;
+    for (const cor of CORES_FILAMENTO) {
+      novo[cor] = formatGramasEmKg(filamento[cor] ?? 0);
+    }
+    setValores(novo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filamento]);
+
+  async function salvar() {
+    setSalvando(true);
+    try {
+      const novo = {} as EstoqueFilamentoRow;
+      for (const cor of CORES_FILAMENTO) {
+        novo[cor] = Math.max(0, parseKgParaGramas(valores[cor]));
+      }
+      await onSalvar(novo);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+        {CORES_FILAMENTO.map((cor) => {
+          const zerado = parseKgParaGramas(valores[cor]) <= 0;
+          return (
+            <label key={cor} className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-gray-600">
+                {LABEL_COR_FILAMENTO[cor]} <span className="font-normal text-gray-400">(Kg)</span>
+              </span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={valores[cor]}
+                onChange={(e) => setValores((prev) => ({ ...prev, [cor]: e.target.value }))}
+                className={
+                  "rounded border px-2 py-1.5 text-sm " +
+                  (zerado ? "border-red-300 bg-red-50 text-red-700" : "border-gray-300")
+                }
+              />
+            </label>
+          );
+        })}
+      </div>
+      <button
+        onClick={salvar}
+        disabled={salvando}
+        className="mt-3 rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
+      >
+        {salvando ? "Salvando..." : "Salvar estoque de filamento"}
+      </button>
+    </div>
+  );
 }
 
 interface ItemPedidoFilamentoEstoque {
-    cor: CorFilamento;
-    pesoKg: string;
-    pesoG: string;
+  cor: CorFilamento;
+  pesoKg: string;
+  pesoG: string;
 }
 
 function formatBRLEstoque(v: number): string {
-    return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 // Lista os pedidos de filamento lançados com "ainda não chegou" — pedido
@@ -1093,61 +1093,61 @@ function formatBRLEstoque(v: number): string {
 // entra no estoque_filamento (ver PATCH em
 // /api/financeiro/compras-filamento/[id]).
 function PedidosFilamentoACaminho({
-    compras,
-    onConfirmar,
-    confirmando,
+  compras,
+  onConfirmar,
+  confirmando,
 }: {
-    compras: CompraFilamentoRow[];
-    onConfirmar: (chave: string, ids: number[]) => void;
-    confirmando: Record<string, boolean>;
+  compras: CompraFilamentoRow[];
+  onConfirmar: (chave: string, ids: number[]) => void;
+  confirmando: Record<string, boolean>;
 }) {
-    const pendentes = compras.filter((c) => !c.chegou);
-    if (pendentes.length === 0) return null;
-  
-    const grupos = new Map<string, CompraFilamentoRow[]>();
-    for (const c of pendentes) {
-          const chave = c.pedidoId ?? `solo-${c.id}`;
-          const lista = grupos.get(chave) ?? [];
-          lista.push(c);
-          grupos.set(chave, lista);
-    }
-  
-    return (
-          <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3">
-                <h3 className="mb-2 text-xs font-semibold text-amber-800">
-                        Pedidos de filamento a caminho (ainda não entrou em estoque)
-                </h3>h3>
-                <div className="flex flex-col gap-2">
-                  {Array.from(grupos.entries()).map(([chave, itens]) => {
-                      const primeiro = itens[0];
-                      const resumo = itens
-                                    .map((it) => `${LABEL_COR_FILAMENTO[it.cor]} ${formatGramasEmKg(it.gramas)}kg`)
-                                    .join(", ");
-                      return (
-                                    <div
-                                                    key={chave}
-                                                    className="flex flex-wrap items-center justify-between gap-2 rounded border border-amber-100 bg-white px-3 py-2 text-xs"
-                                                  >
-                                                  <div>
-                                                                  <p className="font-medium text-gray-800">{resumo}</p>p>
-                                                                  <p className="text-gray-500">
-                                                                    {primeiro.fornecedor ? `${primeiro.fornecedor} · ` : ""}
-                                                                                    comprado em {new Date(primeiro.dataCompra).toLocaleDateString("pt-BR")}
-                                                                  </p>p>
-                                                  </div>div>
-                                                  <button
-                                                                    onClick={() => onConfirmar(chave, itens.map((it) => it.id))}
-                                                                    disabled={Boolean(confirmando[chave])}
-                                                                    className="rounded bg-amber-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-40"
-                                                                  >
-                                                    {confirmando[chave] ? "Confirmando..." : "Confirmar chegada"}
-                                                  </button>button>
-                                    </div>div>
-                                  );
-          })}
-                </div>div>
-          </div>div>
-        );
+  const pendentes = compras.filter((c) => !c.chegou);
+  if (pendentes.length === 0) return null;
+
+  const grupos = new Map<string, CompraFilamentoRow[]>();
+  for (const c of pendentes) {
+    const chave = c.pedidoId ?? `solo-${c.id}`;
+    const lista = grupos.get(chave) ?? [];
+    lista.push(c);
+    grupos.set(chave, lista);
+  }
+
+  return (
+    <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3">
+      <h3 className="mb-2 text-xs font-semibold text-amber-800">
+        Pedidos de filamento a caminho (ainda não entrou em estoque)
+      </h3>
+      <div className="flex flex-col gap-2">
+        {Array.from(grupos.entries()).map(([chave, itens]) => {
+          const primeiro = itens[0];
+          const resumo = itens
+            .map((it) => `${LABEL_COR_FILAMENTO[it.cor]} ${formatGramasEmKg(it.gramas)}kg`)
+            .join(", ");
+          return (
+            <div
+              key={chave}
+              className="flex flex-wrap items-center justify-between gap-2 rounded border border-amber-100 bg-white px-3 py-2 text-xs"
+            >
+              <div>
+                <p className="font-medium text-gray-800">{resumo}</p>
+                <p className="text-gray-500">
+                  {primeiro.fornecedor ? `${primeiro.fornecedor} · ` : ""}
+                  comprado em {new Date(primeiro.dataCompra).toLocaleDateString("pt-BR")}
+                </p>
+              </div>
+              <button
+                onClick={() => onConfirmar(chave, itens.map((it) => it.id))}
+                disabled={Boolean(confirmando[chave])}
+                className="rounded bg-amber-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-40"
+              >
+                {confirmando[chave] ? "Confirmando..." : "Confirmar chegada"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 // Janela de "novo pedido de filamento" — pedido do Guilherme em
@@ -1160,369 +1160,368 @@ function PedidosFilamentoACaminho({
 // assume à vista (pago na data da compra) e o botão "+ Adicionar prazo"
 // revela o campo de vencimento só quando o pagamento não é imediato.
 function ModalAdicionarFilamento({
-    itemAtual,
-    itensPedido,
-    pedido,
-    total,
-    precoPorKg,
-    salvando,
-    erro,
-    onMudarItem,
-    onAdicionarItem,
-    onRemoverItem,
-    onMudarPedido,
-    onAdicionarParcela,
-    onMudarParcela,
-    onRemoverParcela,
-    onSalvar,
-    onFechar,
-    formatPeso,
-    gramasDoItem,
+  itemAtual,
+  itensPedido,
+  pedido,
+  total,
+  precoPorKg,
+  salvando,
+  erro,
+  onMudarItem,
+  onAdicionarItem,
+  onRemoverItem,
+  onMudarPedido,
+  onAdicionarParcela,
+  onMudarParcela,
+  onRemoverParcela,
+  onSalvar,
+  onFechar,
+  formatPeso,
+  gramasDoItem,
 }: {
-    itemAtual: ItemPedidoFilamentoEstoque;
-    itensPedido: ItemPedidoFilamentoEstoque[];
-    pedido: {
-      dataCompra: string;
-      fornecedor: string;
-      valorTotal: string;
-      parcelas: string[];
-      chegou: boolean;
-    };
-    total: number;
-    precoPorKg: number;
-    salvando: boolean;
-    erro: string | null;
-    onMudarItem: (v: ItemPedidoFilamentoEstoque) => void;
-    onAdicionarItem: () => void;
-    onRemoverItem: (indice: number) => void;
-    onMudarPedido: (v: {
-          dataCompra: string;
-          fornecedor: string;
-          valorTotal: string;
-          parcelas: string[];
-          chegou: boolean;
-    }) => void;
-    onAdicionarParcela: () => void;
-    onMudarParcela: (indice: number, valor: string) => void;
-    onRemoverParcela: (indice: number) => void;
-    onSalvar: () => void;
-    onFechar: () => void;
-    formatPeso: (gramas: number) => string;
-    gramasDoItem: (item: { pesoKg: string; pesoG: string }) => number;
+  itemAtual: ItemPedidoFilamentoEstoque;
+  itensPedido: ItemPedidoFilamentoEstoque[];
+  pedido: {
+    dataCompra: string;
+    fornecedor: string;
+    valorTotal: string;
+    parcelas: string[];
+    chegou: boolean;
+  };
+  total: number;
+  precoPorKg: number;
+  salvando: boolean;
+  erro: string | null;
+  onMudarItem: (v: ItemPedidoFilamentoEstoque) => void;
+  onAdicionarItem: () => void;
+  onRemoverItem: (indice: number) => void;
+  onMudarPedido: (v: {
+    dataCompra: string;
+    fornecedor: string;
+    valorTotal: string;
+    parcelas: string[];
+    chegou: boolean;
+  }) => void;
+  onAdicionarParcela: () => void;
+  onMudarParcela: (indice: number, valor: string) => void;
+  onRemoverParcela: (indice: number) => void;
+  onSalvar: () => void;
+  onFechar: () => void;
+  formatPeso: (gramas: number) => string;
+  gramasDoItem: (item: { pesoKg: string; pesoG: string }) => number;
 }) {
-    const aPrazo = pedido.parcelas.length > 0;
-    const valorPorParcela = aPrazo ? total / pedido.parcelas.length : 0;
-    return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-                <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-y-auto rounded-lg bg-white p-5">
-                        <div className="mb-3 flex items-center justify-between">
-                                  <h3 className="text-sm font-semibold text-gray-900">Adicionar filamento — novo pedido</h3>h3>
-                                  <button onClick={onFechar} className="text-gray-400 hover:text-gray-600">
-                                              ×
-                                  </button>button>
-                        </div>div>
-                        <p className="mb-3 text-xs text-gray-500">
-                                  Um pedido pode ter várias cores — informe a cor e o peso de cada uma abaixo, e depois o
-                                  valor TOTAL pago pelo pedido inteiro (o preço por Kg é calculado automaticamente
-                                  dividindo o total pelo peso). Isso soma direto no estoque de cada cor e também lança a
-                                  despesa na aba Financeiro.
-                        </p>p>
-                
-                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                                  <label className="text-xs text-gray-500">
-                                              Cor
-                                              <select
-                                                              value={itemAtual.cor}
-                                                              onChange={(e) => onMudarItem({ ...itemAtual, cor: e.target.value as CorFilamento })}
-                                                              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-                                                            >
-                                                {CORES_FILAMENTO.map((c) => (
-                                                                              <option key={c} value={c}>
-                                                                                {LABEL_COR_FILAMENTO[c]}
-                                                                              </option>option>
-                                                                            ))}
-                                              </select>select>
-                                  </label>label>
-                                  <label className="text-xs text-gray-500">
-                                              Peso — Kg
-                                              <input
-                                                              value={itemAtual.pesoKg}
-                                                              onChange={(e) => onMudarItem({ ...itemAtual, pesoKg: e.target.value })}
-                                                              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-                                                              placeholder="1"
-                                                            />
-                                  </label>label>
-                                  <label className="text-xs text-gray-500">
-                                              Peso — g (além do Kg)
-                                              <input
-                                                              value={itemAtual.pesoG}
-                                                              onChange={(e) => onMudarItem({ ...itemAtual, pesoG: e.target.value })}
-                                                              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-                                                              placeholder="0"
-                                                            />
-                                  </label>label>
-                                  <div className="flex items-end">
-                                              <button
-                                                              onClick={onAdicionarItem}
-                                                              className="w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                                                            >
-                                                            + Adicionar cor
-                                              </button>button>
-                                  </div>div>
-                        </div>div>
-                
-                  {itensPedido.length > 0 && (
-                      <div className="mt-3 overflow-x-auto rounded border border-gray-100">
-                                  <table className="w-full text-sm">
-                                                <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
-                                                                <tr>
-                                                                                  <th className="px-3 py-1.5">Cor</th>th>
-                                                                                  <th className="px-3 py-1.5 text-right">Peso</th>th>
-                                                                                  <th className="px-3 py-1.5 text-right">Valor (rateado)</th>th>
-                                                                                  <th className="px-3 py-1.5"></th>th>
-                                                                </tr>tr>
-                                                </thead>thead>
-                                                <tbody className="divide-y divide-gray-100">
-                                                  {itensPedido.map((item, i) => (
-                                          <tr key={i}>
-                                                              <td className="px-3 py-1.5">{LABEL_COR_FILAMENTO[item.cor]}</td>td>
-                                                              <td className="px-3 py-1.5 text-right">{formatPeso(gramasDoItem(item))}</td>td>
-                                                              <td className="px-3 py-1.5 text-right">
-                                                                {precoPorKg > 0
-                                                                                          ? formatBRLEstoque((gramasDoItem(item) / 1000) * precoPorKg)
-                                                                                          : "—"}
-                                                              </td>td>
-                                                              <td className="px-3 py-1.5 text-right">
-                                                                                    <button
-                                                                                                              onClick={() => onRemoverItem(i)}
-                                                                                                              className="text-xs text-gray-400 hover:text-red-600"
-                                                                                                            >
-                                                                                                            remover
-                                                                                      </button>button>
-                                                              </td>td>
-                                          </tr>tr>
-                                        ))}
-                                                </tbody>tbody>
-                                  </table>table>
-                      </div>div>
-                        )}
-                
-                        <label className="mt-4 flex items-start gap-2 rounded border border-gray-100 bg-gray-50 p-3 text-xs text-gray-700">
-                                  <input
-                                                type="checkbox"
-                                                checked={pedido.chegou}
-                                                onChange={(e) => onMudarPedido({ ...pedido, chegou: e.target.checked })}
-                                                className="mt-0.5"
-                                              />
-                                  <span>
-                                              <span className="font-medium">O pedido já chegou (está em mãos)</span>span>
-                                              <br />
-                                              <span className="text-gray-500">
-                                                            Desmarque se você já fez o pedido mas ele ainda está a caminho — a compra fica
-                                                            registrada no Financeiro normalmente, mas o peso só entra no estoque quando você
-                                                            confirmar a chegada depois (em &quot;Pedidos de filamento a caminho&quot;).
-                                              </span>span>
-                                  </span>span>
-                        </label>label>
-                
-                        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-2">
-                                  <label className="text-xs text-gray-500">
-                                              Fornecedor
-                                              <input
-                                                              value={pedido.fornecedor}
-                                                              onChange={(e) => onMudarPedido({ ...pedido, fornecedor: e.target.value })}
-                                                              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-                                                            />
-                                  </label>label>
-                                  <label className="text-xs text-gray-500">
-                                    {aPrazo ? "Data da compra" : "Data de pagamento"}
-                                              <input
-                                                              type="date"
-                                                              value={pedido.dataCompra}
-                                                              onChange={(e) => onMudarPedido({ ...pedido, dataCompra: e.target.value })}
-                                                              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-                                                            />
-                                  </label>label>
-                        </div>div>
-                
-                        <div className="mt-2">
-                          {!aPrazo ? (
-                        <button
-                                        onClick={onAdicionarParcela}
-                                        className="text-xs font-medium text-blue-600 hover:underline"
-                                      >
-                                      + Adicionar prazo (pagamento não é à vista)
-                        </button>button>
-                      ) : (
-                        <div className="rounded border border-gray-100 bg-gray-50 p-3">
-                                      <p className="mb-2 text-xs font-medium text-gray-600">
-                                                      Parcelas — cada fornecedor dá um prazo diferente (ex: 30/50/60 dias); adicione
-                                                      quantas precisar, o valor do pedido é dividido igualmente entre elas.
-                                      </p>p>
-                                      <div className="flex flex-col gap-2">
-                                        {pedido.parcelas.map((data, i) => (
-                                            <div key={i} className="flex items-end gap-2">
-                                                                <label className="text-xs text-gray-500">
-                                                                                      Parcela {i + 1} de {pedido.parcelas.length} — Vencimento
-                                                                                      <input
-                                                                                                                type="date"
-                                                                                                                value={data}
-                                                                                                                onChange={(e) => onMudarParcela(i, e.target.value)}
-                                                                                                                className="mt-1 rounded border border-gray-300 px-2 py-1.5 text-sm"
-                                                                                                              />
-                                                                </label>label>
-                                                                <span className="pb-2 text-xs text-gray-500">
-                                                                  {formatBRLEstoque(valorPorParcela)}
-                                                                </span>span>
-                                                                <button
-                                                                                        onClick={() => onRemoverParcela(i)}
-                                                                                        className="pb-2 text-xs text-gray-400 hover:text-red-600"
-                                                                                      >
-                                                                                      remover
-                                                                </button>button>
-                                            </div>div>
-                                          ))}
-                                      </div>div>
-                                      <button
-                                                        onClick={onAdicionarParcela}
-                                                        className="mt-2 text-xs font-medium text-blue-600 hover:underline"
-                                                      >
-                                                      + Adicionar parcela
-                                      </button>button>
-                        </div>div>
-                                  )}
-                        </div>div>
-                
-                        <div className="mt-4 border-t border-gray-100 pt-3">
-                                  <label className="block max-w-[200px] text-xs text-gray-500">
-                                              Valor total do pedido (R$)
-                                              <input
-                                                              value={pedido.valorTotal}
-                                                              onChange={(e) => onMudarPedido({ ...pedido, valorTotal: e.target.value })}
-                                                              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-                                                              placeholder="0,00"
-                                                            />
-                                  </label>label>
-                          {precoPorKg > 0 && (
-                        <p className="mt-2 text-xs text-gray-500">
-                                      Preço final do filamento neste pedido:{" "}
-                                      <span className="font-semibold">{formatBRLEstoque(precoPorKg)}/Kg</span>span>
-                        </p>p>
-                                  )}
-                                  <div className="mt-3 flex items-center justify-between">
-                                              <p className="text-sm text-gray-700">
-                                                            Total do pedido: <span className="font-semibold">{formatBRLEstoque(total)}</span>span>
-                                              </p>p>
-                                              <div className="flex gap-2">
-                                                            <button
-                                                                              onClick={onFechar}
-                                                                              className="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
-                                                                            >
-                                                                            Cancelar
-                                                            </button>button>
-                                                            <button
-                                                                              onClick={onSalvar}
-                                                                              disabled={salvando || itensPedido.length === 0 || !(total > 0)}
-                                                                              className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
-                                                                            >
-                                                              {salvando ? "Salvando..." : "Salvar pedido"}
-                                                            </button>button>
-                                              </div>div>
-                                  </div>div>
-                        </div>div>
-                  {erro && <p className="mt-2 text-xs text-red-600">{erro}</p>p>}
-                </div>div>
-          </div>div>
-        );
+  const aPrazo = pedido.parcelas.length > 0;
+  const valorPorParcela = aPrazo ? total / pedido.parcelas.length : 0;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-y-auto rounded-lg bg-white p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900">Adicionar filamento — novo pedido</h3>
+          <button onClick={onFechar} className="text-gray-400 hover:text-gray-600">
+            ×
+          </button>
+        </div>
+        <p className="mb-3 text-xs text-gray-500">
+          Um pedido pode ter várias cores — informe a cor e o peso de cada uma abaixo, e depois o
+          valor TOTAL pago pelo pedido inteiro (o preço por Kg é calculado automaticamente
+          dividindo o total pelo peso). Isso soma direto no estoque de cada cor e também lança a
+          despesa na aba Financeiro.
+        </p>
+
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <label className="text-xs text-gray-500">
+            Cor
+            <select
+              value={itemAtual.cor}
+              onChange={(e) => onMudarItem({ ...itemAtual, cor: e.target.value as CorFilamento })}
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            >
+              {CORES_FILAMENTO.map((c) => (
+                <option key={c} value={c}>
+                  {LABEL_COR_FILAMENTO[c]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs text-gray-500">
+            Peso — Kg
+            <input
+              value={itemAtual.pesoKg}
+              onChange={(e) => onMudarItem({ ...itemAtual, pesoKg: e.target.value })}
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+              placeholder="1"
+            />
+          </label>
+          <label className="text-xs text-gray-500">
+            Peso — g (além do Kg)
+            <input
+              value={itemAtual.pesoG}
+              onChange={(e) => onMudarItem({ ...itemAtual, pesoG: e.target.value })}
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+              placeholder="0"
+            />
+          </label>
+          <div className="flex items-end">
+            <button
+              onClick={onAdicionarItem}
+              className="w-full rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            >
+              + Adicionar cor
+            </button>
+          </div>
+        </div>
+
+        {itensPedido.length > 0 && (
+          <div className="mt-3 overflow-x-auto rounded border border-gray-100">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
+                <tr>
+                  <th className="px-3 py-1.5">Cor</th>
+                  <th className="px-3 py-1.5 text-right">Peso</th>
+                  <th className="px-3 py-1.5 text-right">Valor (rateado)</th>
+                  <th className="px-3 py-1.5"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {itensPedido.map((item, i) => (
+                  <tr key={i}>
+                    <td className="px-3 py-1.5">{LABEL_COR_FILAMENTO[item.cor]}</td>
+                    <td className="px-3 py-1.5 text-right">{formatPeso(gramasDoItem(item))}</td>
+                    <td className="px-3 py-1.5 text-right">
+                      {precoPorKg > 0
+                        ? formatBRLEstoque((gramasDoItem(item) / 1000) * precoPorKg)
+                        : "—"}
+                    </td>
+                    <td className="px-3 py-1.5 text-right">
+                      <button
+                        onClick={() => onRemoverItem(i)}
+                        className="text-xs text-gray-400 hover:text-red-600"
+                      >
+                        remover
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <label className="mt-4 flex items-start gap-2 rounded border border-gray-100 bg-gray-50 p-3 text-xs text-gray-700">
+          <input
+            type="checkbox"
+            checked={pedido.chegou}
+            onChange={(e) => onMudarPedido({ ...pedido, chegou: e.target.checked })}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="font-medium">O pedido já chegou (está em mãos)</span>
+            <br />
+            <span className="text-gray-500">
+              Desmarque se você já fez o pedido mas ele ainda está a caminho — a compra fica
+              registrada no Financeiro normalmente, mas o peso só entra no estoque quando você
+              confirmar a chegada depois (em &quot;Pedidos de filamento a caminho&quot;).
+            </span>
+          </span>
+        </label>
+
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-2">
+          <label className="text-xs text-gray-500">
+            Fornecedor
+            <input
+              value={pedido.fornecedor}
+              onChange={(e) => onMudarPedido({ ...pedido, fornecedor: e.target.value })}
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            />
+          </label>
+          <label className="text-xs text-gray-500">
+            {aPrazo ? "Data da compra" : "Data de pagamento"}
+            <input
+              type="date"
+              value={pedido.dataCompra}
+              onChange={(e) => onMudarPedido({ ...pedido, dataCompra: e.target.value })}
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            />
+          </label>
+        </div>
+
+        <div className="mt-2">
+          {!aPrazo ? (
+            <button
+              onClick={onAdicionarParcela}
+              className="text-xs font-medium text-blue-600 hover:underline"
+            >
+              + Adicionar prazo (pagamento não é à vista)
+            </button>
+          ) : (
+            <div className="rounded border border-gray-100 bg-gray-50 p-3">
+              <p className="mb-2 text-xs font-medium text-gray-600">
+                Parcelas — cada fornecedor dá um prazo diferente (ex: 30/50/60 dias); adicione
+                quantas precisar, o valor do pedido é dividido igualmente entre elas.
+              </p>
+              <div className="flex flex-col gap-2">
+                {pedido.parcelas.map((data, i) => (
+                  <div key={i} className="flex items-end gap-2">
+                    <label className="text-xs text-gray-500">
+                      Parcela {i + 1} de {pedido.parcelas.length} — Vencimento
+                      <input
+                        type="date"
+                        value={data}
+                        onChange={(e) => onMudarParcela(i, e.target.value)}
+                        className="mt-1 rounded border border-gray-300 px-2 py-1.5 text-sm"
+                      />
+                    </label>
+                    <span className="pb-2 text-xs text-gray-500">
+                      {formatBRLEstoque(valorPorParcela)}
+                    </span>
+                    <button
+                      onClick={() => onRemoverParcela(i)}
+                      className="pb-2 text-xs text-gray-400 hover:text-red-600"
+                    >
+                      remover
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={onAdicionarParcela}
+                className="mt-2 text-xs font-medium text-blue-600 hover:underline"
+              >
+                + Adicionar parcela
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 border-t border-gray-100 pt-3">
+          <label className="block max-w-[200px] text-xs text-gray-500">
+            Valor total do pedido (R$)
+            <input
+              value={pedido.valorTotal}
+              onChange={(e) => onMudarPedido({ ...pedido, valorTotal: e.target.value })}
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+              placeholder="0,00"
+            />
+          </label>
+          {precoPorKg > 0 && (
+            <p className="mt-2 text-xs text-gray-500">
+              Preço final do filamento neste pedido:{" "}
+              <span className="font-semibold">{formatBRLEstoque(precoPorKg)}/Kg</span>
+            </p>
+          )}
+          <div className="mt-3 flex items-center justify-between">
+            <p className="text-sm text-gray-700">
+              Total do pedido: <span className="font-semibold">{formatBRLEstoque(total)}</span>
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={onFechar}
+                className="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={onSalvar}
+                disabled={salvando || itensPedido.length === 0 || !(total > 0)}
+                className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
+              >
+                {salvando ? "Salvando..." : "Salvar pedido"}
+              </button>
+            </div>
+          </div>
+        </div>
+        {erro && <p className="mt-2 text-xs text-red-600">{erro}</p>}
+      </div>
+    </div>
+  );
 }
 
 interface MovimentoFilamento {
-    data: string;
-    cor: string;
-    tipo: "producao" | "falha" | "perda_avulsa" | "ajuste_manual" | "compra";
-    gramas: number;
-    detalhe: string;
+  data: string;
+  cor: string;
+  tipo: "producao" | "falha" | "perda_avulsa" | "ajuste_manual" | "compra";
+  gramas: number;
+  detalhe: string;
 }
 
 const LABEL_TIPO_MOVIMENTO_FILAMENTO: Record<MovimentoFilamento["tipo"], string> = {
-    producao: "Produção concluída",
-    falha: "Falha na placa",
-    perda_avulsa: "Perda avulsa",
-    ajuste_manual: "Ajuste manual",
-    compra: "Compra (Financeiro)",
+  producao: "Produção concluída",
+  falha: "Falha na placa",
+  perda_avulsa: "Perda avulsa",
+  ajuste_manual: "Ajuste manual",
+  compra: "Compra (Financeiro)",
 };
 
 function HistoricoFilamento() {
-    const [aberto, setAberto] = useState(false);
-    const [movimentos, setMovimentos] = useState<MovimentoFilamento[] | "loading" | "erro" | null>(null);
-  
-    async function alternar() {
-          if (!aberto && movimentos === null) {
-                  setMovimentos("loading");
-                  try {
-                            const res = await fetch("/api/producao/filamento/historico");
-                            if (!res.ok) throw new Error("falha");
-                            const data = await res.json();
-                            setMovimentos(data.movimentos ?? []);
-                  } catch {
-                            setMovimentos("erro");
-                  }
-          }
-          setAberto((prev) => !prev);
+  const [aberto, setAberto] = useState(false);
+  const [movimentos, setMovimentos] = useState<MovimentoFilamento[] | "loading" | "erro" | null>(null);
+
+  async function alternar() {
+    if (!aberto && movimentos === null) {
+      setMovimentos("loading");
+      try {
+        const res = await fetch("/api/producao/filamento/historico");
+        if (!res.ok) throw new Error("falha");
+        const data = await res.json();
+        setMovimentos(data.movimentos ?? []);
+      } catch {
+        setMovimentos("erro");
+      }
     }
-  
-    return (
-          <div>
-                <button
-                          onClick={alternar}
-                          className="text-xs font-medium text-blue-600 hover:underline"
-                        >
-                  {aberto ? "Fechar histórico" : "Ver histórico de movimentação"}
-                </button>button>
-            {aberto && (
-                    <div className="mt-2 overflow-x-auto">
-                      {movimentos === "loading" || movimentos === null ? (
-                                  <p className="text-xs text-gray-400">Carregando histórico...</p>p>
-                                ) : movimentos === "erro" ? (
-                                  <p className="text-xs text-red-600">Não deu pra carregar o histórico.</p>p>
-                                ) : movimentos.length === 0 ? (
-                                  <p className="text-xs text-gray-400">Nenhuma movimentação registrada ainda.</p>p>
-                                ) : (
-                                  <table className="w-full max-w-3xl text-xs">
-                                                <thead className="text-left uppercase text-gray-400">
-                                                                <tr>
-                                                                                  <th className="py-1 pr-3">Quando</th>th>
-                                                                                  <th className="py-1 pr-3">Cor</th>th>
-                                                                                  <th className="py-1 pr-3">Origem</th>th>
-                                                                                  <th className="py-1 pr-3 text-right">Gramas</th>th>
-                                                                                  <th className="py-1">Detalhe</th>th>
-                                                                </tr>tr>
-                                                </thead>thead>
-                                                <tbody className="divide-y divide-gray-200">
-                                                  {movimentos.map((m, i) => (
-                                                      <tr key={i}>
-                                                                          <td className="py-1 pr-3 whitespace-nowrap text-gray-500">
-                                                                            {new Date(m.data).toLocaleString("pt-BR")}
-                                                                          </td>td>
-                                                                          <td className="py-1 pr-3">{LABEL_COR_FILAMENTO[m.cor as CorFilamento] ?? m.cor}</td>td>
-                                                                          <td className="py-1 pr-3">{LABEL_TIPO_MOVIMENTO_FILAMENTO[m.tipo]}</td>td>
-                                                                          <td
-                                                                                                  className={
-                                                                                                                            "py-1 pr-3 text-right font-medium " +
-                                                                                                                            (m.gramas > 0 ? "text-green-700" : "text-red-600")
-                                                                                                    }
-                                                                                                >
-                                                                            {m.gramas > 0 ? `+${m.gramas}` : m.gramas}g
-                                                                          </td>td>
-                                                                          <td className="py-1 text-gray-600">{m.detalhe}</td>td>
-                                                      </tr>tr>
-                                                    ))}
-                                                </tbody>tbody>
-                                  </table>table>
-                              )}
-                    </div>div>
-                )}
-          </div>div>
-        );
+    setAberto((prev) => !prev);
+  }
+
+  return (
+    <div>
+      <button
+        onClick={alternar}
+        className="text-xs font-medium text-blue-600 hover:underline"
+      >
+        {aberto ? "Fechar histórico" : "Ver histórico de movimentação"}
+      </button>
+      {aberto && (
+        <div className="mt-2 overflow-x-auto">
+          {movimentos === "loading" || movimentos === null ? (
+            <p className="text-xs text-gray-400">Carregando histórico...</p>
+          ) : movimentos === "erro" ? (
+            <p className="text-xs text-red-600">Não deu pra carregar o histórico.</p>
+          ) : movimentos.length === 0 ? (
+            <p className="text-xs text-gray-400">Nenhuma movimentação registrada ainda.</p>
+          ) : (
+            <table className="w-full max-w-3xl text-xs">
+              <thead className="text-left uppercase text-gray-400">
+                <tr>
+                  <th className="py-1 pr-3">Quando</th>
+                  <th className="py-1 pr-3">Cor</th>
+                  <th className="py-1 pr-3">Origem</th>
+                  <th className="py-1 pr-3 text-right">Gramas</th>
+                  <th className="py-1">Detalhe</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {movimentos.map((m, i) => (
+                  <tr key={i}>
+                    <td className="py-1 pr-3 whitespace-nowrap text-gray-500">
+                      {new Date(m.data).toLocaleString("pt-BR")}
+                    </td>
+                    <td className="py-1 pr-3">{LABEL_COR_FILAMENTO[m.cor as CorFilamento] ?? m.cor}</td>
+                    <td className="py-1 pr-3">{LABEL_TIPO_MOVIMENTO_FILAMENTO[m.tipo]}</td>
+                    <td
+                      className={
+                        "py-1 pr-3 text-right font-medium " +
+                        (m.gramas > 0 ? "text-green-700" : "text-red-600")
+                      }
+                    >
+                      {m.gramas > 0 ? `+${m.gramas}` : m.gramas}g
+                    </td>
+                    <td className="py-1 text-gray-600">{m.detalhe}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
-</></></div>
