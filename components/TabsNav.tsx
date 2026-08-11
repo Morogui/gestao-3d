@@ -11,6 +11,7 @@ const TABS = [
   { href: "/full", label: "Full" },
   { href: "/financeiro", label: "Financeiro" },
   { href: "/relatorios", label: "Relatórios" },
+  { href: "/analise", label: "Analise" },
 ];
 
 export default function TabsNav() {
