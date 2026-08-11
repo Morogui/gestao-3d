@@ -72,4 +72,3 @@ if (!resultado.connected) {
     </div>
     );
 }
-</div>
