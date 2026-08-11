@@ -2,11 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
-import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/db";
-
-export const dynamic = "force-dynamic";
-
 // Atualiza dados editaveis de uma placa. Historicamente so o peso de
 // filamento gasto (pesoPlacaGramas) era editavel por aqui. Pedido do
 // Guilherme em 2026-07-31: campo saida extra (saida_extra_placa_id +
