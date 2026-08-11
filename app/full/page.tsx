@@ -154,6 +154,16 @@ export default function FullPage() {
     );
   }, [linhas, busca]);
 
+  // Painel pedido pelo Guilherme em 2026-08-11: "deixe um quadro somente
+  // com os anuncios do full sem vendas" - SKUs que nao venderam nada no
+  // Full na janela de 7 dias ja usada em todo o resto da tela (mesma
+  // fonte: vendidoFull7d, calculado em /api/estoque-full a partir dos
+  // pedidos com shippingMode = "Full").
+  const semVendaFull = useMemo(
+    () => linhasFiltradas.filter((l) => l.vendidoFull7d === 0),
+    [linhasFiltradas]
+    );
+
   // Agrupa as linhas com recomendação de envio > 0 pra alimentar o
   // painel "Agendar Full" — mesmo SKU pode aparecer em mais de uma
   // linha quando é produto composto (corpo + gancho, ex: Suporte
@@ -377,6 +387,51 @@ export default function FullPage() {
         <Card label="Total a enviar" value={String(totalAEnviar)} />
         <Card label="SKUs pendentes de envio" value={String(pendentes)} />
       </div>
+
+      <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <h2 className="mb-1 text-sm font-semibold text-gray-900">
+      Anúncios do Full sem vendas ({semVendaFull.length})
+      </h2>
+      <p className="mb-3 text-xs text-gray-500">
+      SKUs que não tiveram nenhuma venda no Full nos últimos 7 dias
+      (período {periodo?.inicio} a {periodo?.fim}).
+      </p>
+        {semVendaFull.length === 0 ? (
+      <p className="text-xs text-gray-400">
+      Todos os SKUs tiveram venda no Full nessa janela de 7 dias.
+      </p>
+      ) : (
+      <div className="overflow-x-auto rounded border border-gray-200">
+      <table className="w-full text-xs">
+      <thead className="bg-gray-50 text-left font-semibold uppercase text-gray-500">
+      <tr>
+      <th className="px-3 py-2">SKU / Placa</th>
+      <th className="px-3 py-2">Tier</th>
+      <th className="px-3 py-2 text-right">Estoque no Full</th>
+      </tr>
+      </thead>
+      <tbody className="divide-y divide-gray-100">
+        {semVendaFull
+          .slice()
+          .sort((a, b) => b.estoqueFullAtual - a.estoqueFullAtual)
+          .map((l) => (
+            <tr key={l.chave}>
+            <td className="px-3 py-2">
+            <p className="font-medium text-gray-900">{l.sku || l.nome}</p>
+            <p className="text-gray-400">{l.nome}</p>
+            </td>
+            <td className="px-3 py-2">
+            <TierBadge tier={l.tier} />
+            </td>
+            <td className="px-3 py-2 text-right text-gray-700">{l.estoqueFullAtual}</td>
+            </tr>
+            ))}
+      </tbody>
+      </table>
+      </div>
+      )}
+      </div>
+    </div>
 
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         <p className="font-semibold">Como funciona a recomendação</p>
