@@ -143,12 +143,20 @@ export default function EstoquePage() {
     // pendentes de chegada); o estoque só é somado quando confirmar em
     // "Pedidos de filamento a caminho" (ver confirmarChegadaPedido).
     chegou: boolean;
+    // Comprovante (nota fiscal/recibo) do pedido — pedido do Guilherme em
+    // 2026-08-12: "isso faz parte do financeiro! Lancamento de insumo
+    // (Filamento)... ordem de pagamento" — o pedido de filamento já vira
+    // lançamento(s) em financeiro_lancamentos (ver salvarPedidoFilamento);
+    // esse comprovante viaja junto no corpo desse(s) POST(s), igual ao
+    // upload manual da aba Financeiro (mesmas colunas arquivo_*).
+    comprovante: { nome: string; mime: string; base64: string } | null;
   }>({
     dataCompra: hojeISO(),
     fornecedor: "",
     valorTotal: "",
     parcelas: [],
     chegou: true,
+    comprovante: null,
   });
   const [salvandoPedido, setSalvandoPedido] = useState(false);
   const [erroPedido, setErroPedido] = useState<string | null>(null);
@@ -252,7 +260,30 @@ export default function EstoquePage() {
       valorTotal: "",
       parcelas: [],
       chegou: true,
+      comprovante: null,
     });
+  }
+
+  // Lê o arquivo de comprovante escolhido e converte pra base64 — mesmo
+  // padrão do upload manual em app/financeiro/page.tsx, só que sem a
+  // leitura por IA (aqui os campos já são digitados manualmente no
+  // pedido; o comprovante é só o anexo de apoio que viaja com o
+  // lançamento). null limpa a seleção (botão "remover").
+  function onSelecionarComprovante(file: File | null) {
+    if (!file) {
+      setPedidoFilamento((atual) => ({ ...atual, comprovante: null }));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const resultado = reader.result as string;
+      const base64 = resultado.split(",")[1] ?? "";
+      setPedidoFilamento((atual) => ({
+        ...atual,
+        comprovante: { nome: file.name, mime: file.type || "application/octet-stream", base64 },
+      }));
+    };
+    reader.readAsDataURL(file);
   }
 
   const totalPedidoFilamento = Number(pedidoFilamento.valorTotal.replace(",", ".")) || 0;
@@ -358,6 +389,9 @@ export default function EstoquePage() {
             dataPagamento: pedidoFilamento.dataCompra,
             fornecedor: pedidoFilamento.fornecedor || null,
             formaPagamento: "À vista",
+            arquivoNome: pedidoFilamento.comprovante?.nome ?? null,
+            arquivoMime: pedidoFilamento.comprovante?.mime ?? null,
+            arquivoBase64: pedidoFilamento.comprovante?.base64 ?? null,
           }),
         });
       } else {
@@ -385,6 +419,9 @@ export default function EstoquePage() {
               dataPagamento: null,
               fornecedor: pedidoFilamento.fornecedor || null,
               formaPagamento: `A prazo (parcela ${i + 1}/${n})`,
+              arquivoNome: pedidoFilamento.comprovante?.nome ?? null,
+              arquivoMime: pedidoFilamento.comprovante?.mime ?? null,
+              arquivoBase64: pedidoFilamento.comprovante?.base64 ?? null,
             }),
           });
         }
@@ -607,6 +644,7 @@ export default function EstoquePage() {
           onFechar={fecharModalAdicionar}
           formatPeso={formatPesoPedido}
           gramasDoItem={gramasDoItemPedido}
+          onSelecionarComprovante={onSelecionarComprovante}
         />
       )}
 
@@ -1178,6 +1216,7 @@ function ModalAdicionarFilamento({
   onFechar,
   formatPeso,
   gramasDoItem,
+  onSelecionarComprovante,
 }: {
   itemAtual: ItemPedidoFilamentoEstoque;
   itensPedido: ItemPedidoFilamentoEstoque[];
@@ -1187,6 +1226,7 @@ function ModalAdicionarFilamento({
     valorTotal: string;
     parcelas: string[];
     chegou: boolean;
+    comprovante: { nome: string; mime: string; base64: string } | null;
   };
   total: number;
   precoPorKg: number;
@@ -1201,6 +1241,7 @@ function ModalAdicionarFilamento({
     valorTotal: string;
     parcelas: string[];
     chegou: boolean;
+    comprovante: { nome: string; mime: string; base64: string } | null;
   }) => void;
   onAdicionarParcela: () => void;
   onMudarParcela: (indice: number, valor: string) => void;
@@ -1209,6 +1250,7 @@ function ModalAdicionarFilamento({
   onFechar: () => void;
   formatPeso: (gramas: number) => string;
   gramasDoItem: (item: { pesoKg: string; pesoG: string }) => number;
+  onSelecionarComprovante: (file: File | null) => void;
 }) {
   const aPrazo = pedido.parcelas.length > 0;
   const valorPorParcela = aPrazo ? total / pedido.parcelas.length : 0;
@@ -1324,6 +1366,32 @@ function ModalAdicionarFilamento({
             </span>
           </span>
         </label>
+
+        <div className="mt-3 rounded border border-gray-100 bg-gray-50 p-3">
+          <label className="block text-xs font-medium text-gray-700">
+            Comprovante (nota fiscal / recibo) — opcional
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={(e) => onSelecionarComprovante(e.target.files?.[0] ?? null)}
+              className="mt-1 block w-full text-xs text-gray-600 file:mr-2 file:rounded file:border file:border-gray-300 file:bg-white file:px-2 file:py-1 file:text-xs"
+            />
+          </label>
+          <p className="mt-1 text-xs text-gray-500">
+            Sobe junto com o(s) lançamento(s) do Financeiro (à vista ou cada parcela, se a prazo).
+          </p>
+          {pedido.comprovante && (
+            <p className="mt-1 text-xs text-green-700">
+              Anexado: {pedido.comprovante.nome}{" "}
+              <button
+                onClick={() => onSelecionarComprovante(null)}
+                className="ml-1 text-gray-400 hover:text-red-600"
+              >
+                remover
+              </button>
+            </p>
+          )}
+        </div>
 
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-2">
           <label className="text-xs text-gray-500">
