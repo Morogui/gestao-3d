@@ -36,6 +36,22 @@ async function garantirTabela() {
   // trata como à vista, paga na própria data da compra.
   await sql`UPDATE compras_filamento SET data_vencimento = data_compra WHERE data_vencimento IS NULL`;
   await sql`UPDATE compras_filamento SET data_pagamento = data_compra WHERE status = 'pago' AND data_pagamento IS NULL`;
+
+  // Controle de chegada física — pedido do Guilherme em 2026-08-11:
+  // "comprei filamento no dia 7, porem ele nao chegou, entao nao entrou
+  // em estoque, precisava conseguir lançar a compra e quando ele chegar
+  // eu conseguir lançar ele". DEFAULT true garante que toda compra já
+  // existente antes dessa coluna existir (lançadas quando o pedido só
+  // suportava "já chegou") continue marcada como recebida — o peso
+  // dela já tinha sido somado ao estoque_filamento no POST antigo, então
+  // não faz sentido tratá-la como pendente agora. Só compras novas feitas
+  // com o checkbox desmarcado nascem chegou=false.
+  await sql`ALTER TABLE compras_filamento ADD COLUMN IF NOT EXISTS chegou BOOLEAN NOT NULL DEFAULT true`;
+  await sql`ALTER TABLE compras_filamento ADD COLUMN IF NOT EXISTS data_chegada DATE`;
+  // Agrupa várias cores de um mesmo "Salvar pedido" numa única linha na
+  // lista de pendentes (ver PedidosFilamentoACaminho em app/estoque/page.tsx).
+  await sql`ALTER TABLE compras_filamento ADD COLUMN IF NOT EXISTS pedido_id TEXT`;
+  await sql`UPDATE compras_filamento SET data_chegada = data_compra WHERE chegou = true AND data_chegada IS NULL`;
 }
 
 interface CompraRow {
@@ -49,9 +65,13 @@ interface CompraRow {
   data_pagamento: string | null;
   fornecedor: string | null;
   criado_em: string;
+  chegou: boolean;
+  data_chegada: string | null;
+  pedido_id: string | null;
 }
 
-function toPlainDate(v: unknown): string {
+function toPlainDate(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
   if (v instanceof Date) {
     const y = v.getUTCFullYear();
     const m = String(v.getUTCMonth() + 1).padStart(2, "0");
@@ -73,6 +93,9 @@ function serializar(r: CompraRow) {
     dataPagamento: r.data_pagamento ? toPlainDate(r.data_pagamento) : null,
     fornecedor: r.fornecedor,
     criadoEm: r.criado_em,
+    chegou: r.chegou,
+    dataChegada: toPlainDate(r.data_chegada),
+    pedidoId: r.pedido_id,
   };
 }
 
@@ -143,11 +166,25 @@ export async function POST(request: NextRequest) {
   const status = aPrazo ? "pendente" : "pago";
   const dataPagamento = aPrazo ? null : dataCompra;
 
+  // Chegada física — pedido do Guilherme em 2026-08-11: "comprei
+  // filamento no dia 7, porem ele nao chegou... quando ele chegar eu
+  // conseguir lançar ele". Por padrão (compatibilidade com quem chama
+  // sem o campo) já chegou; o modal em app/estoque/page.tsx manda
+  // chegou=false explicitamente quando o checkbox "O pedido já chegou"
+  // está desmarcado. Só quando chegou=true a compra soma no estoque
+  // agora — senão, o peso só entra depois, via PATCH em
+  // /api/financeiro/compras-filamento/[id] (confirmar chegada).
+  const chegou = body.chegou === undefined ? true : Boolean(body.chegou);
+  const pedidoId = body.pedidoId ? String(body.pedidoId).trim() : null;
+  const dataChegada = chegou
+    ? String(body.dataChegada ?? "").trim() || dataCompra
+    : null;
+
   const rows = (await sql`
     INSERT INTO compras_filamento
-      (cor, gramas, valor_pago, data_compra, fornecedor, data_vencimento, status, data_pagamento)
+      (cor, gramas, valor_pago, data_compra, fornecedor, data_vencimento, status, data_pagamento, chegou, data_chegada, pedido_id)
     VALUES
-      (${cor}, ${gramas}, ${valorPago}, ${dataCompra}, ${fornecedor}, ${dataVencimento}, ${status}, ${dataPagamento})
+      (${cor}, ${gramas}, ${valorPago}, ${dataCompra}, ${fornecedor}, ${dataVencimento}, ${status}, ${dataPagamento}, ${chegou}, ${dataChegada}, ${pedidoId})
     RETURNING *
   `) as CompraRow[];
 
@@ -161,8 +198,9 @@ export async function POST(request: NextRequest) {
   // verdade), o mesmo padrão de upsert usado em
   // /api/producao/perda-filamento e /api/producoes/[id]. Pagamento à
   // vista ou a prazo não muda isso — o filamento chega independente de
-  // quando é pago.
-  if (CORES_FILAMENTO.includes(cor as (typeof CORES_FILAMENTO)[number])) {
+  // quando é pago. Mas se ainda não chegou fisicamente (chegou=false),
+  // não soma nada agora — só quando confirmar a chegada depois.
+  if (chegou && CORES_FILAMENTO.includes(cor as (typeof CORES_FILAMENTO)[number])) {
     await sql`
       INSERT INTO estoque_filamento (cor, quantidade_gramas, atualizado_em)
       VALUES (${cor}, ${gramas}, now())
