@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { createElement, Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   PlacaRow,
@@ -195,6 +195,7 @@ export default function ProducaoPage() {
   // prioridade pras placas daquela cor (ver corFilamentoDaPlaca em
   // lib/placas.ts e o filtro de filaPrioridade abaixo).
   const [filamento, setFilamento] = useState<EstoqueFilamentoRow | null>(null);
+  const [resumoProducao, setResumoProducao] = useState<{ placaNome: string; papel: string | null; pecasProduzidas: number; falhas: number; quantidadePlacas: number; pecasPorPlaca: number; extra: { placaNome: string; pecas: number } | null; gramas: number; cor: string | null } | null>(null);
   // Envios planejados do Full ainda pendentes — pedido do Guilherme em
   // 2026-07-25: alimenta o critério nº-2 da fila de prioridade (ver
   // filaPrioridade abaixo).
@@ -749,20 +750,37 @@ export default function ProducaoPage() {
     }
   }
 
-  async function concluirProducao(id: number, machineId: number) {
-    setCarregando((prev) => ({ ...prev, [machineId]: true }));
-    try {
-      await fetch(`/api/producoes/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "concluida" }),
+async function concluirProducao(id: number, machineId: number) {
+  setCarregando((prev) => ({ ...prev, [machineId]: true }));
+  try {
+    const producaoAtual = producoes.find((p) => p.id === id);
+    const detalhe = producaoAtual ? detalheProducao(producaoAtual) : null;
+    const res = await fetch(`/api/producoes/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "concluida" }),
+    });
+    const data = await res.json().catch(() => null);
+    if (res.ok && producaoAtual && detalhe && data) {
+      const placaCadastro = placaPorId.get(producaoAtual.placa_id);
+      setResumoProducao({
+        placaNome: producaoAtual.placa_nome,
+        papel: placaCadastro ? placaCadastro.papel : null,
+        pecasProduzidas: data.pecasProduzidas ?? detalhe.pecasProduzidas,
+        falhas: data.pecasComFalha ?? detalhe.falhas,
+        quantidadePlacas: detalhe.quantidadePlacas,
+        pecasPorPlaca: detalhe.pecasPorPlaca,
+        extra: detalhe.extra && data.pecasExtraProduzidas ? { placaNome: detalhe.extra.placaNome, pecas: data.pecasExtraProduzidas } : null,
+        gramas: data.gramasFilamentoDescontadas ?? 0,
+        cor: placaCadastro ? corFilamentoDaPlaca(placaCadastro.nome) : null,
       });
-      await carregarRapido();
-      carregarDemanda();
-    } finally {
-      setCarregando((prev) => ({ ...prev, [machineId]: false }));
     }
+    await carregarRapido();
+    carregarDemanda();
+  } finally {
+    setCarregando((prev) => ({ ...prev, [machineId]: false }));
   }
+}
 
   async function cancelarProducao(id: number, machineId: number) {
     setCarregando((prev) => ({ ...prev, [machineId]: true }));
@@ -1420,6 +1438,7 @@ export default function ProducaoPage() {
           </div>
         )}
       </section>
+      {resumoProducao && createElement("div", {className: "fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4", onClick: () => setResumoProducao(null)}, createElement("div", {className: "w-full max-w-sm rounded-lg bg-white p-5 shadow-xl", onClick: (e) => e.stopPropagation()}, createElement("p", {className: "mb-1 text-xs font-medium uppercase tracking-wide text-emerald-600"}, "Produção concluída"), createElement("h3", {className: "mb-3 text-base font-semibold text-gray-900"}, resumoProducao.placaNome + (resumoProducao.papel ? ` (${resumoProducao.papel})` : "")), createElement("p", {className: "text-sm text-gray-700"}, `${resumoProducao.pecasProduzidas} peça(s) produzida(s) (${resumoProducao.quantidadePlacas} placa(s) x ${resumoProducao.pecasPorPlaca} peça(s)/placa${resumoProducao.falhas > 0 ? ` - ${resumoProducao.falhas} com falha` : ""})`), resumoProducao.extra && createElement("p", {className: "text-sm text-emerald-700"}, `+ ${resumoProducao.extra.pecas} peça(s) de ${resumoProducao.extra.placaNome} (saída extra da placa mista)`), createElement("p", {className: "mt-2 text-sm text-gray-700"}, `Filamento gasto: ${formatGramasEmKg(resumoProducao.gramas)} kg${resumoProducao.cor ? ` (${resumoProducao.cor})` : ""}`), createElement("button", {onClick: () => setResumoProducao(null), className: "mt-4 w-full rounded bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700"}, "Fechar")))}
     </div>
   );
 }
