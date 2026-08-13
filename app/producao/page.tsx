@@ -31,6 +31,19 @@ import {
 // volume. Infinity quando não há venda média (não deveria entrar na fila
 // de prioridade de qualquer forma, já que aProduzir só é > 0 quando há
 // mediaSemanal > 0).
+// Formata uma duracao em milissegundos como "2h 15min" -- usado pra
+// mostrar quanto tempo uma producao levou de fato (do carregamento ate
+// a conclusao) no popup de resumo pos-producao. Pedido do Guilherme em
+// 2026-08-12: ele valida os numeros do popup contra o fatiador, e
+// precisa ver o tempo real pra comparar.
+function formatDuracaoMs(ms: number): string {
+    const totalMin = Math.max(0, Math.round(ms / 60000));
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    if (h === 0) return `${m}min`;
+    return m > 0 ? `${h}h ${m}min` : `${h}h`;
+}
+
 function diasDeEstoque(estoque: number, mediaSemanal: number): number {
   if (mediaSemanal <= 0) return Infinity;
   return (estoque / mediaSemanal) * 7;
@@ -195,7 +208,11 @@ export default function ProducaoPage() {
   // prioridade pras placas daquela cor (ver corFilamentoDaPlaca em
   // lib/placas.ts e o filtro de filaPrioridade abaixo).
   const [filamento, setFilamento] = useState<EstoqueFilamentoRow | null>(null);
-  const [resumoProducao, setResumoProducao] = useState<{ placaNome: string; papel: string | null; pecasProduzidas: number; falhas: number; quantidadePlacas: number; pecasPorPlaca: number; extra: { placaNome: string; pecas: number } | null; gramas: number; cor: string | null } | null>(null);
+  const [resumoProducao, setResumoProducao] = useState<{ producaoId: number; placaNome: string; papel: string | null; pecasProduzidas: number; falhas: number; quantidadePlacas: number; pecasPorPlaca: number; extra: { placaNome: string; pecas: number } | null; gramas: number; cor: string | null; tempoFormatado: string } | null>(null);
+    const [editandoPeso, setEditandoPeso] = useState(false);
+    const [valorPesoEditado, setValorPesoEditado] = useState("");
+    const [salvandoCorrecao, setSalvandoCorrecao] = useState(false);
+    const [erroCorrecao, setErroCorrecao] = useState<string | null>(null);
   // Envios planejados do Full ainda pendentes — pedido do Guilherme em
   // 2026-07-25: alimenta o critério nº-2 da fila de prioridade (ver
   // filaPrioridade abaixo).
@@ -762,8 +779,10 @@ async function concluirProducao(id: number, machineId: number) {
     });
     const data = await res.json().catch(() => null);
     if (res.ok && producaoAtual && detalhe && data) {
-      const placaCadastro = placaPorId.get(producaoAtual.placa_id);
-      setResumoProducao({
+          const placaCadastro = placaPorId.get(producaoAtual.placa_id);
+            const tempoMs = producaoAtual.iniciado_em ? Date.now() - new Date(producaoAtual.iniciado_em).getTime() : 0;
+            setResumoProducao({
+                      producaoId: id,
         placaNome: producaoAtual.placa_nome,
         papel: placaCadastro ? placaCadastro.papel : null,
         pecasProduzidas: data.pecasProduzidas ?? detalhe.pecasProduzidas,
@@ -772,7 +791,8 @@ async function concluirProducao(id: number, machineId: number) {
         pecasPorPlaca: detalhe.pecasPorPlaca,
         extra: detalhe.extra && data.pecasExtraProduzidas ? { placaNome: detalhe.extra.placaNome, pecas: data.pecasExtraProduzidas } : null,
         gramas: data.gramasFilamentoDescontadas ?? 0,
-        cor: placaCadastro ? corFilamentoDaPlaca(placaCadastro.nome) : null,
+                cor: placaCadastro ? corFilamentoDaPlaca(placaCadastro.nome) : null,
+                tempoFormatado: formatDuracaoMs(tempoMs),
       });
     }
     await carregarRapido();
@@ -782,6 +802,41 @@ async function concluirProducao(id: number, machineId: number) {
   }
 }
 
+  function fecharResumo() {
+      setResumoProducao(null);
+      setEditandoPeso(false);
+      setValorPesoEditado("");
+      setErroCorrecao(null);
+  }
+  
+  async function corrigirPeso() {
+      if (!resumoProducao) return;
+      const valor = Number(valorPesoEditado.replace(",", "."));
+      if (!Number.isFinite(valor) || valor < 0) {
+            setErroCorrecao("Informe um valor valido.");
+            return;
+      }
+      setSalvandoCorrecao(true);
+      setErroCorrecao(null);
+      try {
+            const res = await fetch(`/api/producoes/${resumoProducao.producaoId}/corrigir-filamento`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ gramasCorretas: valor }),
+            });
+            const data = await res.json().catch(() => null);
+            if (!res.ok || !data) {
+                    setErroCorrecao((data && data.error) || "Erro ao salvar correcao.");
+                    return;
+            }
+            setResumoProducao((prev) => (prev ? { ...prev, gramas: data.gramasNovas } : prev));
+            setEditandoPeso(false);
+            await carregarRapido();
+      } finally {
+            setSalvandoCorrecao(false);
+      }
+  }
+  
   async function cancelarProducao(id: number, machineId: number) {
     setCarregando((prev) => ({ ...prev, [machineId]: true }));
     try {
@@ -1438,7 +1493,7 @@ async function concluirProducao(id: number, machineId: number) {
           </div>
         )}
       </section>
-      {resumoProducao && createElement("div", {className: "fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4", onClick: () => setResumoProducao(null)}, createElement("div", {className: "w-full max-w-sm rounded-lg bg-white p-5 shadow-xl", onClick: (e: any) => e.stopPropagation()}, createElement("p", {className: "mb-1 text-xs font-medium uppercase tracking-wide text-emerald-600"}, "Produção concluída"), createElement("h3", {className: "mb-3 text-base font-semibold text-gray-900"}, resumoProducao.placaNome + (resumoProducao.papel ? ` (${resumoProducao.papel})` : "")), createElement("p", {className: "text-sm text-gray-700"}, `${resumoProducao.pecasProduzidas} peça(s) produzida(s) (${resumoProducao.quantidadePlacas} placa(s) x ${resumoProducao.pecasPorPlaca} peça(s)/placa${resumoProducao.falhas > 0 ? ` - ${resumoProducao.falhas} com falha` : ""})`), resumoProducao.extra && createElement("p", {className: "text-sm text-emerald-700"}, `+ ${resumoProducao.extra.pecas} peça(s) de ${resumoProducao.extra.placaNome} (saída extra da placa mista)`), createElement("p", {className: "mt-2 text-sm text-gray-700"}, `Filamento gasto: ${formatGramasEmKg(resumoProducao.gramas)} kg${resumoProducao.cor ? ` (${resumoProducao.cor})` : ""}`), createElement("button", {onClick: () => setResumoProducao(null), className: "mt-4 w-full rounded bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700"}, "Fechar")))}
+      {resumoProducao && createElement("div", {className: "fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4", onClick: () => setResumoProducao(null)}, createElement("div", {className: "w-full max-w-sm rounded-lg bg-white p-5 shadow-xl", onClick: (e: any) => e.stopPropagation()}, createElement("p", {className: "mb-1 text-xs font-medium uppercase tracking-wide text-emerald-600"}, "Produção concluída"), createElement("h3", {className: "mb-3 text-base font-semibold text-gray-900"}, resumoProducao.placaNome + (resumoProducao.papel ? ` (${resumoProducao.papel})` : "")), createElement("p", {className: "text-sm text-gray-700"}, `${resumoProducao.pecasProduzidas} peça(s) produzida(s) (${resumoProducao.quantidadePlacas} placa(s) x ${resumoProducao.pecasPorPlaca} peça(s)/placa${resumoProducao.falhas > 0 ? ` - ${resumoProducao.falhas} com falha` : ""})`), resumoProducao.extra && createElement("p", {className: "text-sm text-emerald-700"}, `+ ${resumoProducao.extra.pecas} peça(s) de ${resumoProducao.extra.placaNome} (saída extra da placa mista)`), createElement("p", {className: "text-sm text-gray-500"}, `Tempo: ${resumoProducao.tempoFormatado}`), createElement("p", {className: "mt-2 text-sm text-gray-700"}, "Filamento gasto: ", editandoPeso ? createElement("span", {className: "inline-flex items-center gap-1"}, createElement("input", {type: "number", min: 0, step: "1", autoFocus: true, value: valorPesoEditado, onChange: (e: any) => setValorPesoEditado(e.target.value), className: "w-20 rounded border border-gray-300 px-1.5 py-0.5 text-right"}), "g", createElement("button", {onClick: corrigirPeso, disabled: salvandoCorrecao, className: "ml-1 text-xs text-blue-600 hover:underline"}, salvandoCorrecao ? "Salvando..." : "Salvar"), createElement("button", {onClick: () => { setEditandoPeso(false); setErroCorrecao(null); }, className: "ml-1 text-xs text-gray-400 hover:underline"}, "cancelar")) : createElement("span", null, `${formatGramasEmKg(resumoProducao.gramas)} kg${resumoProducao.cor ? ` (${resumoProducao.cor})` : ""}`, createElement("button", {onClick: () => { setValorPesoEditado(String(Math.round(resumoProducao.gramas))); setEditandoPeso(true); setErroCorrecao(null); }, className: "ml-2 text-xs text-blue-600 hover:underline"}, "editar"))), erroCorrecao && createElement("p", {className: "mt-1 text-xs text-red-600"}, erroCorrecao), createElement("button", {onClick: fecharResumo, className: "mt-4 w-full rounded bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700"}, "Fechar")))}
     </div>
   );
 }
