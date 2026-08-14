@@ -875,6 +875,17 @@ function EnviosPlanejados({
     {}
   );
   const [salvandoEdicao, setSalvandoEdicao] = useState<Record<string, boolean>>({});
+    const [previewViabilidade, setPreviewViabilidade] = useState<{
+          status: "idle" | "loading" | "ok" | "erro";
+          data: {
+                  horasNecessarias: number;
+                  capacidadeDisponivelHoras: number;
+                  percentual: number;
+                  viavel100: boolean;
+                  dataMinimaViavel: string | null;
+                  numMaquinasAtivas: number;
+          } | null;
+    }>({ status: "idle", data: null });
 
   useEffect(() => {
     if (buscaSku.trim().length < 2) {
@@ -889,6 +900,43 @@ function EnviosPlanejados({
     }, 300);
     return () => clearTimeout(timeout);
   }, [buscaSku]);
+
+    // Preview de viabilidade em tempo real -- pedido do Guilherme em
+    // 2026-08-14: "quando eu colocar a data que quero enviar o produto,
+    // deve fazer o envio com a possibilidade de eu conseguir enviar 100%
+    // da sugestao". Assim que SKU + quantidade + data estiverem
+    // preenchidos, consulta o servidor pra saber se da pra produzir tudo
+    // que falta ate essa data com as maquinas ativas -- antes mesmo de
+    // clicar em "Adicionar envio".
+    useEffect(() => {
+          if (!selecionado || !quantidade || Number(quantidade) <= 0 || !dataLimite) {
+                  setPreviewViabilidade({ status: "idle", data: null });
+                  return;
+          }
+          setPreviewViabilidade({ status: "loading", data: null });
+          const timeout = setTimeout(async () => {
+                  try {
+                            const res = await fetch("/api/full/envios/viabilidade", {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({
+                                                      itens: selecionado.placaIds.map((id) => ({
+                                                                      placaId: id,
+                                                                      pecasPorUnidade: selecionado.pecasPorUnidade[id] ?? 1,
+                                                      })),
+                                                      quantidade: Number(quantidade),
+                                                      dataLimite,
+                                        }),
+                            });
+                            if (!res.ok) throw new Error("falha");
+                            const data = await res.json();
+                            setPreviewViabilidade({ status: "ok", data });
+                  } catch {
+                            setPreviewViabilidade({ status: "erro", data: null });
+                  }
+          }, 400);
+          return () => clearTimeout(timeout);
+    }, [selecionado, quantidade, dataLimite]);
 
   const sugestoes = useMemo(() => {
     const porSku = new Map<
@@ -1009,6 +1057,15 @@ function EnviosPlanejados({
                         label: s.sku,
                         pecasPorUnidade: s.pecasPorUnidade,
                       });
+                                      // Preenche a quantidade automaticamente com a recomendacao
+                                      // (vendido no Full x multiplicador) -- pedido do Guilherme
+                                      // em 2026-08-14, ainda editavel manualmente logo abaixo.
+                                      const linhaRecomendada = linhas.find((l) => l.sku === s.sku);
+                                      setQuantidade(
+                                                          linhaRecomendada && linhaRecomendada.recomendacaoEnvio > 0
+                                                            ? String(linhaRecomendada.recomendacaoEnvio)
+                                                            : ""
+                                                        );
                       setResultados([]);
                     }}
                     className="block w-full px-2 py-1 text-left hover:bg-gray-50"
@@ -1058,7 +1115,39 @@ function EnviosPlanejados({
           {enviando ? "Salvando..." : "Adicionar envio"}
         </button>
       </div>
-
+      {previewViabilidade.status !== "idle" && (
+        <div
+          className={`mt-2 rounded border px-3 py-2 text-xs ${
+            previewViabilidade.status === "erro"
+              ? "border-red-200 bg-red-50 text-red-700"
+              : previewViabilidade.status === "loading"
+              ? "border-gray-200 bg-gray-50 text-gray-500"
+              : previewViabilidade.data?.viavel100
+              ? "border-green-200 bg-green-50 text-green-700"
+              : "border-amber-200 bg-amber-50 text-amber-700"
+          }`}
+        >
+          {previewViabilidade.status === "loading"
+            ? "Verificando viabilidade de producao..."
+            : previewViabilidade.status === "erro"
+            ? "Nao foi possivel verificar a viabilidade agora."
+            : previewViabilidade.data?.viavel100
+            ? `Da para produzir 100% da quantidade ate ${
+                dataLimite ? formatDiaBR(dataLimite) : "a data escolhida"
+              } com ${previewViabilidade.data.numMaquinasAtivas} maquina(s) ativa(s) (${Math.round(
+                (previewViabilidade.data.percentual || 0) * 100
+              )}% da capacidade).`
+            : `Nao da tempo de produzir 100% ate essa data com ${
+                previewViabilidade.data?.numMaquinasAtivas ?? 0
+              } maquina(s) ativa(s) (precisaria de ${Math.round(
+                (previewViabilidade.data?.percentual || 0) * 100
+              )}% da capacidade).${
+                previewViabilidade.data?.dataMinimaViavel
+                  ? ` Data minima viavel: ${formatDiaBR(previewViabilidade.data.dataMinimaViavel)}.`
+                  : ""
+              }`}
+        </div>
+      )}
       {grupos.length === 0 ? (
         <p className="text-xs text-gray-400">Nenhum envio pendente cadastrado.</p>
       ) : (
