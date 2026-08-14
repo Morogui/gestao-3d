@@ -36,6 +36,7 @@ export async function PATCH(
           pecasPorPlaca,
           descontinuada,
           frasesCorrespondencia,
+          dadosConfirmados,
     } = body as {
           pesoPlacaGramas?: number | null;
           saidaExtraPlacaId?: number | null;
@@ -44,6 +45,7 @@ export async function PATCH(
           pecasPorPlaca?: number;
           descontinuada?: boolean;
           frasesCorrespondencia?: string | null;
+          dadosConfirmados?: boolean | null;
     };
 
   if (
@@ -107,6 +109,17 @@ export async function PATCH(
               );
   }
 
+  if (
+        dadosConfirmados !== null &&
+        dadosConfirmados !== undefined &&
+        typeof dadosConfirmados !== "boolean"
+      ) {
+        return NextResponse.json(
+          { error: "dadosConfirmados precisa ser um booleano (ou null)" },
+          { status: 400 }
+              );
+  }
+
   const temPeso = pesoPlacaGramas !== undefined;
     const temSaidaId = saidaExtraPlacaId !== undefined;
     const temSaidaPecas = saidaExtraPecas !== undefined;
@@ -114,6 +127,7 @@ export async function PATCH(
     const temPecasPorPlaca = pecasPorPlaca !== undefined;
     const temDescontinuada = descontinuada !== undefined;
     const temFrases = frasesCorrespondencia !== undefined;
+  const temDadosConfirmados = dadosConfirmados !== undefined;
 
   const rows = (await sql`
       UPDATE placas
@@ -124,9 +138,10 @@ export async function PATCH(
                                   papel = CASE WHEN ${temPapel} THEN ${papel ?? null} ELSE papel END,
                                         pecas_por_placa = CASE WHEN ${temPecasPorPlaca} THEN ${pecasPorPlaca ?? null} ELSE pecas_por_placa END,
                                               descontinuada = CASE WHEN ${temDescontinuada} THEN ${descontinuada ?? false} ELSE descontinuada END,
-                                                    frases_correspondencia = CASE WHEN ${temFrases} THEN ${frasesCorrespondencia ?? null} ELSE frases_correspondencia END
+                                                    frases_correspondencia = CASE WHEN ${temFrases} THEN ${frasesCorrespondencia ?? null} ELSE frases_correspondencia END,
+                                                    dados_confirmados = CASE WHEN ${temDadosConfirmados} THEN ${dadosConfirmados ?? false} ELSE dados_confirmados END
                                                         WHERE id = ${id}
-                                                            RETURNING id, peso_placa_gramas, saida_extra_placa_id, saida_extra_pecas, papel, pecas_por_placa, descontinuada, frases_correspondencia
+                                                            RETURNING id, peso_placa_gramas, saida_extra_placa_id, saida_extra_pecas, papel, pecas_por_placa, descontinuada, frases_correspondencia, dados_confirmados
                                                               `) as {
         id: number;
         peso_placa_gramas: string | null;
@@ -136,6 +151,7 @@ export async function PATCH(
         pecas_por_placa: string;
         descontinuada: boolean;
         frases_correspondencia: string | null;
+        dados_confirmados: boolean;
   }[];
 
   if (rows.length === 0) {
