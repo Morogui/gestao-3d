@@ -30,7 +30,7 @@
 // Anuncios que nao batem com nenhum produto do catalogo (nao cadastrado
 // ainda, ou texto nao reconhecido) caem sozinhos no proprio grupo, como
 // fallback - melhor mostrar separado do que juntar errado.
-import { cookies } from "next/headers";
+import { getValidMLAccessToken } from "./ml-auth";
 import { sql } from "./db";
 import { ML_API_BASE } from "./mercadolivre";
 import { DbPlacaRow, toPlacaRow, PlacaRow } from "./placas";
@@ -185,10 +185,9 @@ function chaveOrdenacao(diasSemVenda: number | null, diasDesdeCriacao: number): 
 }
 
 export async function getAnaliseAnuncios(): Promise<AnaliseResult> {
-    const cookieStore = cookies();
-    const accessToken = cookieStore.get("ml_access_token")?.value;
-    const userId = cookieStore.get("ml_user_id")?.value;
-    if (!accessToken || !userId) return { connected: false };
+        const auth = await getValidMLAccessToken();
+        if (!auth) return { connected: false };
+        const { accessToken, userId } = auth;
 
   let itemIds: string[];
     try {
