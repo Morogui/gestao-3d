@@ -140,6 +140,7 @@ export function calcularViabilidade(
     percentualComprometido,
     aprovado: percentualComprometido <= 0.5,
   };
+}
 
 
 export function dataMinimaViavel(
@@ -161,4 +162,3 @@ export function dataMinimaViavel(
     return `${y}-${m}-${dia}`;
 }
   
-  }
