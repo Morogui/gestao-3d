@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { CORES_FILAMENTO } from "@/lib/placas";
+import { recalcularCustoFilamentoMensal } from "@/lib/custo-filamento-mensal";
 
 export const dynamic = "force-dynamic";
 
@@ -131,9 +132,21 @@ export async function GET() {
   const totalValor = compras.reduce((s, c) => s + c.valorPago, 0);
   const custoMedioGeral = totalGramas > 0 ? totalValor / totalGramas : null;
 
-  return NextResponse.json({
+// Custo medio do MES ATUAL (reinicia todo mes, so compras chegadas
+    // nesse mes contam) - ja aplicado automaticamente em parametros_globais
+    // e no custo de cada produto, ver lib/custo-filamento-mensal.ts.
+    const mesRows = (await sql`
+        SELECT mes, custo_medio_kg, atualizado_em FROM custo_filamento_mensal
+            ORDER BY mes DESC LIMIT 1
+              `) as { mes: string; custo_medio_kg: string; atualizado_em: string }[];
+    const custoMedioMesAtual = mesRows.length > 0 ? Number(mesRows[0].custo_medio_kg) : null;
+    const mesReferenciaCustoMensal = mesRows.length > 0 ? mesRows[0].mes : null;
+  
+    return NextResponse.json({
     compras,
     custoMedioPorCor,
+          custoMedioMesAtual,
+          mesReferenciaCustoMensal,
     custoMedioGeral,
   });
 }
@@ -209,5 +222,14 @@ export async function POST(request: NextRequest) {
     `;
   }
 
+  // Propaga o custo medio mensal automaticamente e ja recalcula o custo
+    // de cada produto/SKU - pedido do Guilherme em 2026-08-14 ("atualizar
+    // atomaticamente e ja atulizar os custos dos meus produtos"). So roda
+    // quando o filamento chegou de fato (senao a compra ainda esta so
+    // financeira, o peso nao entrou de verdade no estoque).
+    if (chegou) {
+          await recalcularCustoFilamentoMensal();
+    }
+  
   return NextResponse.json(serializar(rows[0]), { status: 201 });
 }
