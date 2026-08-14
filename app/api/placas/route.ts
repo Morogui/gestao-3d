@@ -9,7 +9,7 @@ export async function GET() {
     SELECT
       p.id, p.numero, p.nome, p.tipo, p.papel, p.grupo_composto,
       p.sku_ou_kit, p.frases_correspondencia, p.pecas_por_placa, p.tempo_placa_horas, p.tier,
-      p.descontinuada, p.peso_placa_gramas, p.saida_extra_placa_id, p.saida_extra_pecas,
+      p.descontinuada, p.peso_placa_gramas, p.saida_extra_placa_id, p.saida_extra_pecas, p.dados_confirmados,
       COALESCE(e.quantidade_pecas, 0) AS estoque
     FROM placas p
     LEFT JOIN estoque_placas e ON e.placa_id = p.id
