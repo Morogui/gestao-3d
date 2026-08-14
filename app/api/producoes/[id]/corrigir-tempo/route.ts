@@ -23,6 +23,9 @@ async function garantirTabela() {
                                                   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
                                                       )
                                                         `;
+    await sql`
+    ALTER TABLE placas ADD COLUMN IF NOT EXISTS dados_confirmados BOOLEAN NOT NULL DEFAULT false
+    `;
 }
 
 export async function POST(
@@ -77,7 +80,7 @@ export async function POST(
   const tempoPlacaNovo =
         quantidadePlacas > 0 ? horasCorretas / quantidadePlacas : horasCorretas;
     await sql`
-        UPDATE placas SET tempo_placa_horas = ${tempoPlacaNovo}
+        UPDATE placas SET tempo_placa_horas = ${tempoPlacaNovo}, dados_confirmados = true
             WHERE id = ${producao.placa_id}
               `;
 
