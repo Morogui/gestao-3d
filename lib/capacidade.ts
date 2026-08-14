@@ -69,7 +69,12 @@ export async function maquinasAtivas(): Promise<number> {
   const rows = (await sql`
     SELECT count(*)::int AS total FROM machines WHERE ativa = true
   `) as { total: number }[];
-  return rows[0]?.total ?? 0;
+  const total = rows[0]?.total ?? 0;
+  // Regra do Guilherme em 2026-08-14: sempre reservar 1 impressora
+  // de folga no calculo de capacidade (hoje sao 5 ativas, usamos 4;
+  // se um dia forem 6, passa a usar 5 sozinho, sem precisar mexer
+  // em nenhum outro lugar do codigo).
+  return Math.max(0, total - 1);
 }
 
 // Dias entre "hoje" e "alvo" (ambos YYYY-MM-DD, fuso São Paulo),
@@ -135,4 +140,25 @@ export function calcularViabilidade(
     percentualComprometido,
     aprovado: percentualComprometido <= 0.5,
   };
+
+
+export function dataMinimaViavel(
+    horasNecessarias: number,
+    hoje: string,
+    numMaquinasAtivas: number,
+    janela: Janela
+  ): string | null {
+    const horasPorDia = Math.max(0, janela.fechamentoHora - janela.aberturaHora);
+    const horasPorDiaTotal = numMaquinasAtivas * horasPorDia;
+    if (horasNecessarias <= 0) return hoje;
+    if (horasPorDiaTotal <= 0) return null;
+    const diasNecessarios = Math.ceil(horasNecessarias / horasPorDiaTotal);
+    const d = new Date(`${hoje}T12:00:00-03:00`);
+    d.setDate(d.getDate() + (diasNecessarios - 1));
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const dia = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dia}`;
 }
+  
+  }
