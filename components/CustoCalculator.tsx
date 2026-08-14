@@ -163,12 +163,20 @@ export default function CustoCalculator() {
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <NumberField
-            label="Filamento (R$/kg)"
-            value={params.precoFilamentoKg}
-            onChange={(v) => updateParam("precoFilamentoKg", v)}
-            step={0.01}
-          />
+        <div className="block">
+                   <span className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600">
+                                Filamento (R$/kg)
+                                <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">
+                                              Automatico
+                                </span>
+                    </span>
+                    <div className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                      {params.precoFilamentoKg.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                    <span className="mt-1 block text-[11px] text-gray-400">
+                                Media do mes (compras de filamento chegadas) - nao editavel
+                    </span>
+          </div>
           <NumberField
             label="Energia (R$/h)"
             value={params.energiaHora}
