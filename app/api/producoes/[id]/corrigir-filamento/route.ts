@@ -36,6 +36,9 @@ async function garantirTabela() {
               criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
             )
     `;
+    await sql`
+    ALTER TABLE placas ADD COLUMN IF NOT EXISTS dados_confirmados BOOLEAN NOT NULL DEFAULT false
+    `;
   }
 
 export async function POST(
@@ -112,7 +115,7 @@ export async function POST(
     const pesoPlacaNovo =
       quantidadePlacas > 0 ? gramasCorretas / quantidadePlacas : gramasCorretas;
     await sql`
-      UPDATE placas SET peso_placa_gramas = ${pesoPlacaNovo}
+      UPDATE placas SET peso_placa_gramas = ${pesoPlacaNovo}, dados_confirmados = true
       WHERE id = ${producao.placa_id}
     `;
 
