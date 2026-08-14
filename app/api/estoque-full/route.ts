@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { getValidMLAccessToken } from "@/lib/ml-auth";
 import { sql } from "@/lib/db";
 import { DbPlacaRow, toPlacaRow } from "@/lib/placas";
 import { getOrdersRange } from "@/lib/ml-orders";
@@ -100,9 +100,9 @@ export async function GET() {
   // abaixo).
   const trintaDiasAtras = diasAtras(hoje, 29);
 
-  const cookieStore = cookies();
-  const accessToken = cookieStore.get("ml_access_token")?.value;
-  const userId = cookieStore.get("ml_user_id")?.value;
+    const mlAuth = await getValidMLAccessToken();
+      const accessToken = mlAuth?.accessToken;
+      const userId = mlAuth?.userId;
 
   const configRows = (await sql`
     SELECT multiplicador FROM full_config ORDER BY id ASC LIMIT 1
