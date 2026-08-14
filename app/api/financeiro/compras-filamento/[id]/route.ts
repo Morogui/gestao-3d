@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { CORES_FILAMENTO } from "@/lib/placas";
+import { recalcularCustoFilamentoMensal } from "@/lib/custo-filamento-mensal";
 
 export const dynamic = "force-dynamic";
 
@@ -147,7 +148,14 @@ export async function PATCH(
           }
     }
 
-  return NextResponse.json(serializar(rows[0]));
+// Propaga o custo medio mensal automaticamente quando a chegada muda
+            // de estado (POST/PATCH em compras_filamento) - ver
+            // lib/custo-filamento-mensal.ts.
+            if (chegouAntes !== novoChegou) {
+                            await recalcularCustoFilamentoMensal();
+            }
+    
+            return NextResponse.json(serializar(rows[0]));
 }
 
 // Remove uma compra de filamento lançada errada — recalcula o custo
@@ -187,5 +195,11 @@ export async function DELETE(
                                 `;
     }
 
-  return NextResponse.json({ ok: true });
+// Recalcula o custo medio mensal apos remover uma compra que ja tinha
+        // chegado (afetava a media do mes) - ver lib/custo-filamento-mensal.ts.
+        if (rows[0].chegou) {
+                    await recalcularCustoFilamentoMensal();
+        }
+    
+        return NextResponse.json({ ok: true });
 }
