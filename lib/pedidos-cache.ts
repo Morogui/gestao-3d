@@ -34,6 +34,7 @@ import {
 } from "./ml-orders";
 import { getOrdersRange as getOrdersRangeShopeeAoVivo } from "./shopee-orders";
 import { todaySP, diasAtras } from "./date";
+import { mlEstaConectado } from "./ml-auth";
 
 type Plataforma = "ml" | "shopee";
 
@@ -41,9 +42,8 @@ type Plataforma = "ml" | "shopee";
 // já faziam — só olha se existe uma sessão, sem chamar a API. Preserva o
 // comportamento de "conecte sua conta"/"reconectar" nas telas mesmo lendo
 // os pedidos do cache em vez de ao vivo.
-function mlConectado(): boolean {
-  const c = cookies();
-  return Boolean(c.get("ml_access_token")?.value && c.get("ml_user_id")?.value);
+async function mlConectado(): Promise<boolean> {
+    return mlEstaConectado();
 }
 
 function shopeeConectado(): boolean {
@@ -153,7 +153,7 @@ export async function getOrdersRangeML(
   fromDay: string,
   toDay: string
 ): Promise<OrdersResult> {
-  if (!mlConectado()) return { connected: false };
+    if (!(await mlConectado())) return { connected: false };
   if ((await statusSyncPersistido("ml")) === "erro") return { connected: true, error: true };
   const orders = await queryRange(fromDay, toDay, "ml");
   return { connected: true, error: false, orders };
@@ -195,7 +195,7 @@ export async function getDailyTotalsRangeML(
   fromDay: string,
   toDay: string
 ): Promise<DailyTotalsResult> {
-  if (!mlConectado()) return { connected: false };
+    if (!(await mlConectado())) return { connected: false };
   if ((await statusSyncPersistido("ml")) === "erro") return { connected: true, error: true };
   const porDia = await dailyTotals(fromDay, toDay, "ml");
   return { connected: true, error: false, porDia };
@@ -274,7 +274,7 @@ export async function sincronizarPedidos(
   // servidor) gravaria "erro" toda hora pras duas contas, mesmo com a
   // sessão do navegador do Guilherme funcionando normalmente. Ver
   // comentário em cima de garantirTabelaStatusSync().
-  const tentouML = mlConectado();
+    const tentouML = await mlConectado();
   const tentouShopee = shopeeConectado();
 
   const [resultML, resultShopee] = await Promise.all([
