@@ -13,14 +13,25 @@ export const dynamic = "force-dynamic";
 // pelo backfill que criou a coluna, nunca por um clique real. Remover
 // depois de usar.
 export async function GET() {
-  const rows = await sql`
-    SELECT
-      p.id, p.numero, p.nome, p.dados_confirmados,
-      EXISTS(SELECT 1 FROM correcoes_pecas cp WHERE cp.placa_id = p.id) AS tem_correcao_pecas,
-      EXISTS(SELECT 1 FROM correcoes_tempo ct WHERE ct.placa_id = p.id) AS tem_correcao_tempo
-    FROM placas p
-    WHERE p.descontinuada = false
-    ORDER BY p.numero ASC
-  `;
-  return NextResponse.json(rows);
+  try {
+    const placasRows = await sql`SELECT id, numero, nome, dados_confirmados FROM placas WHERE descontinuada = false ORDER BY numero ASC`;
+    const pecasRows = await sql`SELECT DISTINCT placa_id FROM correcoes_pecas`;
+    const tempoRows = await sql`SELECT DISTINCT placa_id FROM correcoes_tempo`;
+    const pecasSet = new Set((pecasRows as any[]).map((r) => r.placa_id));
+    const tempoSet = new Set((tempoRows as any[]).map((r) => r.placa_id));
+    const resultado = (placasRows as any[]).map((p) => ({
+      id: p.id,
+      numero: p.numero,
+      nome: p.nome,
+      dadosConfirmados: p.dados_confirmados,
+      temCorrecaoPecas: pecasSet.has(p.id),
+      temCorrecaoTempo: tempoSet.has(p.id),
+    }));
+    return NextResponse.json(resultado);
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: String(err?.message ?? err), stack: String(err?.stack ?? "") },
+      { status: 500 }
+    );
+  }
 }
