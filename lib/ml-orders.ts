@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { ML_API_BASE, labelLogisticType } from "./mercadolivre";
+import { getValidMLAccessToken } from "./ml-auth";
 
 export interface OrderItemSummary {
   itemId: string;
@@ -263,13 +264,11 @@ export async function getDailyTotalsRange(
   fromDay: string,
   toDay: string
 ): Promise<DailyTotalsResult> {
-  const cookieStore = cookies();
-  const accessToken = cookieStore.get("ml_access_token")?.value;
-  const userId = cookieStore.get("ml_user_id")?.value;
-
-  if (!accessToken || !userId) {
-    return { connected: false };
-  }
+  const auth = await getValidMLAccessToken();
+    if (!auth) {
+          return { connected: false };
+    }
+    const { accessToken, userId } = auth;
 
   const dateFrom = toMLDateTime(new Date(`${fromDay}T12:00:00-03:00`), false);
   const dateTo = toMLDateTime(new Date(`${toDay}T12:00:00-03:00`), true);
@@ -339,13 +338,11 @@ async function fetchOrdersInRange(
   dateFrom: string,
   dateTo: string
 ): Promise<OrdersResult> {
-  const cookieStore = cookies();
-  const accessToken = cookieStore.get("ml_access_token")?.value;
-  const userId = cookieStore.get("ml_user_id")?.value;
-
-  if (!accessToken || !userId) {
-    return { connected: false };
-  }
+  const auth = await getValidMLAccessToken();
+    if (!auth) {
+          return { connected: false };
+    }
+    const { accessToken, userId } = auth;
 
   // Pagina até 500 pedidos (10 páginas de 50) — suficiente pra uma janela
   // semanal de vendas; evita truncar silenciosamente contas com volume alto.
