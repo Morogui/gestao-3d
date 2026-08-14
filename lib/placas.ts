@@ -144,6 +144,7 @@ export interface PlacaRow {
   // Null pras placas normais (a grande maioria).
   saidaExtraPlacaId: number | null;
   saidaExtraPecas: number | null;
+  dadosConfirmados: boolean;
 }
 
 export interface DbPlacaRow {
@@ -163,6 +164,7 @@ export interface DbPlacaRow {
   peso_placa_gramas: string | null;
   saida_extra_placa_id?: number | null;
   saida_extra_pecas?: number | string | null;
+  dados_confirmados: boolean;
 }
 
 export function toPlacaRow(row: DbPlacaRow): PlacaRow {
@@ -189,6 +191,7 @@ export function toPlacaRow(row: DbPlacaRow): PlacaRow {
       row.saida_extra_pecas === null || row.saida_extra_pecas === undefined
         ? null
         : Number(row.saida_extra_pecas),
+    dadosConfirmados: row.dados_confirmados,
   };
 }
 
