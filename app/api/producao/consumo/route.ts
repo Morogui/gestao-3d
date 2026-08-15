@@ -134,14 +134,28 @@ export async function GET() {
   )[0];
   const pecasRodadasNum = Number(pecasRodadas);
   const pecasComFalhaNum = Number(pecasComFalha);
-  const percentualFalha = pecasRodadasNum > 0 ? (pecasComFalhaNum / pecasRodadasNum) * 100 : 0;
+  const gramasDesperdicadasTotal =
+    gramasDesperdicadasPlaca + gramasDesperdicadasPeca + gramasDesperdicadasManual;
+  const gramasImpressasTotal = gramasImpressasCalculadas + gramasImpressasManual;
+  const gramasConsumidasTotal = gramasImpressasTotal + gramasDesperdicadasTotal;
+  // Taxa de falha REAL da operação (2026-08-15, pedido do Guilherme): por
+  // peso de filamento perdido, não por contagem de peças — uma peça grande
+  // que falha pesa muito mais que uma pequena, e o que importa pro
+  // prejuízo real da operação é o material desperdiçado.
+  const percentualFalha =
+    gramasConsumidasTotal > 0
+      ? (gramasDesperdicadasTotal / gramasConsumidasTotal) * 100
+      : 0;
+  const percentualImpresso = gramasConsumidasTotal > 0 ? 100 - percentualFalha : 0;
+  // Mantido só como referência/comparação — não é mais a taxa oficial.
+  const percentualFalhaPecas =
+    pecasRodadasNum > 0 ? (pecasComFalhaNum / pecasRodadasNum) * 100 : 0;
 
   return NextResponse.json({
-    gramasImpressas: gramasImpressasCalculadas + gramasImpressasManual,
+    gramasImpressas: gramasImpressasTotal,
     gramasImpressasCalculadas,
     gramasImpressasManual,
-    gramasDesperdicadas:
-      gramasDesperdicadasPlaca + gramasDesperdicadasPeca + gramasDesperdicadasManual,
+    gramasDesperdicadas: gramasDesperdicadasTotal,
     gramasDesperdicadasPlaca,
     gramasDesperdicadasPeca,
     gramasDesperdicadasManual,
@@ -150,6 +164,8 @@ export async function GET() {
     pecasRodadas: pecasRodadasNum,
     pecasComFalha: pecasComFalhaNum,
     percentualFalha,
+    percentualImpresso,
+    percentualFalhaPecas,
   });
 }
 
