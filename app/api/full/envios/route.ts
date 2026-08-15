@@ -58,6 +58,10 @@ async function garantirColunaPecasPorUnidade() {
   `;
 }
 
+async function garantirColunaTituloMl() {
+  await sql`ALTER TABLE full_envios ADD COLUMN IF NOT EXISTS titulo_ml TEXT`;
+}
+
 // Envios planejados do Full — pedido do Guilherme em 2026-07-25: "uma
 // aba onde vou subir meu envio e a data que eu tenho para enviar esse
 // produto... valida em estoque se tenho a quantidade dos produtos a
@@ -104,11 +108,12 @@ export interface FullEnvioRow {
 export async function GET() {
   await garantirColunaGrupo();
   await garantirColunaPecasPorUnidade();
+  await garantirColunaTituloMl();
 
   const envios = (await sql`
     SELECT fe.id, fe.sku, fe.placa_id, pl.nome AS placa_nome, fe.quantidade,
       fe.data_limite, fe.status, fe.criado_em, fe.confirmado_em, fe.grupo_id,
-      fe.pecas_por_unidade
+      fe.pecas_por_unidade, fe.titulo_ml
     FROM full_envios fe
     JOIN placas pl ON pl.id = fe.placa_id
     WHERE fe.status != 'cancelado'
@@ -125,6 +130,7 @@ export async function GET() {
     confirmado_em: string | null;
     grupo_id: string | null;
     pecas_por_unidade: number;
+    titulo_ml: string | null;
   }[];
 
   if (envios.length === 0) {
@@ -231,6 +237,7 @@ export async function GET() {
       aprovado: viabilidade.aprovado,
       grupoId: e.grupo_id,
       pecasPorUnidade: Number(e.pecas_por_unidade ?? 1),
+      tituloMl: e.titulo_ml,
     };
   });
 
@@ -241,6 +248,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   await garantirColunaGrupo();
   await garantirColunaPecasPorUnidade();
+  await garantirColunaTituloMl();
 
   const body = await request.json();
   const sku = String(body.sku ?? "").trim();
@@ -251,6 +259,7 @@ export async function POST(request: NextRequest) {
   // quando o SKU escolhido tem mais de uma placa componente, pra ligar
   // as linhas criadas juntas na mesma ação de "Adicionar envio".
   const grupoId = body.grupoId ? String(body.grupoId).trim() : null;
+  const tituloMl = body.tituloMl ? String(body.tituloMl).trim() : null;
   // Ver garantirColunaPecasPorUnidade() acima. Opcional (default 1) —
   // o front manda o pecas_por_unidade exato do SKU escolhido (vem de
   // /api/skus, que já lê isso de sku_placa), pra converter unidades→peças
@@ -268,8 +277,8 @@ export async function POST(request: NextRequest) {
   }
 
   const rows = await sql`
-    INSERT INTO full_envios (sku, placa_id, quantidade, data_limite, status, grupo_id, pecas_por_unidade)
-    VALUES (${sku}, ${placaId}, ${quantidade}, ${dataLimite}, 'pendente', ${grupoId}, ${pecasPorUnidade})
+    INSERT INTO full_envios (sku, placa_id, quantidade, data_limite, status, grupo_id, pecas_por_unidade, titulo_ml)
+    VALUES (${sku}, ${placaId}, ${quantidade}, ${dataLimite}, 'pendente', ${grupoId}, ${pecasPorUnidade}, ${tituloMl})
     RETURNING id
   `;
 
