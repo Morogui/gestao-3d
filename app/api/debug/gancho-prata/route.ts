@@ -1,63 +1,57 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
+import { matchItemToPlacaIds, SkuPlacaMap } from "@/lib/demanda";
 
 export const dynamic = "force-dynamic";
 
-// Rota de diagnostico temporaria -- pedido do Guilherme em 2026-08-15:
-// por que "Gancho Compartilhado - Universal/BMW/BYD (Prata)" aparece com
-// "a produzir: 3" na fila, se nenhum corpo que usa esse gancho (BMW
-// Prata) esta na fila e ele diz que esse produto nao teve venda? Mostra
-// (1) qualquer sku_placa apontando pra placa 86 (match exato por
-// SKU/item_id) e (2) qualquer item de pedido (ultimos 35 dias, ML) cujo
-// titulo/sku contenha palavras que batem no casamento por texto da
-// placa 86, pra achar a venda real por tras do numero. Remover depois.
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const skuPlacaRows = await sql`
-      SELECT sku, placa_id, pecas_por_unidade FROM sku_placa WHERE placa_id = 86
-    `;
+    const placasRes = await fetch(new URL("/api/placas", request.url));
+    const placas = await placasRes.json();
 
-    const placaRows = await sql`
-      SELECT id, nome, sku_ou_kit, frases_correspondencia FROM placas WHERE id = 86
-    `;
+    const skuRows = await sql`SELECT sku, placa_id, pecas_por_unidade FROM sku_placa`;
+    const skuPlacaMap: SkuPlacaMap = new Map();
+    for (const r of skuRows as any[]) {
+      const arr = skuPlacaMap.get(r.sku) || [];
+      arr.push({ placaId: r.placa_id, pecasPorUnidade: Number(r.pecas_por_unidade) });
+      skuPlacaMap.set(r.sku, arr);
+    }
 
     const pedidos = await sql`
       SELECT id, plataforma, data_criado, itens
       FROM pedidos_cache
-      WHERE plataforma = 'ml' AND data_criado >= now() - interval '35 days'
+      WHERE data_criado >= now() - interval '35 days'
       ORDER BY data_criado DESC
     `;
 
-    const palavrasChave = ["prata", "bmw", "byd", "universal", "carregador", "gancho compartilhado"];
-    const itensSuspeitos: any[] = [];
+    const matches: any[] = [];
     for (const p of pedidos as any[]) {
       const itens = Array.isArray(p.itens) ? p.itens : [];
       for (const it of itens) {
-        const texto = `${it.title ?? ""} ${it.sku ?? ""}`.toLowerCase();
-        if (palavrasChave.some((k) => texto.includes(k))) {
-          itensSuspeitos.push({
+        const placaIds = matchItemToPlacaIds(it, placas, skuPlacaMap);
+        if (placaIds.includes(86)) {
+          matches.push({
             pedidoId: p.id,
+            plataforma: p.plataforma,
             dataCriado: p.data_criado,
             title: it.title,
             sku: it.sku,
             itemId: it.itemId,
             quantity: it.quantity,
             hasCustomSku: it.hasCustomSku,
+            placaIds,
           });
         }
       }
     }
 
     return NextResponse.json({
-      placa86: placaRows[0] ?? null,
-      skuPlacaParaPlaca86: skuPlacaRows,
-      totalPedidosMl35dias: (pedidos as any[]).length,
-      itensSuspeitos,
+      totalPedidos35dias: (pedidos as any[]).length,
+      totalPlacas: placas.length,
+      totalMatchesPlaca86: matches.length,
+      matches,
     });
   } catch (err: any) {
-    return NextResponse.json(
-      { error: String(err?.message ?? err), stack: String(err?.stack ?? "") },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: String(err?.message ?? err), stack: String(err?.stack ?? "") }, { status: 500 });
   }
 }
