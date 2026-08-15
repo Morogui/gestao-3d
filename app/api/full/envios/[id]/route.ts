@@ -12,6 +12,10 @@ async function garantirColunaPecasPorUnidade() {
   await sql`ALTER TABLE full_envios ADD COLUMN IF NOT EXISTS pecas_por_unidade INTEGER NOT NULL DEFAULT 1`;
 }
 
+async function garantirColunaTituloMl() {
+  await sql`ALTER TABLE full_envios ADD COLUMN IF NOT EXISTS titulo_ml TEXT`;
+}
+
 // Confirma (ou cancela) um envio planejado do Full. Pedido do Guilherme
 // em 2026-07-25: "confirmando o envio do full no botão, essa produção
 // sai da linha de frente" — ao confirmar, o envio para de contar como
@@ -42,6 +46,7 @@ export async function PATCH(
   }
 
   await garantirColunaPecasPorUnidade();
+  await garantirColunaTituloMl();
 
   // Edição de quantidade/data limite — pedido do Guilherme em 2026-07-27:
   // "eu coloquei errado e não tem como editar". Só é permitido enquanto o
@@ -51,6 +56,7 @@ export async function PATCH(
   if (status === undefined) {
     const quantidade = body.quantidade !== undefined ? Number(body.quantidade) : null;
     const dataLimite = body.dataLimite !== undefined ? String(body.dataLimite).trim() : null;
+    const tituloMl = body.tituloMl !== undefined ? String(body.tituloMl).trim() : null;
 
     if (quantidade === null && dataLimite === null) {
       return NextResponse.json(
@@ -65,9 +71,10 @@ export async function PATCH(
     const rows = await sql`
       UPDATE full_envios
       SET quantidade = COALESCE(${quantidade}, quantidade),
-          data_limite = COALESCE(${dataLimite}, data_limite)
+          data_limite = COALESCE(${dataLimite}, data_limite),
+          titulo_ml = COALESCE(${tituloMl}, titulo_ml)
       WHERE id = ${id} AND status = 'pendente'
-      RETURNING id, sku, placa_id, quantidade, data_limite, status
+      RETURNING id, sku, placa_id, quantidade, data_limite, status, titulo_ml
     `;
 
     if (rows.length === 0) {
