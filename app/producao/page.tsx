@@ -1082,9 +1082,13 @@ async function corrigirTempo() {
 
       <section>
         <h2 className="mb-3 text-sm font-semibold text-gray-900">Índice de falhas</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
           <Card
-            label="Taxa de falha real"
+            label="% Impresso (aproveitamento)"
+            value={consumo ? `${consumo.percentualImpresso.toFixed(1)}%` : "—"}
+          />
+          <Card
+            label="Taxa de falha real (por peso)"
             value={consumo ? `${consumo.percentualFalha.toFixed(1)}%` : "—"}
           />
           <Card
@@ -1097,11 +1101,12 @@ async function corrigirTempo() {
           />
         </div>
         <p className="mt-2 text-xs text-gray-500">
-          Calculado sobre tudo que já foi rodado até hoje (produções concluídas
-          + placas com falha total) — não conta o que está em andamento nem o
-          que foi cancelado. Placa com &quot;falha na placa&quot; conta todas
-          as peças daquela placa como perdidas; produção concluída só conta as
-          peças marcadas em &quot;falha em peça&quot;.
+          Calculado por peso de filamento (gramas), não por contagem de
+          peças — uma peça grande que falha pesa muito mais que uma
+          pequena, e é o material desperdiçado que reflete o prejuízo real
+          da operação. Taxa de falha = desperdiçado ÷ (impresso +
+          desperdiçado), sobre tudo já registrado até hoje. A contagem de
+          peças ao lado fica só como referência.
         </p>
       </section>
 
