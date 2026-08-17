@@ -303,6 +303,24 @@ export default function ProducaoPage() {
     await carregarRapido();
   }
 
+  async function marcarManutencao(id: number) {
+    await fetch(`/api/machines/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emManutencao: true }),
+    });
+    await carregarRapido();
+  }
+
+  async function registrarRetornoManutencao(id: number, horasParada: number) {
+    await fetch(`/api/machines/${id}/manutencao`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ horasParada }),
+    });
+    await carregarRapido();
+  }
+
   // Refresh "lento": busca pedidos de 30 dias na ML + Shopee (com
   // shipment por pedido na ML) pra recalcular demanda/fila de prioridade
   // — é o que demora (historicamente 10-15s+ dependendo do volume de
@@ -1273,6 +1291,8 @@ async function corrigirTempo() {
               onFalhaPlaca={(id, gramas) => falhaPlaca(id, machine.id, gramas)}
               onFalhaPeca={(id, desc, gramas) => falhaPeca(id, machine.id, desc, gramas)}
               onRenomear={renomearMaquina}
+              onMarcarManutencao={marcarManutencao}
+              onRegistrarRetornoManutencao={registrarRetornoManutencao}
             />
           ))}
         </div>
@@ -1888,6 +1908,8 @@ function PrinterCard({
   onFalhaPlaca,
   onFalhaPeca,
   onRenomear,
+  onMarcarManutencao,
+  onRegistrarRetornoManutencao,
 }: {
   machine: MachineRow;
   producao?: ProducaoRow;
@@ -1902,6 +1924,8 @@ function PrinterCard({
   onFalhaPlaca: (id: number, gramas: number) => void;
   onFalhaPeca: (id: number, pecaDescricao: string, gramas: number) => void;
   onRenomear: (id: number, nome: string) => void;
+  onMarcarManutencao: (id: number) => void;
+  onRegistrarRetornoManutencao: (id: number, horasParada: number) => void;
 }) {
   const [showFalhaPlaca, setShowFalhaPlaca] = useState(false);
   const [showFalhaPeca, setShowFalhaPeca] = useState(false);
@@ -1921,6 +1945,16 @@ function PrinterCard({
     if (nome && nome !== machine.nome) onRenomear(machine.id, nome);
     setEditandoNome(false);
   }
+
+  // Controle de manutencao - pedido do Guilherme em 2026-08-17: "coloque
+  // um botao nas impressoras de manutencao e no fim coloque a quantidade
+  // em horas que a impressora ficou parada, pra termos esse controle".
+  // Marcar liga em_manutencao (bate em PATCH /api/machines/[id]);
+  // registrar retorno fecha o ciclo com as horas paradas (POST
+  // /api/machines/[id]/manutencao), que tambem tira a maquina da conta de
+  // maquinasAtivas() em lib/capacidade.ts.
+  const [showRetornoManutencao, setShowRetornoManutencao] = useState(false);
+  const [horasParadaInput, setHorasParadaInput] = useState("");
 
   // placaPorId vem de /api/placas, que filtra "descontinuada = false" — uma
   // placa que estava rodando e foi descontinuada DEPOIS de carregada na
@@ -2005,6 +2039,59 @@ function PrinterCard({
           {producao ? "Rodando" : "Livre"}
         </span>
       </div>
+
+            {machine.em_manutencao ? (
+         <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5">
+           <span className="text-xs font-medium text-amber-800">
+            Em manutencao
+           </span>
+           {showRetornoManutencao ? (
+             <div className="flex flex-wrap items-center gap-1">
+               <input
+                type="number"
+                min="0"
+                step="0.5"
+                placeholder="Horas parada"
+                value={horasParadaInput}
+                onChange={(e) => setHorasParadaInput(e.target.value)}
+                className="w-24 rounded border border-gray-300 px-1.5 py-0.5 text-xs"
+               />
+               <button
+                onClick={() => {
+                  const horas = Number(horasParadaInput);
+                  if (!Number.isFinite(horas) || horas < 0) return;
+                  onRegistrarRetornoManutencao(machine.id, horas);
+                  setHorasParadaInput("");
+                  setShowRetornoManutencao(false);
+                }}
+                className="rounded bg-amber-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-amber-700"
+               >
+                Confirmar
+               </button>
+               <button
+                onClick={() => setShowRetornoManutencao(false)}
+                className="text-xs font-medium text-gray-500"
+               >
+                Cancelar
+               </button>
+             </div>
+           ) : (
+             <button
+              onClick={() => setShowRetornoManutencao(true)}
+              className="rounded border border-amber-400 bg-white px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+             >
+              Registrar retorno
+             </button>
+           )}
+         </div>
+      ) : (
+         <button
+          onClick={() => onMarcarManutencao(machine.id)}
+          className="mb-3 self-start rounded border border-gray-300 px-2 py-0.5 text-xs font-medium text-gray-500 hover:bg-gray-100"
+         >
+          Marcar em manutencao
+         </button>
+      )}
 
       {producao ? (
         <div className="flex flex-col gap-3">
@@ -2133,8 +2220,12 @@ function PrinterCard({
             </div>
           )}
         </div>
+      ) : machine.em_manutencao ? (
+         <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Impressora em manutencao - nao e possivel carregar producao.
+         </div>
       ) : (
-        <CarregarPlacaForm
+         <CarregarPlacaForm
           filaPrioridade={filaPrioridade}
           placaPorId={placaPorId}
           pertoDoFechamento={pertoDoFechamento}
