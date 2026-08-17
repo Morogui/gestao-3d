@@ -36,13 +36,8 @@ const RISCO_TEXTO: Record<string, string> = {
 
 function BadgeRisco({ risco }: { risco: string | null }) {
   const chave = risco && RISCO_ESTILO[risco] ? risco : "nenhum";
-  return (
-    <span
-      className={\`inline-block rounded-full border px-2 py-0.5 text-xs font-medium \${RISCO_ESTILO[chave]}\`}
-    >
-      {RISCO_TEXTO[chave]}
-    </span>
-  );
+  const classe = "inline-block rounded-full border px-2 py-0.5 text-xs font-medium " + RISCO_ESTILO[chave];
+  return <span className={classe}>{RISCO_TEXTO[chave]}</span>;
 }
 
 export default function ConcorrenciaTable({
