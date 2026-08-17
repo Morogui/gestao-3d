@@ -109,7 +109,7 @@ function corDoTexto(texto: string): string | null {
   return ultima;
 }
 
-function correspondeAoItem(placa: PlacaRow, tituloOuSku: string): boolean {
+export function correspondeAoItem(placa: PlacaRow, tituloOuSku: string): boolean {
   const bateu =
     textoCorresponde(placa.skuOuKit, tituloOuSku) ||
     textoCorresponde(placa.nome, tituloOuSku) ||
