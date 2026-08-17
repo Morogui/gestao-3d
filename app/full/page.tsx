@@ -63,6 +63,7 @@ interface EnvioFull {
   aprovado: boolean;
   grupoId: string | null;
   pecasPorUnidade: number;
+  tituloMl?: string | null;
 }
 
 // Grupo pronto pra revisar no painel "Agendar Full" — pedido do
@@ -261,7 +262,8 @@ export default function FullPage() {
     placaIds: number[],
     quantidade: number,
     dataLimite: string,
-    pecasPorUnidade: Record<number, number> = {}
+    pecasPorUnidade: Record<number, number> = {},
+    tituloMl: string | null,
   ) {
     const grupoId = placaIds.length > 1 ? `full-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : null;
     for (const placaId of placaIds) {
@@ -275,6 +277,7 @@ export default function FullPage() {
           dataLimite,
           grupoId,
           pecasPorUnidade: pecasPorUnidade[placaId] ?? 1,
+          tituloMl,
         }),
       });
     }
@@ -288,11 +291,11 @@ export default function FullPage() {
   // que vou enviar". Cria um envio (grupo, se composto) por SKU
   // revisado no painel, todos com a MESMA data de envio escolhida ali.
   async function confirmarAgendamento(
-    itens: { sku: string; placaIds: number[]; quantidade: number; pecasPorUnidade: Record<number, number> }[],
+    itens: { sku: string; placaIds: number[]; quantidade: number; pecasPorUnidade: Record<number, number>; titulo?: string | null }[],
     dataLimite: string
   ) {
     for (const item of itens) {
-      await criarEnvio(item.sku, item.placaIds, item.quantidade, dataLimite, item.pecasPorUnidade);
+      await criarEnvio(item.sku, item.placaIds, item.quantidade, dataLimite, item.pecasPorUnidade, item.titulo ?? null);
     }
   }
 
@@ -657,7 +660,7 @@ function AgendamentoFullPanel({
   onFechar: () => void;
   grupos: GrupoAgendamento[];
   onConfirmar: (
-    itens: { sku: string; placaIds: number[]; quantidade: number; pecasPorUnidade: Record<number, number> }[],
+    itens: { sku: string; placaIds: number[]; quantidade: number; pecasPorUnidade: Record<number, number>; titulo?: string | null }[],
     dataLimite: string
   ) => Promise<void>;
 }) {
@@ -689,6 +692,7 @@ function AgendamentoFullPanel({
         placaIds: g.placaIds,
         quantidade: Number(quantidades[g.chaveGrupo]) || 0,
         pecasPorUnidade: g.pecasPorUnidade,
+        titulo: g.titulo,
       }))
       .filter((item) => item.quantidade > 0);
     if (itens.length === 0 || !dataEnvio) return;
@@ -1182,7 +1186,7 @@ function EnviosPlanejados({
                       ) : (
                         <>
                           <p className="font-medium text-gray-900">{g.membros[0].placaNome}</p>
-                          <p className="text-gray-400">SKU: {g.sku}</p>
+                          <p className="text-gray-400">SKU: {g.membros[0].tituloMl || g.sku}</p>
                         </>
                       )}
                     </td>
