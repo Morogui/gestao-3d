@@ -4,6 +4,8 @@ import { z } from "zod";
 import { sql } from "@/lib/db";
 import { CATEGORIAS_DESPESA, CATEGORIAS_RECEITA } from "@/lib/financeiro";
 import { categoriasHistoricas, mesclarCategorias } from "@/lib/financeiro-categorias";
+import { ajustarEstoque } from "@/lib/estoque-ajuste";
+import { buscarPlacaPorTexto } from "@/lib/estoque-telegram-match";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -23,6 +25,17 @@ export const maxDuration = 60;
 // caso de uso normal de "comprovante" (recibo/nota depois de pagar).
 // Se for um boleto ainda pendente, o Guilherme ajusta manualmente depois
 // na aba Financeiro.
+//
+// Desde 2026-08-17 (pedido do Guilherme: "Precisamos integrar o sistema
+// do telegram, para lancae estoque do produto, eu aviso se vai ser
+// entrada ou saida de produto no telegram e ele ja atuliza no nosso
+// estoque") o bot TAMBÉM entende mensagem de TEXTO simples pra lançar
+// entrada/saída de estoque — ver tratarLancamentoEstoque() abaixo. Foto
+// ou PDF continua indo pro fluxo de comprovante (Financeiro); texto sem
+// anexo vai pro fluxo de estoque. Mesmo espírito "sem passo de
+// confirmação" quando o produto é identificado com clareza — se o texto
+// bater em mais de um produto do catálogo, ou em nenhum, o bot pede pra
+// reformular em vez de arriscar mexer no produto errado.
 
 function schemaExtracao(opcoesCategoria: string[]) {
   return z.object({
@@ -51,6 +64,22 @@ function schemaExtracao(opcoesCategoria: string[]) {
   });
 }
 
+const schemaEstoqueTexto = z.object({
+  tipo: z
+    .enum(["entrada", "saida"])
+    .describe(
+      "'entrada' se a mensagem avisa que chegaram/foram produzidas peças (aumenta o estoque), 'saida' se avisa que peças saíram, foram vendidas fora do sistema, quebraram ou tiveram defeito (diminui o estoque)"
+    ),
+  produto: z
+    .string()
+    .describe(
+      "Nome do produto/placa mencionado, o mais literal possível e incluindo a cor se mencionada (ex: 'suporte secador preto', 'prendedor de cortina')"
+    ),
+  quantidade: z
+    .number()
+    .describe("Quantidade de peças mencionada. Se a mensagem não trouxer um número explícito, assuma 1."),
+});
+
 async function enviarMensagem(token: string, chatId: number | string, texto: string) {
   try {
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -60,6 +89,72 @@ async function enviarMensagem(token: string, chatId: number | string, texto: str
     });
   } catch {
     // silencioso — não derruba o webhook por causa de um envio de resposta
+  }
+}
+
+// Lançamento de estoque via texto livre — ver comentário no topo do
+// arquivo. Sempre responde algo pro Guilherme (sucesso, ambiguidade ou
+// erro), nunca fica em silêncio.
+async function tratarLancamentoEstoque(token: string, chatId: number, texto: string) {
+  try {
+    const { object } = await generateObject({
+      model: "anthropic/claude-sonnet-5",
+      schema: schemaEstoqueTexto,
+      messages: [
+        {
+          role: "user",
+          content:
+            "Você ajuda a lançar entrada ou saída de estoque de peças impressas em 3D a partir de mensagens curtas " +
+            `e informais do Telegram. Mensagem: "${texto}"`,
+        },
+      ],
+    });
+
+    if (!object.quantidade || object.quantidade <= 0) {
+      await enviarMensagem(
+        token,
+        chatId,
+        "Não entendi a quantidade. Manda algo tipo: 'entrada 20 suporte secador preto' ou 'saída 3 prendedor de cortina'."
+      );
+      return;
+    }
+
+    const { unica, candidatas } = await buscarPlacaPorTexto(object.produto);
+
+    if (!unica) {
+      if (candidatas.length > 0) {
+        const lista = candidatas.map((c) => `#${c.numero} — ${c.nome}`).join("\n");
+        await enviarMensagem(
+          token,
+          chatId,
+          `Não achei um produto único pra "${object.produto}". Pode ser um destes:\n${lista}\n\nManda de novo com o nome mais parecido com a lista pra eu não errar o lançamento.`
+        );
+      } else {
+        await enviarMensagem(
+          token,
+          chatId,
+          `Não achei nenhum produto do catálogo parecido com "${object.produto}".`
+        );
+      }
+      return;
+    }
+
+    const delta = object.tipo === "entrada" ? object.quantidade : -object.quantidade;
+    const resultado = await ajustarEstoque(unica.id, delta);
+
+    await enviarMensagem(
+      token,
+      chatId,
+      `${object.tipo === "entrada" ? "✅ Entrada" : "✅ Saída"} de ${object.quantidade} — ${unica.nome} (#${unica.numero})\n` +
+        `Estoque atual: ${resultado.quantidadePecas}`
+    );
+  } catch (err) {
+    console.error("Erro no lançamento de estoque via Telegram:", err);
+    await enviarMensagem(
+      token,
+      chatId,
+      "Não consegui lançar isso no estoque agora. Tenta de novo ou lança manualmente na aba Estoque."
+    );
   }
 }
 
@@ -117,11 +212,17 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const texto = typeof message.text === "string" ? message.text.trim() : null;
+
   if (!fileId) {
+    if (texto) {
+      await tratarLancamentoEstoque(token, chatId, texto);
+      return NextResponse.json({ ok: true });
+    }
     await enviarMensagem(
       token,
       chatId,
-      "Manda uma foto ou PDF do comprovante que eu leio e já lanço no Financeiro. 📎"
+      "Manda uma foto ou PDF do comprovante que eu leio e já lanço no Financeiro. 📎\nOu me avisa a entrada/saída de estoque em texto, tipo 'saída 5 suporte secador preto'."
     );
     return NextResponse.json({ ok: true });
   }
@@ -194,9 +295,9 @@ export async function POST(request: NextRequest) {
 
     const rows = (await sql`
       INSERT INTO financeiro_lancamentos
-        (tipo, categoria, descricao, valor, data_vencimento, data_pagamento, status, fornecedor, forma_pagamento, arquivo_nome, arquivo_mime, arquivo_base64)
+      (tipo, categoria, descricao, valor, data_vencimento, data_pagamento, status, fornecedor, forma_pagamento, arquivo_nome, arquivo_mime, arquivo_base64)
       VALUES
-        (${object.tipo}, ${object.categoria}, ${object.descricao}, ${object.valor}, ${dataDocumento}, ${dataDocumento}, 'pago', ${object.fornecedor}, ${object.formaPagamento}, ${nomeArquivo}, ${mime}, ${base64})
+      (${object.tipo}, ${object.categoria}, ${object.descricao}, ${object.valor}, ${dataDocumento}, ${dataDocumento}, 'pago', ${object.fornecedor}, ${object.formaPagamento}, ${nomeArquivo}, ${mime}, ${base64})
       RETURNING id
     `) as { id: number }[];
     const id = rows[0]?.id;
