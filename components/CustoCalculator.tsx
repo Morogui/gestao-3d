@@ -25,6 +25,34 @@ function normalizarBusca(s: string): string {
     .replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
 }
 
+function palavrasSignificativas(s: string): string[] {
+  return normalizarBusca(s)
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 3);
+}
+
+// Pedido do Guilherme em 2026-08-18: avisar quando o SKU digitado no
+// Custo parece divergir do SKU real usado nas vendas (ex: "REGUA BOLO
+// 5X10" cadastrado, mas a venda real usa "REGUA 5X10") — nesses casos
+// o vinculo automatico cria a placa, mas a venda continua aparecendo
+// como nao identificada na Producao porque o SKU nao bate exatamente.
+function acharDivergenciaSku(
+  produto: Pick<ProdutoInput, "nome" | "sku">,
+  vendasNaoIdentificadas: { titulo: string; sku: string }[]
+): { titulo: string; sku: string } | null {
+  const skuProduto = normalizarBusca(produto.sku || produto.nome);
+  const palavrasProduto = palavrasSignificativas(produto.nome);
+  if (palavrasProduto.length === 0) return null;
+  for (const venda of vendasNaoIdentificadas) {
+    const skuVenda = normalizarBusca(venda.sku || "");
+    if (!skuVenda || skuVenda === skuProduto) continue;
+    const palavrasVenda = palavrasSignificativas(`${venda.titulo} ${venda.sku}`);
+    const overlap = palavrasProduto.filter((w) => palavrasVenda.includes(w)).length;
+    if (overlap >= 2) return venda;
+  }
+  return null;
+}
+
 const EMPTY_FORM: Omit<ProdutoInput, "id"> = {
   nome: "",
   sku: "",
@@ -47,6 +75,9 @@ export default function CustoCalculator() {
   // acento/maiúscula (mesmo padrão de normalização usado em
   // lib/demanda.ts) pra achar mesmo digitando diferente do cadastro.
   const [busca, setBusca] = useState("");
+  const [naoIdentificados, setNaoIdentificados] = useState<
+    { titulo: string; sku: string }[]
+  >([]);
 
   // Carrega dados salvos do banco assim que o componente monta
   useEffect(() => {
@@ -58,6 +89,27 @@ export default function CustoCalculator() {
       setParams(paramsCarregados);
       setProdutos(produtosCarregados);
       setLoading(false);
+    })();
+    (async () => {
+      try {
+        const res = await fetch("/api/producao/demanda");
+        if (!res.ok) return;
+        const data = await res.json();
+        const amostras: { titulo: string; sku: string }[] = [
+          ...(data?.naoIdentificado?.amostras ?? []),
+          ...(data?.naoIdentificadoSemana?.amostras ?? []),
+        ];
+        const vistos = new Set<string>();
+        const unicas = amostras.filter((a) => {
+          const chave = `${a.titulo}__${a.sku}`;
+          if (vistos.has(chave)) return false;
+          vistos.add(chave);
+          return true;
+        });
+        setNaoIdentificados(unicas);
+      } catch {
+        // silencioso — e so um alerta visual, nao deve travar a tela
+      }
     })();
   }, []);
 
@@ -72,6 +124,16 @@ export default function CustoCalculator() {
         normalizarBusca(p.sku ?? "").includes(alvo)
     );
   }, [produtos, busca]);
+
+  const divergencias = useMemo(() => {
+    const mapa: Record<string, { titulo: string; sku: string }> = {};
+    if (naoIdentificados.length === 0) return mapa;
+    for (const produto of produtos) {
+      const achado = acharDivergenciaSku(produto, naoIdentificados);
+      if (achado) mapa[produto.id] = achado;
+    }
+    return mapa;
+  }, [produtos, naoIdentificados]);
 
   function updateForm<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -320,6 +382,7 @@ export default function CustoCalculator() {
             params={params}
             onEdit={handleEdit}
             onDelete={handleDelete}
+            divergencias={divergencias}
           />
         )}
       </section>
