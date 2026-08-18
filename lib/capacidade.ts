@@ -67,7 +67,7 @@ export async function janelaAprendida(): Promise<Janela> {
 
 export async function maquinasAtivas(): Promise<number> {
   const rows = (await sql`
-    SELECT count(*)::int AS total FROM machines WHERE ativa = true
+    SELECT count(*)::int AS total FROM machines WHERE ativa = true AND em_manutencao = false
   `) as { total: number }[];
   const total = rows[0]?.total ?? 0;
   // Regra do Guilherme em 2026-08-14: sempre reservar 1 impressora
