@@ -856,7 +856,8 @@ function EnviosPlanejados({
     placaIds: number[],
     quantidade: number,
     dataLimite: string,
-    pecasPorUnidade?: Record<number, number>
+    pecasPorUnidade: Record<number, number> | undefined,
+    tituloMl: string | null
   ) => Promise<void>;
   onConfirmar: (ids: number[]) => Promise<void>;
   onEditar: (ids: number[], quantidade: number, dataLimite: string) => Promise<boolean>;
@@ -998,12 +999,14 @@ function EnviosPlanejados({
     if (!selecionado || !quantidade || Number(quantidade) <= 0 || !dataLimite) return;
     setEnviando(true);
     try {
+      const linhaSelecionada = linhas.find((l) => l.sku === selecionado.sku);
       await onCriar(
         selecionado.sku,
         selecionado.placaIds,
         Number(quantidade),
         dataLimite,
-        selecionado.pecasPorUnidade
+        selecionado.pecasPorUnidade,
+        linhaSelecionada?.titulo || null
       );
       setSelecionado(null);
       setBuscaSku("");
