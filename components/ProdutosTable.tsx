@@ -31,6 +31,7 @@ export default function ProdutosTable({
           <tr>
             <th className="px-4 py-3">Produto</th>
             <th className="px-4 py-3">SKU</th>
+            <th className="px-4 py-3">Produção</th>
             <th className="px-4 py-3 text-right">Peso placa (g)</th>
             <th className="px-4 py-3 text-right">Tempo (h)</th>
             <th className="px-4 py-3 text-right">Peças/placa</th>
@@ -47,6 +48,17 @@ export default function ProdutosTable({
                   {produto.nome}
                 </td>
                 <td className="px-4 py-3 text-gray-500">{produto.sku || "—"}</td>
+                <td className="px-4 py-3">
+                  {produto.placaId ? (
+                    <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                      Vinculado
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+                      Não vinculado
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-3 text-right">{produto.pesoPlacaG}</td>
                 <td className="px-4 py-3 text-right">{produto.tempoPlacaH}</td>
                 <td className="px-4 py-3 text-right">{produto.pecasNaPlaca}</td>
