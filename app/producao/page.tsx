@@ -201,6 +201,8 @@ export default function ProducaoPage() {
   const [machines, setMachines] = useState<MachineRow[]>([]);
   const [producoes, setProducoes] = useState<ProducaoRow[]>([]);
   const [demanda, setDemanda] = useState<DemandaResult | null>(null);
+  const [vinculandoItem, setVinculandoItem] = useState<Record<string, boolean>>({});
+  const [placaEscolhida, setPlacaEscolhida] = useState<Record<string, string>>({});
   const [consumo, setConsumo] = useState<ConsumoResult | null>(null);
   const [janela, setJanela] = useState<Janela>(JANELA_PADRAO);
   // Estoque de filamento por cor (gramas) — pedido do Guilherme em
@@ -380,6 +382,39 @@ export default function ProducaoPage() {
     });
     carregarDemanda();
   }
+  async function vincularItem(itemId: string, sku: string, titulo: string, placaId: number) {
+    if (!placaId) return;
+    const chave = titulo + sku;
+    setVinculandoItem((prev) => ({ ...prev, [chave]: true }));
+    try {
+      const res = await fetch("/api/producao/vincular-item", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId, sku, placaId }),
+      });
+      if (res.ok) {
+        setDemanda((prev) => {
+          if (!prev) return prev;
+          const remove = (n: typeof prev.naoIdentificadoSemana) =>
+            n && {
+              ...n,
+              amostras: n.amostras.filter(
+                (a) => !(a.titulo === titulo && a.sku === sku)
+              ),
+            };
+          return {
+            ...prev,
+            naoIdentificado: remove(prev.naoIdentificado),
+            naoIdentificadoSemana: remove(prev.naoIdentificadoSemana),
+          };
+        });
+        carregarDemanda();
+      }
+    } finally {
+      setVinculandoItem((prev) => ({ ...prev, [chave]: false }));
+    }
+  }
+
 
   async function salvarPesoPlaca(placaId: number, pesoPlacaGramas: number | null) {
     await fetch(`/api/placas/${placaId}`, {
@@ -1215,6 +1250,31 @@ async function corrigirTempo() {
                 >
                   Não vendemos mais
                 </button>
+                 <div className="flex shrink-0 items-center gap-1.5">
+                  <select
+                   value={placaEscolhida[a.titulo + a.sku] ?? ""}
+                   onChange={(e) =>
+                    setPlacaEscolhida((prev) => ({ ...prev, [a.titulo + a.sku]: e.target.value }))
+                   }
+                   className="rounded border border-gray-300 px-1 py-0.5 text-xs"
+                  >
+                   <option value="">Vincular a placa...</option>
+                   {placas.map((p) => (
+                    <option key={p.id} value={p.id}>
+                     {p.nome}
+                    </option>
+                   ))}
+                  </select>
+                  <button
+                   disabled={!placaEscolhida[a.titulo + a.sku] || Boolean(vinculandoItem[a.titulo + a.sku])}
+                   onClick={() =>
+                    vincularItem(a.itemId, a.sku, a.titulo, Number(placaEscolhida[a.titulo + a.sku]))
+                   }
+                   className="shrink-0 rounded border border-green-300 px-2 py-0.5 text-xs font-medium text-green-700 hover:bg-green-100 disabled:opacity-40"
+                  >
+                   {vinculandoItem[a.titulo + a.sku] ? "Vinculando..." : "Vincular"}
+                  </button>
+                 </div>
               </li>
             ))}
           </ul>
