@@ -7,6 +7,10 @@ interface ProdutosTableProps {
   params: GlobalParams;
   onEdit: (produto: ProdutoInput) => void;
   onDelete: (id: string) => void;
+  /** Pedido do Guilherme em 2026-08-18: avisar quando o SKU cadastrado
+   * no Custo parece divergir do SKU real usado numa venda ainda nao
+   * identificada (o vinculo automatico so funciona se o SKU bater). */
+  divergencias?: Record<string, { titulo: string; sku: string }>;
 }
 
 export default function ProdutosTable({
@@ -14,6 +18,7 @@ export default function ProdutosTable({
   params,
   onEdit,
   onDelete,
+  divergencias,
 }: ProdutosTableProps) {
   if (produtos.length === 0) {
     return (
@@ -56,6 +61,14 @@ export default function ProdutosTable({
                   ) : (
                     <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
                       Não vinculado
+                    </span>
+                  )}
+                  {divergencias?.[produto.id] && (
+                    <span
+                      title={`Venda real "${divergencias?.[produto.id].titulo}" usa o SKU "${divergencias?.[produto.id].sku}", diferente do SKU cadastrado aqui ("${produto.sku || produto.nome}"). A venda pode continuar aparecendo como nao identificada na Producao.`}
+                      className="ml-1 inline-flex cursor-help items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700"
+                    >
+                      ⚠ SKU pode divergir
                     </span>
                   )}
                 </td>
