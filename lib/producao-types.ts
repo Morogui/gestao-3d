@@ -31,6 +31,9 @@ export interface MachineRow {
   id: number;
   nome: string;
   ativa: boolean;
+
+  em_manutencao: boolean;
+  manutencao_inicio: string | null;
 }
 
 export interface ProducaoRow {
