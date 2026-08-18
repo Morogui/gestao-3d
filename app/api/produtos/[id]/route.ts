@@ -24,6 +24,80 @@ function toProdutoInput(row: ProdutoRow): ProdutoInput {
   };
 }
 
+// Ver app/api/produtos/route.ts pra contexto completo do porque disto
+// existe — mantem a placa de producao sincronizada com a edicao feita
+// aqui na aba Custo, e cria a placa retroativamente (backfill) se esse
+// produto foi cadastrado antes desse vinculo automatico existir (caso
+// real: "Regua Bolo 5x10"/"3x10", cadastrados so no Custo, com peso e
+// tempo ja preenchidos — a primeira edicao depois deste deploy cria a
+// placa correspondente automaticamente, usando esses mesmos dados).
+async function garantirColunaPlacaId() {
+  await sql`ALTER TABLE produtos ADD COLUMN IF NOT EXISTS placa_id integer REFERENCES placas(id)`;
+}
+
+async function sincronizarPlaca(params: {
+  placaId: number | null;
+  nome: string;
+  skuAntigo: string | null;
+  skuNovo: string | null;
+  pesoPlacaG: number;
+  tempoPlacaH: number;
+  pecasNaPlaca: number;
+}): Promise<number> {
+  const { placaId, nome, skuAntigo, skuNovo, pesoPlacaG, tempoPlacaH, pecasNaPlaca } = params;
+
+  if (!placaId) {
+    const [{ proximo }] = (await sql`
+      SELECT COALESCE(MAX(numero), 0) + 1 AS proximo FROM placas
+    `) as { proximo: number }[];
+    const [placa] = (await sql`
+      INSERT INTO placas (
+        numero, nome, tipo, papel, grupo_composto, sku_ou_kit,
+        frases_correspondencia, pecas_por_placa, tempo_placa_horas, tier,
+        descontinuada, peso_placa_gramas, dados_confirmados
+      )
+      VALUES (
+        ${proximo}, ${nome}, 'direta', null, null, ${skuNovo || nome},
+        null, ${pecasNaPlaca}, ${tempoPlacaH}, 'C',
+        false, ${pesoPlacaG}, true
+      )
+      RETURNING id
+    `) as { id: number }[];
+    if (skuNovo) {
+      await sql`
+        INSERT INTO sku_placa (sku, placa_id, pecas_por_unidade)
+        SELECT ${skuNovo}, ${placa.id}, 1
+        WHERE NOT EXISTS (
+          SELECT 1 FROM sku_placa WHERE sku = ${skuNovo} AND placa_id = ${placa.id}
+        )
+      `;
+    }
+    return placa.id;
+  }
+
+  await sql`
+    UPDATE placas
+    SET nome = ${nome},
+        sku_ou_kit = ${skuNovo || nome},
+        pecas_por_placa = ${pecasNaPlaca},
+        tempo_placa_horas = ${tempoPlacaH},
+        peso_placa_gramas = ${pesoPlacaG}
+    WHERE id = ${placaId}
+  `;
+
+  if (skuNovo && skuNovo !== skuAntigo) {
+    await sql`
+      INSERT INTO sku_placa (sku, placa_id, pecas_por_unidade)
+      SELECT ${skuNovo}, ${placaId}, 1
+      WHERE NOT EXISTS (
+        SELECT 1 FROM sku_placa WHERE sku = ${skuNovo} AND placa_id = ${placaId}
+      )
+    `;
+  }
+
+  return placaId;
+}
+
 export async function PUT(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -39,6 +113,15 @@ export async function PUT(
     "id"
   >;
 
+  await garantirColunaPlacaId();
+
+  const antigoRows = (await sql`
+    SELECT sku, placa_id FROM produtos WHERE id = ${id}
+  `) as { sku: string | null; placa_id: number | null }[];
+  if (antigoRows.length === 0) {
+    return NextResponse.json({ error: "produto não encontrado" }, { status: 404 });
+  }
+
   const rows = (await sql`
     UPDATE produtos
     SET nome = ${nome},
@@ -52,6 +135,19 @@ export async function PUT(
 
   if (rows.length === 0) {
     return NextResponse.json({ error: "produto não encontrado" }, { status: 404 });
+  }
+
+  const placaId = await sincronizarPlaca({
+    placaId: antigoRows[0].placa_id,
+    nome,
+    skuAntigo: antigoRows[0].sku,
+    skuNovo: sku || null,
+    pesoPlacaG,
+    tempoPlacaH,
+    pecasNaPlaca,
+  });
+  if (!antigoRows[0].placa_id) {
+    await sql`UPDATE produtos SET placa_id = ${placaId} WHERE id = ${id}`;
   }
 
   return NextResponse.json(toProdutoInput(rows[0]));
