@@ -43,6 +43,8 @@ export interface ProdutoInput {
   tempoPlacaH: number;
   /** quantas peças saem em uma placa */
   pecasNaPlaca: number;
+  /** id da placa de produção vinculada (null/undefined = ainda não vinculado) */
+  placaId?: number | null;
 }
 
 export interface CustoBreakdown {
