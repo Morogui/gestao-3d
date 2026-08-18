@@ -131,4 +131,6 @@ export interface ConsumoResult {
   pecasRodadas: number;
   pecasComFalha: number;
   percentualFalha: number;
+  percentualImpresso: number;
+  percentualFalhaPecas: number;
 }
