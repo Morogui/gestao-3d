@@ -11,6 +11,7 @@ type ProdutoRow = {
   peso_placa_g: string;
   tempo_placa_h: string;
   pecas_na_placa: string;
+  placa_id: number | null;
 };
 
 function toProdutoInput(row: ProdutoRow): ProdutoInput {
@@ -21,6 +22,7 @@ function toProdutoInput(row: ProdutoRow): ProdutoInput {
     pesoPlacaG: Number(row.peso_placa_g),
     tempoPlacaH: Number(row.tempo_placa_h),
     pecasNaPlaca: Number(row.pecas_na_placa),
+    placaId: row.placa_id,
   };
 }
 
@@ -76,8 +78,9 @@ async function criarPlacaParaProduto(params: {
 }
 
 export async function GET() {
+  await garantirColunaPlacaId();
   const rows = (await sql`
-    SELECT id, nome, sku, peso_placa_g, tempo_placa_h, pecas_na_placa
+    SELECT id, nome, sku, peso_placa_g, tempo_placa_h, pecas_na_placa, placa_id
     FROM produtos
     ORDER BY nome ASC
   `) as ProdutoRow[];
