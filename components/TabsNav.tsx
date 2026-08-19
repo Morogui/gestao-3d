@@ -12,6 +12,7 @@ const TABS = [
   { href: "/financeiro", label: "Financeiro" },
   { href: "/relatorios", label: "Relatórios" },
   { href: "/analise", label: "Analise" },
+  { href: "/precificacao", label: "Precificação" },
 ];
 
 export default function TabsNav() {
