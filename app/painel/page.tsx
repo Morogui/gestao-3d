@@ -608,4 +608,3 @@ function ManutencaoCard({
           </div>
         );
 }
-</div>
