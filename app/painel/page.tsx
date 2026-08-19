@@ -1,610 +1,531 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { PlacaRow, CORES_COM_PETG, corFilamentoDaPlaca } from "@/lib/placas";
-import { MachineRow, ProducaoRow } from "@/lib/producao-types";
+import { useMemo, useState } from "react";
+import {
+      taxaPesoML,
+      comissaoShopeePct,
+      taxaFixaShopee,
+      COMISSAO_ML_CLASSICO_PCT,
+      formatBRL,
+} from "@/lib/precificacao";
 
-// Painel de chão de fábrica — pedido do Guilherme em 2026-08-19: "monte
-// uma nova aba, se possível essa vai ser a página inicial da nossa
-// página" inspirada em https://renancorreia.com.br/calculadora (tema
-// escuro, cards com ícone), mas com os quadros das impressoras lado a
-// lado (o site de referência empilha pra baixo, o nosso não). Ele pediu
-// explicitamente pra manter isso separado do resto do sistema por
-// enquanto ("essa nova página, deixe separado do nosso sistema por
-// enquanto, vai ser a entrada do nosso sistema") — por isso essa página
-// não está linkada na navegação principal ainda, e duplica localmente
-// (em vez de importar) os helpers já usados em app/producao/page.tsx.
-// Usa as mesmas rotas de API já existentes (nada de schema/rota nova):
-// GET /api/machines, /api/producoes, /api/placas; e as mutações
-// POST /api/producoes (carregar), PATCH /api/producoes/[id] (concluir/
-// cancelar/falha na placa), POST /api/producoes/[id]/falha-peca,
-// PATCH /api/machines/[id] (marcar em manutenção), POST
-// /api/machines/[id]/manutencao (registrar retorno).
+// Calculadora de custo e precificacao de impressao 3D - pedido do
+// Guilherme em 2026-08-19. Correcao importante feita no mesmo dia: a
+// primeira versao desta pagina era um painel de chao de fabrica ligado
+// ao nosso banco (maquinas/producoes/placas). Guilherme esclareceu:
+// a ideia nao e um painel nosso, mas sim um painel generico igual a
+// referencia que te passei para eu poder mandar para meus amigos
+// fazerem o custo dos produtos deles - ou seja, essa pagina tem que
+// funcionar sozinha, sem nenhuma dependencia do nosso catalogo/estoque/
+// maquinas, pra poder ser compartilhada com qualquer pessoa que
+// imprima em 3D. Inspirada em renancorreia.com.br/calculadora
+// (tema escuro, cards com icone, abas Custos/Precificacao), mas com os
+// cards lado a lado em vez de empilhados pra baixo. Inclui, por pedido
+// explicito do Guilherme, dois fatores que a referencia nao tinha:
+// manutencao da impressora (R$/hora) e falha de impressao (% de
+// desperdicio esperado) - ambos entram no custo total de producao.
+//
+// As formulas de taxa do Mercado Livre e da Shopee em lib/precificacao.ts
+// sao puras (sem chamada a banco/API) e ja foram auditadas pelo
+// Guilherme direto na Central de Vendedores/seller center em 19/08/2026
+// - por isso sao reaproveitadas aqui como estao, so com os percentuais
+// de imposto/ads deixados editaveis (cada pessoa tem um regime
+// tributario e uma estrategia de anuncios diferente).
 
-function formatHora(hora: number): string {
-    const inteiro = Math.floor(hora);
-    const minutos = Math.round((hora - inteiro) * 60);
-    return minutos === 0 ? `${inteiro}h` : `${inteiro}h${String(minutos).padStart(2, "0")}`;
+function toNum(v: string): number {
+      const n = Number(v.replace(",", "."));
+      return Number.isFinite(n) ? n : 0;
 }
 
-function formatDataHora(iso: string): string {
-    return new Date(iso).toLocaleString("pt-BR");
+function fmtPct(v: number): string {
+      return `${v.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 }
 
-type Status = "loading" | "ready" | "erro";
+const IMPRESSORAS = [
+    { nome: "Ender 3 / S1", watts: 125 },
+    { nome: "Ender 3 V3", watts: 100 },
+    { nome: "K1 / K1C", watts: 120 },
+    { nome: "K1 Max", watts: 200 },
+    { nome: "Bambu A1", watts: 95 },
+    { nome: "Bambu A1 Mini", watts: 45 },
+    { nome: "Bambu P1S", watts: 100 },
+    { nome: "Bambu X1C", watts: 120 },
+    { nome: "Centauri Carbon", watts: 80 },
+    ];
+
+const MARGENS_PRESET = [15, 20, 25, 30, 35, 40, 45, 50];
+
+// Resolve o preco de anuncio pra bater uma margem liquida alvo (% sobre
+// o preco), dado o custo total de producao e as regras de taxa de uma
+// plataforma. Busca binaria em vez de algebra direta porque a Shopee
+// tem faixas de comissao/taxa fixa que mudam de acordo com o proprio
+// preco (nao da pra isolar P numa formula fechada unica).
+function resolverPreco(opts: {
+      custoTotal: number;
+      impostoPct: number;
+      adsPct: number;
+      afiliadoPct?: number;
+      margemAlvoPct: number;
+      comissaoPct: (preco: number) => number;
+      taxaFixa: (preco: number) => number;
+}): number {
+      const { custoTotal, impostoPct, adsPct, afiliadoPct = 0, margemAlvoPct, comissaoPct, taxaFixa } = opts;
+      let lo = 0.01;
+      let hi = 200000;
+      for (let i = 0; i < 60; i++) {
+              const preco = (lo + hi) / 2;
+              const comissao = preco * (comissaoPct(preco) / 100);
+              const fixa = taxaFixa(preco);
+              const imposto = preco * (impostoPct / 100);
+              const ads = preco * (adsPct / 100);
+              const afiliado = preco * (afiliadoPct / 100);
+              const lucro = preco - comissao - fixa - imposto - ads - afiliado - custoTotal;
+              const margem = preco > 0 ? (lucro / preco) * 100 : -999;
+              if (margem < margemAlvoPct) lo = preco;
+              else hi = preco;
+      }
+      return hi;
+}
+
+function IconBadge({ children }: { children: React.ReactNode }) {
+      return (
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#2a1a0a] text-lg">
+                  {children}
+              </div>
+            );
+}
+
+function Card({
+      icon,
+      title,
+      subtitle,
+      children,
+}: {
+      icon: React.ReactNode;
+      title: string;
+      subtitle?: string;
+      children: React.ReactNode;
+}) {
+      return (
+              <div className="rounded-2xl border border-[#23232b] bg-[#131318] p-5">
+                    <div className="mb-4 flex items-start gap-3">
+                            <IconBadge>{icon}</IconBadge>
+                            <div>
+                                      <h3 className="text-sm font-semibold text-white">{title}</h3>
+                                {subtitle && <p className="mt-0.5 text-[11px] text-[#8b8b96]">{subtitle}</p>}
+                            </div>
+                    </div>
+                  {children}
+              </div>
+            );
+}
+
+function Field({
+      label,
+      value,
+      onChange,
+      suffix,
+      placeholder = "0",
+}: {
+      label: string;
+      value: string;
+      onChange: (v: string) => void;
+      suffix?: string;
+      placeholder?: string;
+}) {
+      return (
+              <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-[#8b8b96]">{label}</span>
+                    <div className="flex items-center gap-1.5 rounded-lg border border-[#2c2c36] bg-[#0e0e12] px-2.5 py-1.5">
+                            <input
+                                          type="text"
+                                          inputMode="decimal"
+                                          value={value}
+                                          placeholder={placeholder}
+                                          onChange={(e) => onChange(e.target.value)}
+                                          className="w-full bg-transparent text-sm text-white outline-none placeholder:text-[#5c5c66]"
+                                        />
+                        {suffix && <span className="text-xs text-[#5c5c66]">{suffix}</span>}
+                    </div>
+              </label>
+            );
+}
 
 export default function PainelPage() {
-    const [status, setStatus] = useState<Status>("loading");
-    const [machines, setMachines] = useState<MachineRow[]>([]);
-    const [producoes, setProducoes] = useState<ProducaoRow[]>([]);
-    const [placas, setPlacas] = useState<PlacaRow[]>([]);
-    const [carregando, setCarregando] = useState<Record<number, boolean>>({});
-    const [agora, setAgora] = useState(() => Date.now());
-
-  useEffect(() => {
-        const t = setInterval(() => setAgora(Date.now()), 30000);
-        return () => clearInterval(t);
-  }, []);
-
-  async function carregar() {
-        try {
-                const [machinesRes, producoesRes, placasRes] = await Promise.all([
-                          fetch("/api/machines").then((r) => r.json()),
-                          fetch("/api/producoes").then((r) => r.json()),
-                          fetch("/api/placas").then((r) => r.json()),
-                        ]);
-                setMachines(machinesRes);
-                setProducoes(producoesRes);
-                setPlacas(placasRes);
-                setStatus("ready");
-        } catch {
-                setStatus("erro");
-        }
-  }
-
-  useEffect(() => {
-        carregar();
-  }, []);
-
-  async function refrescar() {
-        const [machinesRes, producoesRes] = await Promise.all([
-                fetch("/api/machines").then((r) => r.json()),
-                fetch("/api/producoes").then((r) => r.json()),
-              ]);
-        setMachines(machinesRes);
-        setProducoes(producoesRes);
-  }
-
-  const producaoPorMachine = useMemo(() => {
-        const m = new Map<number, ProducaoRow>();
-        for (const p of producoes) {
-                if (p.status === "em_andamento") m.set(p.machine_id, p);
-        }
-        return m;
-  }, [producoes]);
-
-  const placaPorId = useMemo(() => {
-        const m = new Map<number, PlacaRow>();
-        for (const p of placas) m.set(p.id, p);
-        return m;
-  }, [placas]);
-
-  const placasOrdenadas = useMemo(
-        () =>
-                [...placas]
-            .filter((p) => !p.descontinuada)
-            .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
-        [placas]
-      );
-
-  async function comAcao(machineId: number, fn: () => Promise<void>) {
-        setCarregando((prev) => ({ ...prev, [machineId]: true }));
-        try {
-                await fn();
-                await refrescar();
-        } finally {
-                setCarregando((prev) => ({ ...prev, [machineId]: false }));
-        }
-  }
-
-  function iniciarProducao(
-        machineId: number,
-        placaId: number,
-        quantidadePlacas: number,
-        material: "PLA" | "PETG" | null
-      ) {
-        return comAcao(machineId, async () => {
-                await fetch("/api/producoes", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ machineId, placaId, quantidadePlacas, material }),
-                });
-        });
-  }
-
-  function concluir(machineId: number, producaoId: number) {
-        return comAcao(machineId, async () => {
-                await fetch(`/api/producoes/${producaoId}`, {
-                          method: "PATCH",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ status: "concluida" }),
-                });
-        });
-  }
-
-  function cancelar(machineId: number, producaoId: number) {
-        return comAcao(machineId, async () => {
-                await fetch(`/api/producoes/${producaoId}`, {
-                          method: "PATCH",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ status: "cancelada" }),
-                });
-        });
-  }
-
-  function falhaPlaca(machineId: number, producaoId: number, gramas: number) {
-        return comAcao(machineId, async () => {
-                await fetch(`/api/producoes/${producaoId}`, {
-                          method: "PATCH",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ status: "falha_placa", gramasDesperdicadas: gramas }),
-                });
-        });
-  }
-
-  function falhaPeca(machineId: number, producaoId: number, pecaDescricao: string, gramas: number) {
-        return comAcao(machineId, async () => {
-                await fetch(`/api/producoes/${producaoId}/falha-peca`, {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ pecaDescricao, gramas }),
-                });
-        });
-  }
-
-  function marcarManutencao(machineId: number) {
-        return comAcao(machineId, async () => {
-                await fetch(`/api/machines/${machineId}`, {
-                          method: "PATCH",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ emManutencao: true }),
-                });
-        });
-  }
-
-  function registrarRetorno(machineId: number, horasParada: number, observacao: string) {
-        return comAcao(machineId, async () => {
-                await fetch(`/api/machines/${machineId}/manutencao`, {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ horasParada, observacao: observacao || null }),
-                });
-        });
-  }
-
-  if (status === "loading") {
-        return (
-                <div className="flex min-h-screen items-center justify-center bg-[#0a0a0d] text-sm text-gray-500">
-                        Carregando painel...
-                </div>
-              );
-  }
-  
-    if (status === "erro") {
-          return (
-                  <div className="flex min-h-screen items-center justify-center bg-[#0a0a0d] text-sm text-red-400">
-                          Não deu pra carregar as impressoras.
-                  </div>
-                );
-    }
-  
-    return (
-          <div className="min-h-screen bg-[#0a0a0d] px-4 py-6 sm:px-8">
-                <header className="mb-6 flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500/15 text-lg">
-                                  🖨️
-                        </div>
-                        <div>
-                                  <h1 className="text-lg font-semibold text-white">Painel de Impressão</h1>
-                                  <p className="text-xs text-[#8b8b96]">Status ao vivo das impressoras · MOROLAR</p>
-                        </div>
-                </header>
-          
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                  {machines.map((machine) => (
-                      <PainelMachineCard
-                                    key={machine.id}
-                                    machine={machine}
-                                    producao={producaoPorMachine.get(machine.id)}
-                                    placaPorId={placaPorId}
-                                    placasOrdenadas={placasOrdenadas}
-                                    carregando={Boolean(carregando[machine.id])}
-                                    agora={agora}
-                                    onIniciar={iniciarProducao}
-                                    onConcluir={concluir}
-                                    onCancelar={cancelar}
-                                    onFalhaPlaca={falhaPlaca}
-                                    onFalhaPeca={falhaPeca}
-                                    onMarcarManutencao={marcarManutencao}
-                                    onRegistrarRetorno={registrarRetorno}
-                                  />
-                    ))}
-                </div>
-          </div>
-        );
-}
-
-function StatusPill({
-    children,
-    tone,
-}: {
-    children: ReactNode;
-    tone: "green" | "amber" | "gray";
-}) {
-    const cls =
-          tone === "green"
-            ? "bg-emerald-500/15 text-emerald-400"
-            : tone === "amber"
-            ? "bg-amber-500/15 text-amber-400"
-            : "bg-white/10 text-gray-400";
-    return (
-          <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${cls}`}>{children}</span>
-        );
-}
-
-function PainelMachineCard({
-    machine,
-    producao,
-    placaPorId,
-    placasOrdenadas,
-    carregando,
-    agora,
-    onIniciar,
-    onConcluir,
-    onCancelar,
-    onFalhaPlaca,
-    onFalhaPeca,
-    onMarcarManutencao,
-    onRegistrarRetorno,
-}: {
-    machine: MachineRow;
-    producao: ProducaoRow | undefined;
-    placaPorId: Map<number, PlacaRow>;
-    placasOrdenadas: PlacaRow[];
-    carregando: boolean;
-    agora: number;
-    onIniciar: (
-          machineId: number,
-          placaId: number,
-          quantidadePlacas: number,
-          material: "PLA" | "PETG" | null
-        ) => Promise<void>;
-    onConcluir: (machineId: number, producaoId: number) => Promise<void>;
-    onCancelar: (machineId: number, producaoId: number) => Promise<void>;
-    onFalhaPlaca: (machineId: number, producaoId: number, gramas: number) => Promise<void>;
-    onFalhaPeca: (
-          machineId: number,
-          producaoId: number,
-          pecaDescricao: string,
-          gramas: number
-        ) => Promise<void>;
-    onMarcarManutencao: (machineId: number) => Promise<void>;
-    onRegistrarRetorno: (machineId: number, horasParada: number, observacao: string) => Promise<void>;
-}) {
-    const [showFalhaPeca, setShowFalhaPeca] = useState(false);
-    const [showFalhaPlaca, setShowFalhaPlaca] = useState(false);
-    const [pecaDescricao, setPecaDescricao] = useState("");
-    const [gramasPeca, setGramasPeca] = useState("");
-    const [gramasPlaca, setGramasPlaca] = useState("");
-  
-    const placa = producao ? placaPorId.get(producao.placa_id) : undefined;
-    const pecasPorPlaca = placa?.pecasPorPlaca ?? Number(producao?.pecas_por_placa ?? 0);
-    const totalPecas = producao ? Number(producao.quantidade_placas) * pecasPorPlaca : 0;
-  
-    if (machine.em_manutencao) {
-          return (
-                  <ManutencaoCard
-                            machine={machine}
-                            carregando={carregando}
-                            agora={agora}
-                            onRegistrarRetorno={onRegistrarRetorno}
-                          />
-                );
-    }
-  
-    return (
-          <div className="flex flex-col rounded-2xl border border-[#23232b] bg-[#131318] p-4">
-                <div className="mb-3 flex items-center justify-between">
-                        <p className="font-semibold text-white">{machine.nome}</p>
-                        <StatusPill tone={producao ? "green" : "gray"}>{producao ? "Rodando" : "Livre"}</StatusPill>
-                </div>
-          
-            {producao ? (
-                    <div className="flex flex-col gap-3">
-                              <div>
-                                          <p className="text-sm font-medium text-white">
-                                            {producao.placa_nome}
-                                            {producao.material === "PETG" && (
-                                      <span className="ml-2 rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-sky-400">
-                                                        PETG
-                                      </span>
-                                                        )}
-                                          </p>
-                                          <p className="mt-0.5 text-xs text-[#8b8b96]">
-                                            {producao.quantidade_placas} placa(s) · {pecasPorPlaca} pç/placa
-                                            {placa?.tempoPlacaHoras ? ` · ${formatHora(placa.tempoPlacaHoras)}/placa` : ""} ·{" "}
-                                            {totalPecas} peças no total
-                                          </p>
-                                          <p className="mt-0.5 text-[11px] text-[#5c5c66]">
-                                                        Carregada em {formatDataHora(producao.iniciado_em)}
-                                          </p>
-                                {Number(producao.falhas_peca_count) > 0 && (
-                                    <p className="mt-1 text-xs text-amber-400">
-                                      {producao.falhas_peca_count} peça(s) já perdida(s) nessa placa
-                                    </p>
-                                          )}
-                              </div>
-                    
-                              <div className="flex flex-wrap gap-1.5">
-                                          <button
-                                                          disabled={carregando}
-                                                          onClick={() => onConcluir(machine.id, producao.id)}
-                                                          className="rounded-lg bg-emerald-500 px-2.5 py-1.5 text-xs font-medium text-black hover:bg-emerald-400 disabled:opacity-40"
-                                                        >
-                                            {carregando ? "Salvando..." : "Placa impressa com sucesso"}
-                                          </button>
-                                          <button
-                                                          disabled={carregando}
-                                                          onClick={() => setShowFalhaPeca((v) => !v)}
-                                                          className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-400 hover:bg-amber-500/20 disabled:opacity-40"
-                                                        >
-                                                        Falha em peça
-                                          </button>
-                                          <button
-                                                          disabled={carregando}
-                                                          onClick={() => setShowFalhaPlaca((v) => !v)}
-                                                          className="rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 disabled:opacity-40"
-                                                        >
-                                                        Falha na placa
-                                          </button>
-                                          <button
-                                                          disabled={carregando}
-                                                          onClick={() => onCancelar(machine.id, producao.id)}
-                                                          className="rounded-lg px-2.5 py-1.5 text-xs text-[#8b8b96] hover:underline disabled:opacity-40"
-                                                        >
-                                                        Cancelar
-                                          </button>
-                              </div>
-                    
-                      {showFalhaPeca && (
-                                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-2.5">
-                                                <p className="mb-1.5 text-[11px] text-amber-300">
-                                                                Qual peça falhou? (a impressão continua, só essa peça é perdida)
-                                                </p>
-                                                <div className="flex flex-col gap-1.5">
-                                                                <input
-                                                                                    type="text"
-                                                                                    placeholder="Descrição da peça"
-                                                                                    value={pecaDescricao}
-                                                                                    onChange={(e) => setPecaDescricao(e.target.value)}
-                                                                                    className="rounded-lg border border-[#2c2c36] bg-[#0e0e12] px-2 py-1.5 text-xs text-white placeholder:text-[#5c5c66]"
-                                                                                  />
-                                                                <input
-                                                                                    type="number"
-                                                                                    min={0}
-                                                                                    placeholder="Gramas perdidas"
-                                                                                    value={gramasPeca}
-                                                                                    onChange={(e) => setGramasPeca(e.target.value)}
-                                                                                    className="rounded-lg border border-[#2c2c36] bg-[#0e0e12] px-2 py-1.5 text-xs text-white placeholder:text-[#5c5c66]"
-                                                                                  />
-                                                                <button
-                                                                                    disabled={carregando || !pecaDescricao.trim()}
-                                                                                    onClick={async () => {
-                                                                                                          await onFalhaPeca(machine.id, producao.id, pecaDescricao.trim(), Number(gramasPeca) || 0);
-                                                                                                          setPecaDescricao("");
-                                                                                                          setGramasPeca("");
-                                                                                                          setShowFalhaPeca(false);
-                                                                                      }}
-                                                                                    className="rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-medium text-black hover:bg-amber-400 disabled:opacity-40"
-                                                                                  >
-                                                                                  Registrar falha de peça
-                                                                </button>
-                                                </div>
-                                  </div>
-                              )}
-                    
-                      {showFalhaPlaca && (
-                                  <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-2.5">
-                                                <p className="mb-1.5 text-[11px] text-red-300">
-                                                                Placa inteira perdida — quanto de filamento foi desperdiçado?
-                                                </p>
-                                                <div className="flex flex-col gap-1.5">
-                                                                <input
-                                                                                    type="number"
-                                                                                    min={0}
-                                                                                    placeholder="Gramas desperdiçadas"
-                                                                                    value={gramasPlaca}
-                                                                                    onChange={(e) => setGramasPlaca(e.target.value)}
-                                                                                    className="rounded-lg border border-[#2c2c36] bg-[#0e0e12] px-2 py-1.5 text-xs text-white placeholder:text-[#5c5c66]"
-                                                                                  />
-                                                                <button
-                                                                                    disabled={carregando}
-                                                                                    onClick={async () => {
-                                                                                                          await onFalhaPlaca(machine.id, producao.id, Number(gramasPlaca) || 0);
-                                                                                                          setGramasPlaca("");
-                                                                                                          setShowFalhaPlaca(false);
-                                                                                      }}
-                                                                                    className="rounded-lg bg-red-500 px-2.5 py-1.5 text-xs font-medium text-black hover:bg-red-400 disabled:opacity-40"
-                                                                                  >
-                                                                                  Registrar falha na placa
-                                                                </button>
-                                                </div>
-                                  </div>
-                              )}
+      const [aba, setAba] = useState<"custos" | "precificacao">("custos");
+    
+      // Impressora / energia
+      const [impressora, setImpressora] = useState("Bambu A1");
+      const [wattsCustom, setWattsCustom] = useState("");
+      const [naoContabilizarEnergia, setNaoContabilizarEnergia] = useState(false);
+      const [tarifaKwh, setTarifaKwh] = useState("0,90");
+    
+      // Manutencao (pedido explicito do Guilherme)
+      const [manutencaoHora, setManutencaoHora] = useState("0,50");
+    
+      // Filamento
+      const [pesoUsado, setPesoUsado] = useState("");
+      const [custoKg, setCustoKg] = useState("");
+    
+      // Tempo
+      const [horas, setHoras] = useState("");
+      const [minutos, setMinutos] = useState("");
+    
+      // Falha de impressao (pedido explicito do Guilherme)
+      const [falhaPct, setFalhaPct] = useState("5");
+    
+      // Custos adicionais
+      const [embalagem, setEmbalagem] = useState("");
+      const [maoDeObra, setMaoDeObra] = useState("");
+      const [frete, setFrete] = useState("");
+    
+      // Imposto (usado na aba Precificacao)
+      const [impostoPct, setImpostoPct] = useState("6");
+    
+      // Precificacao
+      const [margemSelecionada, setMargemSelecionada] = useState<number | null>(30);
+      const [margemCustom, setMargemCustom] = useState("");
+      const [pesoProdutoKg, setPesoProdutoKg] = useState("");
+      const [comissaoMLPct, setComissaoMLPct] = useState(String(COMISSAO_ML_CLASSICO_PCT).replace(".", ","));
+      const [adsMLPct, setAdsMLPct] = useState("5");
+      const [adsShopeePct, setAdsShopeePct] = useState("10");
+      const [afiliadoShopeePct, setAfiliadoShopeePct] = useState("0");
+    
+      const wattsAtivos =
+              impressora === "outra"
+                ? toNum(wattsCustom)
+                : IMPRESSORAS.find((i) => i.nome === impressora)?.watts ?? 0;
+    
+      const horasTotais = toNum(horas) + toNum(minutos) / 60;
+      const custoEnergiaBruto = naoContabilizarEnergia ? 0 : (wattsAtivos / 1000) * horasTotais * toNum(tarifaKwh);
+      const custoPorGrama = toNum(custoKg) / 1000;
+      const custoMaterialBruto = toNum(pesoUsado) * custoPorGrama;
+      const custoManutencaoBruto = horasTotais * toNum(manutencaoHora);
+    
+      const falhaFrac = Math.min(0.95, Math.max(0, toNum(falhaPct) / 100));
+      const fatorFalha = falhaFrac > 0 ? 1 / (1 - falhaFrac) : 1;
+    
+      const custoEnergia = custoEnergiaBruto * fatorFalha;
+      const custoMaterial = custoMaterialBruto * fatorFalha;
+      const custoManutencao = custoManutencaoBruto * fatorFalha;
+      const custoEmbalagem = toNum(embalagem);
+      const custoMaoDeObra = toNum(maoDeObra);
+      const custoFrete = toNum(frete);
+    
+      const custoTotal =
+              custoEnergia + custoMaterial + custoManutencao + custoEmbalagem + custoMaoDeObra + custoFrete;
+    
+      const margemAlvo = margemSelecionada ?? toNum(margemCustom);
+      const pesoKgParaML = toNum(pesoProdutoKg) || toNum(pesoUsado) / 1000;
+    
+      const resultadoML = useMemo(() => {
+              const preco = resolverPreco({
+                        custoTotal,
+                        impostoPct: toNum(impostoPct),
+                        adsPct: toNum(adsMLPct),
+                        margemAlvoPct: margemAlvo,
+                        comissaoPct: () => toNum(comissaoMLPct),
+                        taxaFixa: () => taxaPesoML(pesoKgParaML),
+              });
+              const comissao = preco * (toNum(comissaoMLPct) / 100);
+              const fixa = taxaPesoML(pesoKgParaML);
+              const imposto = preco * (toNum(impostoPct) / 100);
+              const ads = preco * (toNum(adsMLPct) / 100);
+              const lucro = preco - comissao - fixa - imposto - ads - custoTotal;
+              return { preco, comissao, fixa, imposto, ads, lucro, margemPct: preco > 0 ? (lucro / preco) * 100 : 0 };
+      }, [custoTotal, impostoPct, adsMLPct, margemAlvo, comissaoMLPct, pesoKgParaML]);
+    
+      const resultadoShopee = useMemo(() => {
+              const preco = resolverPreco({
+                        custoTotal,
+                        impostoPct: toNum(impostoPct),
+                        adsPct: toNum(adsShopeePct),
+                        afiliadoPct: toNum(afiliadoShopeePct),
+                        margemAlvoPct: margemAlvo,
+                        comissaoPct: (p) => comissaoShopeePct(p),
+                        taxaFixa: (p) => taxaFixaShopee(p),
+              });
+              const comissao = preco * (comissaoShopeePct(preco) / 100);
+              const fixa = taxaFixaShopee(preco);
+              const imposto = preco * (toNum(impostoPct) / 100);
+              const ads = preco * (toNum(adsShopeePct) / 100);
+              const afiliado = preco * (toNum(afiliadoShopeePct) / 100);
+              const lucro = preco - comissao - fixa - imposto - ads - afiliado - custoTotal;
+              return { preco, comissao, fixa, imposto, ads, afiliado, lucro, margemPct: preco > 0 ? (lucro / preco) * 100 : 0 };
+      }, [custoTotal, impostoPct, adsShopeePct, afiliadoShopeePct, margemAlvo]);
+    
+      return (
+              <div className="min-h-screen bg-[#0a0a0d] px-4 py-6 sm:px-8">
+                    <header className="mb-6 flex items-center gap-3">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#2a1a0a] text-xl">CALC</div>
+                            <div>
+                                      <h1 className="text-lg font-semibold text-white">Calculadora de Custo 3D</h1>
+                                      <p className="text-xs text-[#8b8b96]">
+                                                  Descubra quanto custa imprimir e por quanto vender - MOROLAR
+                                      </p>
+                            </div>
+                    </header>
+              
+                    <div className="mb-6 flex gap-2">
+                            <button
+                                          onClick={() => setAba("custos")}
+                                          className={
+                                                          "rounded-lg px-4 py-2 text-sm font-medium " +
+                                                          (aba === "custos" ? "bg-amber-500 text-black" : "bg-[#131318] text-[#8b8b96] border border-[#23232b]")
+                                          }
+                                        >
+                                      Custos
+                            </button>
+                            <button
+                                          onClick={() => setAba("precificacao")}
+                                          className={
+                                                          "rounded-lg px-4 py-2 text-sm font-medium " +
+                                                          (aba === "precificacao" ? "bg-amber-500 text-black" : "bg-[#131318] text-[#8b8b96] border border-[#23232b]")
+                                          }
+                                        >
+                                      Precificacao
+                            </button>
                     </div>
-                  ) : (
-                    <CarregarMaquinaForm
-                                machineId={machine.id}
-                                carregando={carregando}
-                                placasOrdenadas={placasOrdenadas}
-                                onIniciar={onIniciar}
-                              />
-                  )}
-          
-                <button
-                          disabled={carregando}
-                          onClick={() => onMarcarManutencao(machine.id)}
-                          className="mt-3 self-start text-[11px] text-[#5c5c66] hover:text-amber-400 hover:underline disabled:opacity-40"
-                        >
-                        Marcar em manutenção
-                </button>
-          </div>
-        );
+              
+                  {aba === "custos" && (
+                          <div className="flex flex-col gap-4">
+                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                                                <Card icon="P1" title="Impressora" subtitle="Consumo medio durante a impressao">
+                                                              <div className="grid grid-cols-2 gap-2">
+                                                                  {IMPRESSORAS.map((imp) => (
+                                                <button
+                                                                        key={imp.nome}
+                                                                        onClick={() => setImpressora(imp.nome)}
+                                                                        className={
+                                                                                                  "rounded-lg border px-2 py-1.5 text-left text-[11px] " +
+                                                                                                  (impressora === imp.nome
+                                                                                                                           ? "border-amber-500 bg-[#2a1a0a] text-amber-400"
+                                                                                                                           : "border-[#2c2c36] text-[#c8c8d0]")
+                                                                        }
+                                                                      >
+                                                                    <div className="font-medium">{imp.nome}</div>
+                                                                    <div className="text-[10px] text-[#8b8b96]">~{imp.watts}W medio</div>
+                                                </button>
+                                              ))}
+                                                                              <button
+                                                                                                    onClick={() => setImpressora("outra")}
+                                                                                                    className={
+                                                                                                                            "rounded-lg border px-2 py-1.5 text-left text-[11px] " +
+                                                                                                                            (impressora === "outra"
+                                                                                                                                                   ? "border-amber-500 bg-[#2a1a0a] text-amber-400"
+                                                                                                                                                   : "border-[#2c2c36] text-[#c8c8d0]")
+                                                                                                        }
+                                                                                                  >
+                                                                                                <div className="font-medium">Outra</div>
+                                                                                                <div className="text-[10px] text-[#8b8b96]">Digitar watts</div>
+                                                                              </button>
+                                                              </div>
+                                                    {impressora === "outra" && (
+                                              <div className="mt-2">
+                                                                <Field label="Potencia (W)" value={wattsCustom} onChange={setWattsCustom} suffix="W" />
+                                              </div>
+                                                              )}
+                                                              <label className="mt-3 flex items-center gap-2 text-[11px] text-[#8b8b96]">
+                                                                              <input
+                                                                                                    type="checkbox"
+                                                                                                    checked={naoContabilizarEnergia}
+                                                                                                    onChange={(e) => setNaoContabilizarEnergia(e.target.checked)}
+                                                                                                  />
+                                                                              Nao contabilizar energia
+                                                              </label>
+                                                </Card>
+                                    
+                                                <Card icon="P2" title="Manutencao" subtitle="Desgaste/depreciacao da impressora">
+                                                              <Field label="Custo por hora de maquina" value={manutencaoHora} onChange={setManutencaoHora} suffix="R$/h" />
+                                                              <p className="mt-2 text-[10px] leading-relaxed text-[#5c5c66]">
+                                                                              Bicos, correias, pecas de reposicao e depreciacao do equipamento, rateados pelas horas de uso.
+                                                              </p>
+                                                </Card>
+                                    
+                                                <Card icon="P3" title="Filamento" subtitle="Peso e custo do material">
+                                                              <div className="grid grid-cols-2 gap-2">
+                                                                              <Field label="Peso usado (g)" value={pesoUsado} onChange={setPesoUsado} suffix="g" />
+                                                                              <Field label="Custo do kg" value={custoKg} onChange={setCustoKg} suffix="R$" />
+                                                              </div>
+                                                              <p className="mt-2 text-[11px] text-[#8b8b96]">
+                                                                              Custo por grama: <span className="text-white">{formatBRL(custoPorGrama)}</span>
+                                                              </p>
+                                                </Card>
+                                    
+                                                <Card icon="P4" title="Tempo de impressao" subtitle="Duracao total do job">
+                                                              <div className="grid grid-cols-2 gap-2">
+                                                                              <Field label="Horas" value={horas} onChange={setHoras} suffix="h" />
+                                                                              <Field label="Minutos" value={minutos} onChange={setMinutos} suffix="min" />
+                                                              </div>
+                                                </Card>
+                                    
+                                                <Card icon="P5" title="Falha de impressao" subtitle="% de pecas perdidas em media">
+                                                              <Field label="Taxa de falha esperada" value={falhaPct} onChange={setFalhaPct} suffix="%" />
+                                                              <p className="mt-2 text-[10px] leading-relaxed text-[#5c5c66]">
+                                                                              Encarece energia, material e maquina proporcionalmente, pra cobrir as reimpressoes das pecas que falham.
+                                                              </p>
+                                                </Card>
+                                    
+                                                <Card icon="P6" title="Tarifa de energia" subtitle="Valor pago a concessionaria">
+                                                              <Field label="Custo por kWh" value={tarifaKwh} onChange={setTarifaKwh} suffix="R$/kWh" />
+                                                              <p className="mt-2 text-[10px] text-[#5c5c66]">Media Brasil ~R$ 0,90/kWh.</p>
+                                                </Card>
+                                    
+                                                <Card icon="P7" title="Custos adicionais" subtitle="Embalagem, mao de obra e frete">
+                                                              <div className="flex flex-col gap-2">
+                                                                              <Field label="Embalagem" value={embalagem} onChange={setEmbalagem} suffix="R$" />
+                                                                              <Field label="Mao de obra (opcional)" value={maoDeObra} onChange={setMaoDeObra} suffix="R$" />
+                                                                              <Field label="Frete por envio (opcional)" value={frete} onChange={setFrete} suffix="R$" />
+                                                              </div>
+                                                </Card>
+                                    
+                                                <Card icon="P8" title="Imposto sobre faturamento" subtitle="Usado na aba Precificacao">
+                                                              <Field label="Aliquota de imposto" value={impostoPct} onChange={setImpostoPct} suffix="%" />
+                                                              <p className="mt-2 text-[10px] leading-relaxed text-[#5c5c66]">
+                                                                              MEI ~5% do salario minimo (fixo). Simples Nacional varia. Deixe 0 se nao se aplica.
+                                                              </p>
+                                                </Card>
+                                    </div>
+                          
+                                    <div className="rounded-2xl border border-amber-500/30 bg-[#161108] p-5">
+                                                <p className="text-[11px] text-[#8b8b96]">Custo total de producao</p>
+                                                <p className="mt-1 text-3xl font-bold text-amber-400">{formatBRL(custoTotal)}</p>
+                                                <div className="mt-4 grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 lg:grid-cols-6">
+                                                              <div>
+                                                                              <p className="text-[#5c5c66]">Energia</p>
+                                                                              <p className="text-white">{formatBRL(custoEnergia)}</p>
+                                                              </div>
+                                                              <div>
+                                                                              <p className="text-[#5c5c66]">Material</p>
+                                                                              <p className="text-white">{formatBRL(custoMaterial)}</p>
+                                                              </div>
+                                                              <div>
+                                                                              <p className="text-[#5c5c66]">Manutencao</p>
+                                                                              <p className="text-white">{formatBRL(custoManutencao)}</p>
+                                                              </div>
+                                                              <div>
+                                                                              <p className="text-[#5c5c66]">Embalagem</p>
+                                                                              <p className="text-white">{formatBRL(custoEmbalagem)}</p>
+                                                              </div>
+                                                              <div>
+                                                                              <p className="text-[#5c5c66]">Mao de obra</p>
+                                                                              <p className="text-white">{formatBRL(custoMaoDeObra)}</p>
+                                                              </div>
+                                                              <div>
+                                                                              <p className="text-[#5c5c66]">Frete</p>
+                                                                              <p className="text-white">{formatBRL(custoFrete)}</p>
+                                                              </div>
+                                                </div>
+                                        {falhaFrac > 0 && (
+                                            <p className="mt-3 text-[10px] text-[#5c5c66]">
+                                                            Energia, material e manutencao ja incluem a taxa de falha de {fmtPct(toNum(falhaPct))} (fator x
+                                                {fatorFalha.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}).
+                                            </p>
+                                                )}
+                                    </div>
+                          </div>
+                    )}
+              
+                  {aba === "precificacao" && (
+                          <div className="flex flex-col gap-4">
+                                    <div className="flex items-center justify-between rounded-2xl border border-[#23232b] bg-[#131318] p-5">
+                                                <div>
+                                                              <p className="text-[11px] text-[#8b8b96]">Custo de producao</p>
+                                                              <p className="text-2xl font-bold text-green-400">{formatBRL(custoTotal)}</p>
+                                                </div>
+                                                <button onClick={() => setAba("custos")} className="text-xs text-amber-400 hover:underline">
+                                                              Editar custos
+                                                </button>
+                                    </div>
+                          
+                                    <Card icon="P9" title="Qual sua margem desejada?" subtitle="Selecione a margem de lucro para ver os precos sugeridos">
+                                                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                                                    {MARGENS_PRESET.map((m) => (
+                                              <button
+                                                                    key={m}
+                                                                    onClick={() => {
+                                                                                            setMargemSelecionada(m);
+                                                                                            setMargemCustom("");
+                                                                    }}
+                                                                    className={
+                                                                                            "rounded-lg border px-2 py-1.5 text-xs font-medium " +
+                                                                                            (margemSelecionada === m
+                                                                                                                   ? "border-amber-500 bg-[#2a1a0a] text-amber-400"
+                                                                                                                   : "border-[#2c2c36] text-[#c8c8d0]")
+                                                                    }
+                                                                  >
+                                                  {m}%
+                                              </button>
+                                            ))}
+                                                              <button
+                                                                                  onClick={() => setMargemSelecionada(null)}
+                                                                                  className={
+                                                                                                        "rounded-lg border px-2 py-1.5 text-xs font-medium " +
+                                                                                                        (margemSelecionada === null
+                                                                                                                             ? "border-amber-500 bg-[#2a1a0a] text-amber-400"
+                                                                                                                             : "border-[#2c2c36] text-[#c8c8d0]")
+                                                                                      }
+                                                                                >
+                                                                              Outra
+                                                              </button>
+                                                </div>
+                                        {margemSelecionada === null && (
+                                            <div className="mt-2 max-w-[160px]">
+                                                            <Field label="Margem liquida desejada" value={margemCustom} onChange={setMargemCustom} suffix="%" />
+                                            </div>
+                                                )}
+                                    </Card>
+                          
+                                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                                                <Card icon="ML" title="Mercado Livre" subtitle="Comissao + taxa fixa por peso + imposto + ads">
+                                                              <div className="mb-3 rounded-lg bg-[#0e0e12] p-3">
+                                                                              <p className="text-[11px] text-[#8b8b96]">Anuncie por</p>
+                                                                              <p className="text-2xl font-bold text-white">{formatBRL(resultadoML.preco)}</p>
+                                                                              <div className="mt-2 flex gap-4 text-[11px]">
+                                                                                                <span className="text-[#8b8b96]">
+                                                                                                                    Margem liquida <span className="text-green-400">{fmtPct(resultadoML.margemPct)}</span>
+                                                                                                    </span>
+                                                                                                <span className="text-[#8b8b96]">
+                                                                                                                    Lucro <span className="text-green-400">{formatBRL(resultadoML.lucro)}</span>
+                                                                                                    </span>
+                                                                              </div>
+                                                              </div>
+                                                              <div className="grid grid-cols-2 gap-2">
+                                                                              <Field label="Comissao ML (%)" value={comissaoMLPct} onChange={setComissaoMLPct} suffix="%" />
+                                                                              <Field label="Ads ML (%)" value={adsMLPct} onChange={setAdsMLPct} suffix="%" />
+                                                                              <Field label="Peso do produto" value={pesoProdutoKg} onChange={setPesoProdutoKg} suffix="kg" placeholder={(toNum(pesoUsado) / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} />
+                                                                              <div className="flex flex-col justify-end text-[11px] text-[#8b8b96]">
+                                                                                                Taxa fixa por peso: <span className="text-white">{formatBRL(resultadoML.fixa)}</span>
+                                                                              </div>
+                                                              </div>
+                                                </Card>
+                                    
+                                                <Card icon="SH" title="Shopee" subtitle="Comissao + taxa fixa automatica + ads + afiliado">
+                                                              <div className="mb-3 rounded-lg bg-[#0e0e12] p-3">
+                                                                              <p className="text-[11px] text-[#8b8b96]">Anuncie por</p>
+                                                                              <p className="text-2xl font-bold text-white">{formatBRL(resultadoShopee.preco)}</p>
+                                                                              <div className="mt-2 flex gap-4 text-[11px]">
+                                                                                                <span className="text-[#8b8b96]">
+                                                                                                                    Margem liquida <span className="text-green-400">{fmtPct(resultadoShopee.margemPct)}</span>
+                                                                                                    </span>
+                                                                                                <span className="text-[#8b8b96]">
+                                                                                                                    Lucro <span className="text-green-400">{formatBRL(resultadoShopee.lucro)}</span>
+                                                                                                    </span>
+                                                                              </div>
+                                                              </div>
+                                                              <div className="grid grid-cols-2 gap-2">
+                                                                              <Field label="Ads Shopee (%)" value={adsShopeePct} onChange={setAdsShopeePct} suffix="%" />
+                                                                              <Field label="Afiliado (%)" value={afiliadoShopeePct} onChange={setAfiliadoShopeePct} suffix="%" />
+                                                                              <div className="col-span-2 text-[11px] text-[#8b8b96]">
+                                                                                                Comissao automatica: <span className="text-white">{fmtPct(comissaoShopeePct(resultadoShopee.preco))}</span> - Taxa fixa: <span className="text-white">{formatBRL(resultadoShopee.fixa)}</span>
+                                                                                                <p className="mt-1 text-[10px] text-[#5c5c66]">maior ou igual R$80: 14% + taxa fixa por faixa - menor que R$80: 20% + R$4</p>
+                                                                              </div>
+                                                              </div>
+                                                </Card>
+                                    </div>
+                          </div>
+                    )}
+              </div>
+            );
 }
-
-function CarregarMaquinaForm({
-    machineId,
-    carregando,
-    placasOrdenadas,
-    onIniciar,
-}: {
-    machineId: number;
-    carregando: boolean;
-    placasOrdenadas: PlacaRow[];
-    onIniciar: (
-          machineId: number,
-          placaId: number,
-          quantidadePlacas: number,
-          material: "PLA" | "PETG" | null
-        ) => Promise<void>;
-}) {
-    const [placaId, setPlacaId] = useState<number | "">("");
-    const [quantidade, setQuantidade] = useState("1");
-    const [material, setMaterial] = useState<"PLA" | "PETG">("PLA");
-  
-    const placaSelecionada = placasOrdenadas.find((p) => p.id === placaId);
-    const corDaPlaca = placaSelecionada ? corFilamentoDaPlaca(placaSelecionada.nome) : null;
-    const corComPetg = corDaPlaca ? CORES_COM_PETG.includes(corDaPlaca) : false;
-  
-    return (
-          <div className="flex flex-col gap-2">
-                <select
-                          value={placaId}
-                          onChange={(e) => setPlacaId(e.target.value ? Number(e.target.value) : "")}
-                          className="rounded-lg border border-[#2c2c36] bg-[#0e0e12] px-2 py-1.5 text-xs text-white"
-                        >
-                        <option value="">Escolha uma placa...</option>
-                  {placasOrdenadas.map((p) => (
-                                    <option key={p.id} value={p.id}>
-                                      {p.nome}
-                                    </option>
-                                  ))}
-                </select>
-          
-            {placaSelecionada && (
-                    <p className="text-[11px] text-[#8b8b96]">
-                      {placaSelecionada.pecasPorPlaca} pç/placa
-                      {placaSelecionada.tempoPlacaHoras
-                                    ? ` · Tempo médio de impressão: ${formatHora(placaSelecionada.tempoPlacaHoras)}`
-                                    : ""}
-                    </p>
-                )}
-          
-            {corComPetg && (
-                    <div className="flex gap-1.5">
-                      {(["PLA", "PETG"] as const).map((m) => (
-                                  <button
-                                                  key={m}
-                                                  type="button"
-                                                  onClick={() => setMaterial(m)}
-                                                  className={
-                                                                    material === m
-                                                                      ? "rounded-lg bg-orange-500 px-2.5 py-1 text-xs font-medium text-black"
-                                                                      : "rounded-lg border border-[#2c2c36] px-2.5 py-1 text-xs font-medium text-[#8b8b96]"
-                                                  }
-                                                >
-                                    {m}
-                                  </button>
-                                ))}
-                    </div>
-                )}
-          
-                <input
-                          type="number"
-                          min={1}
-                          value={quantidade}
-                          onChange={(e) => setQuantidade(e.target.value)}
-                          className="w-20 rounded-lg border border-[#2c2c36] bg-[#0e0e12] px-2 py-1.5 text-xs text-white"
-                        />
-          
-                <button
-                          disabled={carregando || !placaId || Number(quantidade) < 1}
-                          onClick={async () => {
-                                      if (!placaId) return;
-                                      await onIniciar(machineId, Number(placaId), Number(quantidade) || 1, corComPetg ? material : null);
-                                      setPlacaId("");
-                                      setQuantidade("1");
-                          }}
-                          className="rounded-lg bg-orange-500 px-2.5 py-1.5 text-xs font-medium text-black hover:bg-orange-400 disabled:opacity-40"
-                        >
-                  {carregando ? "Carregando..." : "Carregar máquina"}
-                </button>
-          </div>
-        );
-}
-
-function ManutencaoCard({
-    machine,
-    carregando,
-    agora,
-    onRegistrarRetorno,
-}: {
-    machine: MachineRow;
-    carregando: boolean;
-    agora: number;
-    onRegistrarRetorno: (machineId: number, horasParada: number, observacao: string) => Promise<void>;
-}) {
-    const horasDecorridas = machine.manutencao_inicio
-          ? (agora - new Date(machine.manutencao_inicio).getTime()) / 3600000
-          : 0;
-    const [horas, setHoras] = useState(() => horasDecorridas.toFixed(1));
-    const [observacao, setObservacao] = useState("");
-  
-    return (
-          <div className="flex flex-col rounded-2xl border border-amber-500/25 bg-amber-500/[0.04] p-4">
-                <div className="mb-3 flex items-center justify-between">
-                        <p className="font-semibold text-white">{machine.nome}</p>
-                        <StatusPill tone="amber">Em manutenção</StatusPill>
-                </div>
-                <p className="mb-2 text-xs text-[#8b8b96]">
-                        Parada desde {machine.manutencao_inicio ? formatDataHora(machine.manutencao_inicio) : "—"}
-                  {machine.manutencao_inicio ? ` (${horasDecorridas.toFixed(1)}h atrás)` : ""}
-                </p>
-                  <div className="flex flex-col gap-1.5">
-                          <label className="text-[11px] text-[#8b8b96]">Horas paradas</label>
-                          <input
-                                      type="number"
-                                      min={0}
-                                      step="0.1"
-                                      value={horas}
-                                      onChange={(e) => setHoras(e.target.value)}
-                                      className="rounded-lg border border-[#2c2c36] bg-[#0e0e12] px-2 py-1.5 text-xs text-white"
-                                    />
-                          <input
-                                      type="text"
-                                      placeholder="Observação (opcional)"
-                                      value={observacao}
-                                      onChange={(e) => setObservacao(e.target.value)}
-                                      className="rounded-lg border border-[#2c2c36] bg-[#0e0e12] px-2 py-1.5 text-xs text-white placeholder:text-[#5c5c66]"
-                                    />
-                          <button
-                                      disabled={carregando}
-                                      onClick={() => onRegistrarRetorno(machine.id, Number(horas) || 0, observacao.trim())}
-                                      className="rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-medium text-black hover:bg-amber-400 disabled:opacity-40"
-                                    >
-                            {carregando ? "Salvando..." : "Registrar retorno"}
-                          </button>
-                  </div>
-          </div>
-        );
-}
+</div>
