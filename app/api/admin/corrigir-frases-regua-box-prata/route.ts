@@ -35,9 +35,8 @@ export async function GET() {
                             WHERE id = ${item.id}
                                   RETURNING id, nome, frases_correspondencia
                                       `;
-          resultados.push(rows[0] ?? { id: item.id, erro: "placa nao encontrada" });
+             resultados.push(rows[0] ?? { id: item.id, erro: "placa nao encontrada" });
     }
   
     return NextResponse.json({ ok: true, resultados });
 }
-est
