@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { PlacaRow, CORES_COM_PETG, corFilamentoDaPlaca } from "@/lib/placas";
 import { MachineRow, ProducaoRow } from "@/lib/producao-types";
 
@@ -238,7 +238,7 @@ function StatusPill({
     children,
     tone,
 }: {
-    children: React.ReactNode;
+    children: ReactNode;
     tone: "green" | "amber" | "gray";
 }) {
     const cls =
