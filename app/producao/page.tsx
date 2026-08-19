@@ -2165,7 +2165,7 @@ function PrinterCard({
               )}
             </p>
             <p className="text-xs text-gray-500">
-              {producao.quantidade_placas} placa(s) · {pecasPorPlaca} pç/placa ·{" "}
+              {producao.quantidade_placas} placa(s) · {pecasPorPlaca} pç/placa{placa?.tempoPlacaHoras ? ` · ${formatHora(placa.tempoPlacaHoras)}/placa` : ""} ·{" "}
               {totalPecas} peças no total
             </p>
             {placaExtra && (
