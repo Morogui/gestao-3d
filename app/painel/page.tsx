@@ -178,6 +178,9 @@ export default function PainelPage() {
   const [horas, setHoras] = useState("");
   const [minutos, setMinutos] = useState("");
   const [quantidadePecas, setQuantidadePecas] = useState("1");
+  const [impressoraAberta, setImpressoraAberta] = useState(false);
+  const [impressoraConfirmada, setImpressoraConfirmada] = useState(false);
+  const [maoDeObraAtiva, setMaoDeObraAtiva] = useState(false);
 
   // Falha de impressao (pedido explicito do Guilherme)
   const [falhaPct, setFalhaPct] = useState("5");
@@ -219,7 +222,7 @@ export default function PainelPage() {
   const custoMaterial = custoMaterialBruto * fatorFalha * fatorDesperdicio;
   const custoManutencao = custoManutencaoBruto * fatorFalha;
   const custoEmbalagem = toNum(embalagem);
-  const custoMaoDeObra = toNum(maoDeObra);
+  const custoMaoDeObra = maoDeObraAtiva ? toNum(maoDeObra) : 0;
   const custoFrete = toNum(frete);
 
   const custoTotal =
@@ -298,8 +301,22 @@ export default function PainelPage() {
 
       {aba === "custos" && (
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className={impressoraConfirmada ? "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" : "flex justify-center"}>
+            <div className={impressoraConfirmada ? "" : "w-full max-w-sm"}>
             <Card icon="P1" title="Impressora" subtitle="Consumo medio durante a impressao">
+              {!impressoraAberta && (
+                <div className="flex flex-col items-center gap-3 py-6">
+                  <button
+                    type="button"
+                    onClick={() => setImpressoraAberta(true)}
+                    className="rounded-2xl border border-[#23232b] bg-[#131318] px-8 py-6 text-sm font-medium text-white transition hover:border-amber-500 hover:text-amber-400"
+                  >
+                    Escolha sua impressora
+                  </button>
+                </div>
+              )}
+              {impressoraAberta && (
+                <>
               <div className="grid grid-cols-2 gap-2">
                 {IMPRESSORAS.map((imp) => (
                   <button
@@ -342,7 +359,22 @@ export default function PainelPage() {
                 />
                 Nao contabilizar energia
               </label>
+                  {!impressoraConfirmada && (
+                    <button
+                      type="button"
+                      onClick={() => setImpressoraConfirmada(true)}
+                      className="mt-3 w-full rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-amber-400"
+                    >
+                      OK
+                    </button>
+                  )}
+                </>
+              )}
             </Card>
+            </div>
+
+            {impressoraConfirmada && (
+              <>
 
             <Card icon="P2" title="Consumo e Operacao" subtitle="Manutencao, energia, falha, embalagem e mao de obra">
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -350,8 +382,20 @@ export default function PainelPage() {
                 <Field label="Energia" value={tarifaKwh} onChange={setTarifaKwh} suffix="R$/kWh" />
                 <Field label="Falha de impressao" value={falhaPct} onChange={setFalhaPct} suffix="%" />
                 <Field label="Embalagem" value={embalagem} onChange={setEmbalagem} suffix="R$" />
-                <Field label="Mao de obra" value={maoDeObra} onChange={setMaoDeObra} suffix="R$" />
               </div>
+              {maoDeObraAtiva ? (
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <Field label="Mao de obra" value={maoDeObra} onChange={setMaoDeObra} suffix="R$" />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setMaoDeObraAtiva(true)}
+                  className="mt-2 flex items-center gap-1 text-xs font-medium text-amber-400 transition hover:text-amber-300"
+                >
+                  + Mao de obra
+                </button>
+              )}
               <p className="mt-2 text-[10px] leading-relaxed text-[#5c5c66]">
                 Manutencao cobre bicos, correias e depreciacao do equipamento. Falha de impressao encarece energia, material e maquina pra cobrir as reimpressoes. Media Brasil de energia ~R$0,90/kWh.
               </p>
@@ -380,8 +424,11 @@ export default function PainelPage() {
                 Frete e opcional. Imposto e usado na aba Precificacao - MEI ~5% do salario minimo (fixo), Simples Nacional varia. Desperdicio de material aumenta o custo do filamento usado. Deixe 0 se nao se aplica.
               </p>
             </Card>
+              </>
+            )}
           </div>
 
+          {impressoraConfirmada && (
           <div className="rounded-2xl border border-amber-500/30 bg-[#161108] p-5">
             <p className="text-[11px] text-[#8b8b96]">Custo total de producao</p>
             <p className="mt-1 text-3xl font-bold text-amber-400">{formatBRL(custoTotal)}</p>
@@ -419,6 +466,7 @@ export default function PainelPage() {
               </p>
             )}
           </div>
+          )}
         </div>
       )}
 
