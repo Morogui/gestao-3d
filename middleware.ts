@@ -25,7 +25,40 @@ import type { NextRequest } from "next/server";
 // checagem só entra em ação pra hosts terminados em ".vercel.app".
 const DOMINIO_CANONICO = "gestao-3d-ecru.vercel.app";
 
-export function middleware(req: NextRequest) {
+const PUBLIC_PATHS = ["/", "/painel", "/login", "/logo-7x7.png"];
+
+function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
+}
+
+async function hmacHex(secret: string, data: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data));
+  return Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function hasValidSession(req: NextRequest): Promise<boolean> {
+  const token = req.cookies.get("g3d_session")?.value;
+  if (!token) return false;
+  const [expStr, sig] = token.split(".");
+  if (!expStr || !sig) return false;
+  const exp = Number(expStr);
+  if (!Number.isFinite(exp) || Date.now() > exp) return false;
+  const secret = process.env.AUTH_SESSION_SECRET;
+  if (!secret) return false;
+  const expected = await hmacHex(secret, expStr);
+  return expected === sig;
+}
+
+export async function middleware(req: NextRequest) {
   const host = req.headers.get("host") ?? "";
   if (host.endsWith(".vercel.app") && host !== DOMINIO_CANONICO) {
     const url = req.nextUrl.clone();
@@ -34,6 +67,15 @@ export function middleware(req: NextRequest) {
     url.port = "";
     return NextResponse.redirect(url, 308);
   }
+
+  const { pathname } = req.nextUrl;
+  if (!isPublicPath(pathname) && !(await hasValidSession(req))) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/login";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
   return NextResponse.next();
 }
 
