@@ -150,7 +150,7 @@ function Field({
           value={value}
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full bg-transparent text-sm text-white outline-none placeholder:text-[#5c5c66]"
+          className="w-full bg-transparent text-base text-white outline-none placeholder:text-[#5c5c66] sm:text-sm"
         />
         {suffix && <span className="text-xs text-[#5c5c66]">{suffix}</span>}
       </div>
@@ -202,6 +202,12 @@ export default function PainelPage() {
   const [adsMLPct, setAdsMLPct] = useState("5");
   const [adsShopeePct, setAdsShopeePct] = useState("10");
   const [afiliadoShopeePct, setAfiliadoShopeePct] = useState("0");
+  const [usaFlexML, setUsaFlexML] = useState(false);
+  const [custoFlexML, setCustoFlexML] = useState("");
+  const [reembolsoFlexML, setReembolsoFlexML] = useState("");
+  const [comprimentoCm, setComprimentoCm] = useState("");
+  const [larguraCm, setLarguraCm] = useState("");
+  const [alturaCm, setAlturaCm] = useState("");
 
   const wattsAtivos =
     impressora === "outra"
@@ -231,7 +237,10 @@ export default function PainelPage() {
   const custoPorPeca = custoTotal / qtdPecas;
 
   const margemAlvo = margemSelecionada ?? toNum(margemCustom);
-  const pesoKgParaML = toNum(pesoProdutoKg) || toNum(pesoUsado) / 1000;
+  const pesoRealKg = toNum(pesoProdutoKg) || toNum(pesoUsado) / 1000;
+  const pesoCubadoKg = (toNum(comprimentoCm) * toNum(larguraCm) * toNum(alturaCm)) / 6000;
+  const pesoKgParaML = Math.max(pesoRealKg, pesoCubadoKg || 0);
+  const flexCustoML = usaFlexML ? Math.max(0, toNum(custoFlexML) - toNum(reembolsoFlexML)) : 0;
 
   const resultadoML = useMemo(() => {
     const preco = resolverPreco({
@@ -240,15 +249,15 @@ export default function PainelPage() {
       adsPct: toNum(adsMLPct),
       margemAlvoPct: margemAlvo,
       comissaoPct: () => toNum(comissaoMLPct),
-      taxaFixa: () => taxaPesoML(pesoKgParaML),
+      taxaFixa: () => taxaPesoML(pesoKgParaML) + flexCustoML,
     });
     const comissao = preco * (toNum(comissaoMLPct) / 100);
-    const fixa = taxaPesoML(pesoKgParaML);
+    const fixa = taxaPesoML(pesoKgParaML) + flexCustoML;
     const imposto = preco * (toNum(impostoPct) / 100);
     const ads = preco * (toNum(adsMLPct) / 100);
     const lucro = preco - comissao - fixa - imposto - ads - custoTotal;
     return { preco, comissao, fixa, imposto, ads, lucro, margemPct: preco > 0 ? (lucro / preco) * 100 : 0 };
-  }, [custoTotal, impostoPct, adsMLPct, margemAlvo, comissaoMLPct, pesoKgParaML]);
+  }, [custoTotal, impostoPct, adsMLPct, margemAlvo, comissaoMLPct, pesoKgParaML, flexCustoML]);
 
   const resultadoShopee = useMemo(() => {
     const preco = resolverPreco({
@@ -272,9 +281,9 @@ export default function PainelPage() {
   return (
     <div className="min-h-screen bg-[#0a0a0d] px-4 py-6 sm:px-8">
       <header className="mb-6 flex items-center gap-3">
-        <img src="/logo-7x7.png" alt="7x7 Escala Ecommerce" className="h-20 w-auto" />
+        <img src="/logo-7x7.png" alt="7x7 Escala Ecommerce" className="h-12 w-auto sm:h-20" />
         <div>
-          <h1 className="text-lg font-semibold text-white">Custo Produto 3D - Precificador Marketplace</h1>
+          <h1 className="text-base font-semibold text-white sm:text-lg">Custo Produto 3D - Precificador Marketplace</h1>
         </div>
       </header>
 
@@ -522,10 +531,19 @@ export default function PainelPage() {
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card icon="ML" title="Mercado Livre" subtitle="Comissao + taxa fixa por peso + imposto + ads">
-              <div className="mb-3 rounded-lg bg-[#0e0e12] p-3">
-                <p className="text-[11px] text-[#8b8b96]">Anuncie por</p>
-                <p className="text-2xl font-bold text-white">{formatBRL(resultadoML.preco)}</p>
-                <div className="mt-2 flex gap-4 text-[11px]">
+              <div className="mb-3 grid grid-cols-1 gap-2 rounded-lg bg-[#0e0e12] p-3 sm:grid-cols-2">
+                <div>
+                  <p className="text-[11px] text-[#8b8b96]">Preco de venda</p>
+                  <p className="text-2xl font-bold text-white">{formatBRL(resultadoML.preco)}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-[#8b8b96]">Preco para anunciar (+30%)</p>
+                  <p className="text-2xl font-bold text-amber-400">{formatBRL(resultadoML.preco * 1.3)}</p>
+                </div>
+                <p className="col-span-1 text-[10px] leading-relaxed text-[#5c5c66] sm:col-span-2">
+                  Anuncie pelo preco maior pra abrir espaco pra promocao/cupom na central de promocoes sem furar sua margem. O preco de venda real (o que voce recebe liquido) e sempre o da esquerda.
+                </p>
+                <div className="col-span-1 mt-1 flex gap-4 text-[11px] sm:col-span-2">
                   <span className="text-[#8b8b96]">
                     Margem liquida <span className="text-green-400">{fmtPct(resultadoML.margemPct)}</span>
                   </span>
@@ -537,18 +555,74 @@ export default function PainelPage() {
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Comissao ML (%)" value={comissaoMLPct} onChange={setComissaoMLPct} suffix="%" />
                 <Field label="Ads ML (%)" value={adsMLPct} onChange={setAdsMLPct} suffix="%" />
+              </div>
+              <p className="mt-1 text-[10px] leading-relaxed text-[#5c5c66]">
+                Comissao: taxa que o Mercado Livre cobra sobre o preco de venda (padrao categoria Classico ~{COMISSAO_ML_CLASSICO_PCT}%). Ads: seu investimento em Mercado Ads sobre a venda.
+              </p>
+              <div className="mt-3 grid grid-cols-3 gap-2">
                 <Field label="Peso do produto" value={pesoProdutoKg} onChange={setPesoProdutoKg} suffix="kg" placeholder={(toNum(pesoUsado) / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} />
+                <Field label="Comprimento" value={comprimentoCm} onChange={setComprimentoCm} suffix="cm" />
+                <Field label="Largura" value={larguraCm} onChange={setLarguraCm} suffix="cm" />
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <Field label="Altura" value={alturaCm} onChange={setAlturaCm} suffix="cm" />
                 <div className="flex flex-col justify-end text-[11px] text-[#8b8b96]">
-                  Taxa fixa por peso: <span className="text-white">{formatBRL(resultadoML.fixa)}</span>
+                  Taxa fixa cobrada: <span className="text-white">{formatBRL(resultadoML.fixa)}</span>
                 </div>
+              </div>
+              <p className="mt-1 text-[10px] leading-relaxed text-[#5c5c66]">
+                A taxa fixa do ML e por faixa de peso. Se a caixa (C x L x A) resultar num peso cubado maior que o peso real do produto, o ML cobra pelo cubado - preencha as dimensoes pra ver a taxa correta.
+              </p>
+              <div className="mt-3 border-t border-[#23232b] pt-3">
+                <p className="mb-1.5 text-[11px] font-medium text-[#c8c8d0]">Voce envia por Mercado Envios Flex?</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setUsaFlexML(false)}
+                    className={
+                      "rounded-lg border px-2 py-1.5 text-xs font-medium " +
+                      (!usaFlexML ? "border-amber-500 bg-[#2a1a0a] text-amber-400" : "border-[#2c2c36] text-[#c8c8d0]")
+                    }
+                  >
+                    Nao uso Flex
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUsaFlexML(true)}
+                    className={
+                      "rounded-lg border px-2 py-1.5 text-xs font-medium " +
+                      (usaFlexML ? "border-amber-500 bg-[#2a1a0a] text-amber-400" : "border-[#2c2c36] text-[#c8c8d0]")
+                    }
+                  >
+                    Uso Flex
+                  </button>
+                </div>
+                {usaFlexML && (
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <Field label="Custo do Flex" value={custoFlexML} onChange={setCustoFlexML} suffix="R$" />
+                    <Field label="Reembolso do Flex" value={reembolsoFlexML} onChange={setReembolsoFlexML} suffix="R$" />
+                  </div>
+                )}
+                <p className="mt-1 text-[10px] leading-relaxed text-[#5c5c66]">
+                  O Flex tem um custo de entrega que o ML repassa e reembolsa parte dele. Preencha os dois valores reais (confira no seu extrato) pra descontar so o custo liquido do Flex na sua margem.
+                </p>
               </div>
             </Card>
 
             <Card icon="SH" title="Shopee" subtitle="Comissao + taxa fixa automatica + ads + afiliado">
-              <div className="mb-3 rounded-lg bg-[#0e0e12] p-3">
-                <p className="text-[11px] text-[#8b8b96]">Anuncie por</p>
-                <p className="text-2xl font-bold text-white">{formatBRL(resultadoShopee.preco)}</p>
-                <div className="mt-2 flex gap-4 text-[11px]">
+              <div className="mb-3 grid grid-cols-1 gap-2 rounded-lg bg-[#0e0e12] p-3 sm:grid-cols-2">
+                <div>
+                  <p className="text-[11px] text-[#8b8b96]">Preco de venda</p>
+                  <p className="text-2xl font-bold text-white">{formatBRL(resultadoShopee.preco)}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-[#8b8b96]">Preco para anunciar (+30%)</p>
+                  <p className="text-2xl font-bold text-amber-400">{formatBRL(resultadoShopee.preco * 1.3)}</p>
+                </div>
+                <p className="col-span-1 text-[10px] leading-relaxed text-[#5c5c66] sm:col-span-2">
+                  Anuncie pelo preco maior pra abrir espaco pra promocao/cupom na central de promocoes sem furar sua margem. O preco de venda real (o que voce recebe liquido) e sempre o da esquerda.
+                </p>
+                <div className="col-span-1 mt-1 flex gap-4 text-[11px] sm:col-span-2">
                   <span className="text-[#8b8b96]">
                     Margem liquida <span className="text-green-400">{fmtPct(resultadoShopee.margemPct)}</span>
                   </span>
@@ -560,10 +634,13 @@ export default function PainelPage() {
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Ads Shopee (%)" value={adsShopeePct} onChange={setAdsShopeePct} suffix="%" />
                 <Field label="Afiliado (%)" value={afiliadoShopeePct} onChange={setAfiliadoShopeePct} suffix="%" />
-                <div className="col-span-2 text-[11px] text-[#8b8b96]">
-                  Comissao automatica: <span className="text-white">{fmtPct(comissaoShopeePct(resultadoShopee.preco))}</span> - Taxa fixa: <span className="text-white">{formatBRL(resultadoShopee.fixa)}</span>
-                  <p className="mt-1 text-[10px] text-[#5c5c66]">maior ou igual R$80: 14% + taxa fixa por faixa - menor que R$80: 20% + R$4</p>
-                </div>
+              </div>
+              <p className="mt-1 text-[10px] leading-relaxed text-[#5c5c66]">
+                Ads: seu investimento em Shopee Ads sobre a venda. Afiliado: comissao paga a criadores de conteudo/afiliados que divulgam seu produto (0% se voce nao participa do programa).
+              </p>
+              <div className="mt-2 rounded-lg bg-[#0e0e12] p-3 text-[11px] text-[#8b8b96]">
+                Comissao automatica da Shopee: <span className="text-white">{fmtPct(comissaoShopeePct(resultadoShopee.preco))}</span> - Taxa fixa: <span className="text-white">{formatBRL(resultadoShopee.fixa)}</span>
+                <p className="mt-1 text-[10px] text-[#5c5c66]">Regra oficial 2026: preco maior ou igual a R$80 paga 14% + taxa fixa por faixa. Preco menor que R$80 paga 20% + R$4 fixo.</p>
               </div>
             </Card>
           </div>
