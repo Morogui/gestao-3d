@@ -266,12 +266,9 @@ export default function PainelPage() {
   return (
     <div className="min-h-screen bg-[#0a0a0d] px-4 py-6 sm:px-8">
       <header className="mb-6 flex items-center gap-3">
-        <img src="/logo-7x7.png" alt="7x7 Escala Ecommerce" className="h-11 w-auto" />
+        <img src="/logo-7x7.png" alt="7x7 Escala Ecommerce" className="h-20 w-auto" />
         <div>
-          <h1 className="text-lg font-semibold text-white">Calculadora de Custo 3D</h1>
-          <p className="text-xs text-[#8b8b96]">
-            Descubra quanto custa imprimir e por quanto vender
-          </p>
+          <h1 className="text-lg font-semibold text-white">Custo Produto 3D - Precificador Marketplace</h1>
         </div>
       </header>
 
