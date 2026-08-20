@@ -177,6 +177,7 @@ export default function PainelPage() {
   // Tempo
   const [horas, setHoras] = useState("");
   const [minutos, setMinutos] = useState("");
+  const [quantidadePecas, setQuantidadePecas] = useState("1");
 
   // Falha de impressao (pedido explicito do Guilherme)
   const [falhaPct, setFalhaPct] = useState("5");
@@ -223,6 +224,8 @@ export default function PainelPage() {
 
   const custoTotal =
     custoEnergia + custoMaterial + custoManutencao + custoEmbalagem + custoMaoDeObra + custoFrete;
+  const qtdPecas = Math.max(1, toNum(quantidadePecas) || 1);
+  const custoPorPeca = custoTotal / qtdPecas;
 
   const margemAlvo = margemSelecionada ?? toNum(margemCustom);
   const pesoKgParaML = toNum(pesoProdutoKg) || toNum(pesoUsado) / 1000;
@@ -360,6 +363,7 @@ export default function PainelPage() {
                 <Field label="Custo do kg" value={custoKg} onChange={setCustoKg} suffix="R$" />
                 <Field label="Horas" value={horas} onChange={setHoras} suffix="h" />
                 <Field label="Minutos" value={minutos} onChange={setMinutos} suffix="min" />
+                <Field label="Quantidade de pecas" value={quantidadePecas} onChange={setQuantidadePecas} suffix="un" />
               </div>
               <p className="mt-2 text-[11px] text-[#8b8b96]">
                 Custo por grama: <span className="text-white">{formatBRL(custoPorGrama)}</span>
@@ -381,6 +385,7 @@ export default function PainelPage() {
           <div className="rounded-2xl border border-amber-500/30 bg-[#161108] p-5">
             <p className="text-[11px] text-[#8b8b96]">Custo total de producao</p>
             <p className="mt-1 text-3xl font-bold text-amber-400">{formatBRL(custoTotal)}</p>
+            <p className="mt-1 text-xs text-[#8b8b96]">Custo por peca ({qtdPecas}un): <span className="text-white font-semibold">{formatBRL(custoPorPeca)}</span></p>
             <div className="mt-4 grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 lg:grid-cols-6">
               <div>
                 <p className="text-[#5c5c66]">Energia</p>
