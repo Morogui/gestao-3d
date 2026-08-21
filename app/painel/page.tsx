@@ -56,6 +56,13 @@ import {
 // quer vender e ver a margem liquida resultante em cada plataforma (o
 // mesmo preco e aplicado nas duas, mas a margem final difere porque as
 // taxas de ML e Shopee sao diferentes).
+//
+// 2026-08-21 (3): adicionado comparativo de Flex tambem na Shopee (Shopee
+// Entrega Direta / Envio Flex, mesmo conceito do Flex do ML: entrega
+// propria em vez de Correios/transportadora da Shopee) e um campo de
+// Embalagem separado na propria aba Precificacao (antes so existia
+// embalagem na aba Custo Produto 3D - pedido do Guilherme pra poder usar
+// a aba Precificacao 100% sozinha, sem depender da outra aba).
 
 function toNum(v: string): number {
   const n = Number(v.replace(",", "."));
@@ -224,12 +231,16 @@ export default function PainelPage() {
   const [margemDesejadaPct, setMargemDesejadaPct] = useState("30");
   const [precoVendaDesejado, setPrecoVendaDesejado] = useState("");
   const [custoProdutoManual, setCustoProdutoManual] = useState("");
+  const [embalagemPrecificacao, setEmbalagemPrecificacao] = useState("");
   const [pesoProdutoKg, setPesoProdutoKg] = useState("");
   const [comissaoMLPct, setComissaoMLPct] = useState(String(COMISSAO_ML_CLASSICO_PCT).replace(".", ","));
   const [adsMLPct, setAdsMLPct] = useState("5");
   const [adsShopeePct, setAdsShopeePct] = useState("10");
   const [afiliadoShopeePct, setAfiliadoShopeePct] = useState("0");
   const [usaAfiliadoShopee, setUsaAfiliadoShopee] = useState(false);
+  const [usaFlexShopee, setUsaFlexShopee] = useState(false);
+  const [custoFlexShopee, setCustoFlexShopee] = useState("");
+  const [reembolsoFlexShopee, setReembolsoFlexShopee] = useState("");
   const [afiliadoMLPct, setAfiliadoMLPct] = useState("0");
   const [usaAfiliadoML, setUsaAfiliadoML] = useState(false);
   const [tipoAnuncioML, setTipoAnuncioML] = useState<"classico" | "premium">("classico");
@@ -267,13 +278,15 @@ export default function PainelPage() {
     custoEnergia + custoMaterial + custoManutencao + custoEmbalagem + custoMaoDeObra + custoFrete;
   const qtdPecas = Math.max(1, toNum(quantidadePecas) || 1);
   const custoPorPeca = custoTotal / qtdPecas;
-  const custoParaPrecificacao = toNum(custoProdutoManual) || custoTotal;
+  const custoBaseProduto = toNum(custoProdutoManual) || custoTotal;
+  const custoParaPrecificacao = custoBaseProduto + toNum(embalagemPrecificacao);
 
   const margemAlvo = toNum(margemDesejadaPct);
   const pesoRealKg = toNum(pesoProdutoKg) || toNum(pesoUsado) / 1000;
   const pesoCubadoKg = (toNum(comprimentoCm) * toNum(larguraCm) * toNum(alturaCm)) / 6000;
   const pesoKgParaML = Math.max(pesoRealKg, pesoCubadoKg || 0);
   const flexLiquidoML = Math.max(0, toNum(custoFlexML) - toNum(reembolsoFlexML));
+  const flexLiquidoShopee = Math.max(0, toNum(custoFlexShopee) - toNum(reembolsoFlexShopee));
 
   const resultadoML = useMemo(() => {
     const afiliadoPctAtivo = usaAfiliadoML ? toNum(afiliadoMLPct) : 0;
@@ -324,25 +337,35 @@ export default function PainelPage() {
   ]);
 
   const resultadoShopee = useMemo(() => {
-    const preco =
-      modoPrecificacao === "preco"
-        ? toNum(precoVendaDesejado)
-        : resolverPreco({
-            custoTotal: custoParaPrecificacao,
-            impostoPct: toNum(impostoPct),
-            adsPct: toNum(adsShopeePct),
-            afiliadoPct: usaAfiliadoShopee ? toNum(afiliadoShopeePct) : 0,
-            margemAlvoPct: margemAlvo,
-            comissaoPct: (p) => comissaoShopeePct(p),
-            taxaFixa: (p) => taxaFixaShopee(p),
-          });
-    const comissao = preco * (comissaoShopeePct(preco) / 100);
-    const fixa = taxaFixaShopee(preco);
-    const imposto = preco * (toNum(impostoPct) / 100);
-    const ads = preco * (toNum(adsShopeePct) / 100);
-    const afiliado = preco * ((usaAfiliadoShopee ? toNum(afiliadoShopeePct) : 0) / 100);
-    const lucro = preco - comissao - fixa - imposto - ads - afiliado - custoParaPrecificacao;
-    return { preco, comissao, fixa, imposto, ads, afiliado, lucro, margemPct: preco > 0 ? (lucro / preco) * 100 : 0 };
+    const afiliadoPctAtivo = usaAfiliadoShopee ? toNum(afiliadoShopeePct) : 0;
+
+    function calcular(comFlex: boolean) {
+      const taxaFixaFn = (preco: number) => taxaFixaShopee(preco) + (comFlex ? flexLiquidoShopee : 0);
+      const preco =
+        modoPrecificacao === "preco"
+          ? toNum(precoVendaDesejado)
+          : resolverPreco({
+              custoTotal: custoParaPrecificacao,
+              impostoPct: toNum(impostoPct),
+              adsPct: toNum(adsShopeePct),
+              afiliadoPct: afiliadoPctAtivo,
+              margemAlvoPct: margemAlvo,
+              comissaoPct: (p) => comissaoShopeePct(p),
+              taxaFixa: taxaFixaFn,
+            });
+      const comissao = preco * (comissaoShopeePct(preco) / 100);
+      const fixa = taxaFixaFn(preco);
+      const imposto = preco * (toNum(impostoPct) / 100);
+      const ads = preco * (toNum(adsShopeePct) / 100);
+      const afiliado = preco * (afiliadoPctAtivo / 100);
+      const lucro = preco - comissao - fixa - imposto - ads - afiliado - custoParaPrecificacao;
+      return { preco, comissao, fixa, imposto, ads, afiliado, lucro, margemPct: preco > 0 ? (lucro / preco) * 100 : 0 };
+    }
+
+    const semFlex = calcular(false);
+    const comFlex = calcular(true);
+    const ativo = usaFlexShopee ? comFlex : semFlex;
+    return { ...ativo, semFlex, comFlex };
   }, [
     custoParaPrecificacao,
     impostoPct,
@@ -352,6 +375,8 @@ export default function PainelPage() {
     usaAfiliadoShopee,
     modoPrecificacao,
     precoVendaDesejado,
+    usaFlexShopee,
+    flexLiquidoShopee,
   ]);
 
   return (
@@ -564,13 +589,16 @@ export default function PainelPage() {
                   placeholder={custoTotal > 0 ? custoTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0"}
                 />
               </div>
+              <div className="max-w-[220px] flex-1">
+                <Field label="Embalagem (por peca)" value={embalagemPrecificacao} onChange={setEmbalagemPrecificacao} suffix="R$" />
+              </div>
               <div className="text-right">
                 <p className="text-[11px] text-[#8b8b96]">Custo usado no calculo</p>
                 <p className="text-xl font-bold text-green-400">{formatBRL(custoParaPrecificacao)}</p>
               </div>
             </div>
             <p className="mt-2 text-[10px] leading-relaxed text-[#5c5c66]">
-              Digite aqui o custo real do seu produto (essa aba funciona sozinha, sem depender da aba Custo Produto 3D). Se preferir, use a aba Custo Produto 3D so como apoio pra chegar nesse numero.
+              Digite aqui o custo real do seu produto (essa aba funciona sozinha, sem depender da aba Custo Produto 3D). Se preferir, use a aba Custo Produto 3D so como apoio pra chegar nesse numero. Embalagem entra separado e soma no custo total usado no calculo.
             </p>
           </div>
 
@@ -815,7 +843,8 @@ export default function PainelPage() {
                   <LinhaTaxa label={`Imposto (${impostoPct}%)`} valor={formatBRL(resultadoML.imposto)} />
                   <LinhaTaxa label={`Ads (${adsMLPct}%)`} valor={formatBRL(resultadoML.ads)} />
                   {usaAfiliadoML && <LinhaTaxa label={`Afiliado (${afiliadoMLPct}%)`} valor={formatBRL(resultadoML.afiliado)} />}
-                  <LinhaTaxa label="Custo do produto" valor={formatBRL(custoParaPrecificacao)} />
+                  <LinhaTaxa label="Custo do produto" valor={formatBRL(custoBaseProduto)} />
+                  {toNum(embalagemPrecificacao) > 0 && <LinhaTaxa label="Embalagem" valor={formatBRL(toNum(embalagemPrecificacao))} />}
                   <div className="mt-1 border-t border-[#23232b] pt-1">
                     <LinhaTaxa label="Lucro liquido" valor={formatBRL(resultadoML.lucro)} destaque />
                   </div>
@@ -881,6 +910,53 @@ export default function PainelPage() {
                 Ads: seu investimento em Shopee Ads sobre a venda. Afiliado: comissao paga a criadores de conteudo/afiliados que divulgam seu produto - so entra na conta se voce marcar "Uso afiliados" acima.
               </p>
 
+              <div className="mt-3 border-t border-[#23232b] pt-3">
+                <p className="mb-1.5 text-[11px] font-medium text-[#c8c8d0]">Voce envia por Shopee Entrega Direta / Envio Flex (entrega propria)?</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setUsaFlexShopee(false)}
+                    className={
+                      "rounded-lg border px-2 py-1.5 text-xs font-medium " +
+                      (!usaFlexShopee ? "border-amber-500 bg-[#2a1a0a] text-amber-400" : "border-[#2c2c36] text-[#c8c8d0]")
+                    }
+                  >
+                    Nao uso Flex
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUsaFlexShopee(true)}
+                    className={
+                      "rounded-lg border px-2 py-1.5 text-xs font-medium " +
+                      (usaFlexShopee ? "border-amber-500 bg-[#2a1a0a] text-amber-400" : "border-[#2c2c36] text-[#c8c8d0]")
+                    }
+                  >
+                    Uso Flex
+                  </button>
+                </div>
+                {usaFlexShopee && (
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <Field label="Custo do Flex" value={custoFlexShopee} onChange={setCustoFlexShopee} suffix="R$" />
+                    <Field label="Reembolso do Flex" value={reembolsoFlexShopee} onChange={setReembolsoFlexShopee} suffix="R$" />
+                  </div>
+                )}
+                <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-[#0e0e12] p-3">
+                  <div>
+                    <p className="text-[11px] text-[#8b8b96]">Vendendo sem Flex</p>
+                    <p className="text-lg font-bold text-white">{formatBRL(resultadoShopee.semFlex.preco)}</p>
+                    <p className="text-[10px] text-[#8b8b96]">Lucro <span className="text-green-400">{formatBRL(resultadoShopee.semFlex.lucro)}</span></p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-[#8b8b96]">Vendendo com Flex</p>
+                    <p className="text-lg font-bold text-white">{formatBRL(resultadoShopee.comFlex.preco)}</p>
+                    <p className="text-[10px] text-[#8b8b96]">Lucro <span className="text-green-400">{formatBRL(resultadoShopee.comFlex.lucro)}</span></p>
+                  </div>
+                </div>
+                <p className="mt-1 text-[10px] leading-relaxed text-[#5c5c66]">
+                  Na Shopee Entrega Direta (Envio Flex) voce mesmo faz a entrega (ou contrata um parceiro/motoboy), em vez de usar os Correios/transportadora da Shopee. Preencha o custo real dessa entrega e um eventual reembolso da Shopee (confira no seu extrato) pra comparar quanto voce recebe liquido vendendo com Flex e sem Flex.
+                </p>
+              </div>
+
               <div className="mt-2 rounded-lg bg-[#0e0e12] p-3 text-[11px]">
                 <p className="mb-2 font-medium text-[#c8c8d0]">Detalhamento das taxas (sobre o preco de venda)</p>
                 <div className="flex flex-col gap-1">
@@ -889,7 +965,8 @@ export default function PainelPage() {
                   <LinhaTaxa label={`Imposto (${impostoPct}%)`} valor={formatBRL(resultadoShopee.imposto)} />
                   <LinhaTaxa label={`Ads (${adsShopeePct}%)`} valor={formatBRL(resultadoShopee.ads)} />
                   {usaAfiliadoShopee && <LinhaTaxa label={`Afiliado (${afiliadoShopeePct}%)`} valor={formatBRL(resultadoShopee.afiliado)} />}
-                  <LinhaTaxa label="Custo do produto" valor={formatBRL(custoParaPrecificacao)} />
+                  <LinhaTaxa label="Custo do produto" valor={formatBRL(custoBaseProduto)} />
+                  {toNum(embalagemPrecificacao) > 0 && <LinhaTaxa label="Embalagem" valor={formatBRL(toNum(embalagemPrecificacao))} />}
                   <div className="mt-1 border-t border-[#23232b] pt-1">
                     <LinhaTaxa label="Lucro liquido" valor={formatBRL(resultadoShopee.lucro)} destaque />
                   </div>
