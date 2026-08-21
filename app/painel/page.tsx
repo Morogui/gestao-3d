@@ -398,7 +398,7 @@ export default function PainelPage() {
           className="pointer-events-none absolute -right-10 top-1/2 h-[280px] w-[420px] -translate-y-1/2 rotate-6 overflow-hidden rounded-2xl border border-yellow-400/30 blur-sm [animation:heroFadeB_9s_ease-in-out_infinite]"
         >
           <img
-            src="https://play-lh.googleusercontent.com/nQEMqLaTlpN1U8nbiKVG2q-5z7-amXpIPduo9cdG8kp2Ln7RO0D0mCQokEJIfqf0UvP4midRrxtaM8gSDtBA=w1080"
+            src="https://play-lh.googleusercontent.com/JFCnnrFW5VO0sTnoBcDfiQnINwI1PH9eaxMq7KidJpjsup6-fQbSDhYfsikZzufkv6sUD42OZWlkbpQaMRnP=w1080"
             alt=""
             className="h-full w-full object-cover"
           />
