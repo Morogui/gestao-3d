@@ -817,11 +817,16 @@ export default function ProducaoPage() {
   ) {
     setCarregando((prev) => ({ ...prev, [machineId]: true }));
     try {
-      await fetch("/api/producoes", {
+      const res = await fetch("/api/producoes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ machineId, placaId, quantidadePlacas, material }),
       });
+      if (!res.ok) {
+        const dados = await res.json().catch(() => null);
+        alert(dados?.error ?? "Não foi possível carregar essa produção.");
+        return;
+      }
       await carregarRapido();
       carregarDemanda();
     } finally {
