@@ -292,7 +292,7 @@ export default function PainelPage() {
             (aba === "custos" ? "bg-amber-500 text-black" : "bg-[#131318] text-[#8b8b96] border border-[#23232b]")
           }
         >
-          Custos
+          Custo Produto 3D
         </button>
         <button
           onClick={() => setAba("precificacao")}
