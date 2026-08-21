@@ -49,6 +49,13 @@ import {
 // (vendedores.mercadolivre.com.br/knowledge-hub/48392), valida a partir
 // de 24/08/2026 - ver comentario em lib/precificacao.ts sobre a ressalva
 // de reputacao/tier.
+//
+// 2026-08-21 (2): adicionado modo "Por preco de venda" na Precificacao -
+// pedido do Guilherme: antes so dava pra escolher a margem desejada e o
+// sistema calculava o preco. Agora ele pode escolher direto o preco que
+// quer vender e ver a margem liquida resultante em cada plataforma (o
+// mesmo preco e aplicado nas duas, mas a margem final difere porque as
+// taxas de ML e Shopee sao diferentes).
 
 function toNum(v: string): number {
   const n = Number(v.replace(",", "."));
@@ -213,7 +220,9 @@ export default function PainelPage() {
   const [impostoPct, setImpostoPct] = useState("6");
 
   // Precificacao
+  const [modoPrecificacao, setModoPrecificacao] = useState<"margem" | "preco">("margem");
   const [margemDesejadaPct, setMargemDesejadaPct] = useState("30");
+  const [precoVendaDesejado, setPrecoVendaDesejado] = useState("");
   const [custoProdutoManual, setCustoProdutoManual] = useState("");
   const [pesoProdutoKg, setPesoProdutoKg] = useState("");
   const [comissaoMLPct, setComissaoMLPct] = useState(String(COMISSAO_ML_CLASSICO_PCT).replace(".", ","));
@@ -273,15 +282,18 @@ export default function PainelPage() {
       const taxaFixaFn = (preco: number) =>
         (freteGratisML ? taxaPesoML(pesoKgParaML, preco) : taxaFixaMLSemFreteGratis(preco)) +
         (comFlex ? flexLiquidoML : 0);
-      const preco = resolverPreco({
-        custoTotal: custoParaPrecificacao,
-        impostoPct: toNum(impostoPct),
-        adsPct: toNum(adsMLPct),
-        afiliadoPct: afiliadoPctAtivo,
-        margemAlvoPct: margemAlvo,
-        comissaoPct: () => toNum(comissaoMLPct),
-        taxaFixa: taxaFixaFn,
-      });
+      const preco =
+        modoPrecificacao === "preco"
+          ? toNum(precoVendaDesejado)
+          : resolverPreco({
+              custoTotal: custoParaPrecificacao,
+              impostoPct: toNum(impostoPct),
+              adsPct: toNum(adsMLPct),
+              afiliadoPct: afiliadoPctAtivo,
+              margemAlvoPct: margemAlvo,
+              comissaoPct: () => toNum(comissaoMLPct),
+              taxaFixa: taxaFixaFn,
+            });
       const comissao = preco * (toNum(comissaoMLPct) / 100);
       const fixa = taxaFixaFn(preco);
       const imposto = preco * (toNum(impostoPct) / 100);
@@ -307,18 +319,23 @@ export default function PainelPage() {
     flexLiquidoML,
     usaAfiliadoML,
     afiliadoMLPct,
+    modoPrecificacao,
+    precoVendaDesejado,
   ]);
 
   const resultadoShopee = useMemo(() => {
-    const preco = resolverPreco({
-      custoTotal: custoParaPrecificacao,
-      impostoPct: toNum(impostoPct),
-      adsPct: toNum(adsShopeePct),
-      afiliadoPct: usaAfiliadoShopee ? toNum(afiliadoShopeePct) : 0,
-      margemAlvoPct: margemAlvo,
-      comissaoPct: (p) => comissaoShopeePct(p),
-      taxaFixa: (p) => taxaFixaShopee(p),
-    });
+    const preco =
+      modoPrecificacao === "preco"
+        ? toNum(precoVendaDesejado)
+        : resolverPreco({
+            custoTotal: custoParaPrecificacao,
+            impostoPct: toNum(impostoPct),
+            adsPct: toNum(adsShopeePct),
+            afiliadoPct: usaAfiliadoShopee ? toNum(afiliadoShopeePct) : 0,
+            margemAlvoPct: margemAlvo,
+            comissaoPct: (p) => comissaoShopeePct(p),
+            taxaFixa: (p) => taxaFixaShopee(p),
+          });
     const comissao = preco * (comissaoShopeePct(preco) / 100);
     const fixa = taxaFixaShopee(preco);
     const imposto = preco * (toNum(impostoPct) / 100);
@@ -326,7 +343,16 @@ export default function PainelPage() {
     const afiliado = preco * ((usaAfiliadoShopee ? toNum(afiliadoShopeePct) : 0) / 100);
     const lucro = preco - comissao - fixa - imposto - ads - afiliado - custoParaPrecificacao;
     return { preco, comissao, fixa, imposto, ads, afiliado, lucro, margemPct: preco > 0 ? (lucro / preco) * 100 : 0 };
-  }, [custoParaPrecificacao, impostoPct, adsShopeePct, afiliadoShopeePct, margemAlvo, usaAfiliadoShopee]);
+  }, [
+    custoParaPrecificacao,
+    impostoPct,
+    adsShopeePct,
+    afiliadoShopeePct,
+    margemAlvo,
+    usaAfiliadoShopee,
+    modoPrecificacao,
+    precoVendaDesejado,
+  ]);
 
   return (
     <div className="min-h-screen bg-[#0a0a0d] px-4 py-6 sm:px-8">
@@ -548,13 +574,49 @@ export default function PainelPage() {
             </p>
           </div>
 
-          <Card icon="P9" title="Margem e imposto" subtitle="Digite a margem de lucro que voce quer e o imposto que voce paga por venda">
+          <Card
+            icon="P9"
+            title="Margem e imposto"
+            subtitle={
+              modoPrecificacao === "margem"
+                ? "Digite a margem de lucro que voce quer e o imposto que voce paga por venda"
+                : "Digite o preco de venda que voce quer praticar e veja a margem liquida resultante em cada plataforma"
+            }
+          >
+            <div className="mb-3 grid max-w-[320px] grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setModoPrecificacao("margem")}
+                className={
+                  "rounded-lg border px-2 py-1.5 text-xs font-medium " +
+                  (modoPrecificacao === "margem" ? "border-amber-500 bg-[#2a1a0a] text-amber-400" : "border-[#2c2c36] text-[#c8c8d0]")
+                }
+              >
+                Por margem
+              </button>
+              <button
+                type="button"
+                onClick={() => setModoPrecificacao("preco")}
+                className={
+                  "rounded-lg border px-2 py-1.5 text-xs font-medium " +
+                  (modoPrecificacao === "preco" ? "border-amber-500 bg-[#2a1a0a] text-amber-400" : "border-[#2c2c36] text-[#c8c8d0]")
+                }
+              >
+                Por preço de venda
+              </button>
+            </div>
             <div className="grid max-w-[320px] grid-cols-2 gap-2">
-              <Field label="Margem liquida desejada" value={margemDesejadaPct} onChange={setMargemDesejadaPct} suffix="%" />
+              {modoPrecificacao === "margem" ? (
+                <Field label="Margem liquida desejada" value={margemDesejadaPct} onChange={setMargemDesejadaPct} suffix="%" />
+              ) : (
+                <Field label="Preço de venda desejado" value={precoVendaDesejado} onChange={setPrecoVendaDesejado} suffix="R$" />
+              )}
               <Field label="Imposto (%)" value={impostoPct} onChange={setImpostoPct} suffix="%" />
             </div>
             <p className="mt-2 text-[10px] leading-relaxed text-[#5c5c66]">
-              Imposto: MEI ~5% do salario minimo (fixo), Simples Nacional varia - confirme com sua contadora.
+              {modoPrecificacao === "margem"
+                ? "Imposto: MEI ~5% do salario minimo (fixo), Simples Nacional varia - confirme com sua contadora."
+                : "O mesmo preco de venda e aplicado nas duas plataformas - a margem liquida final aparece calculada em cada card abaixo, porque as taxas de ML e Shopee sao diferentes."}
             </p>
           </Card>
 
