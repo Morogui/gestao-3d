@@ -42,6 +42,36 @@ export const DEFAULT_CONFIG_PRECIFICACAO: ConfigPrecificacao = {
 // Guilherme -- deu 11,49% a 11,50% em todos os pontos de preco testados.
 export const COMISSAO_ML_CLASSICO_PCT = 11.5;
 
+// Comissao por categoria do Mercado Livre. O ML nao expoe uma tabela
+// publica via API -- o valor exato so aparece no simulador ao criar o
+// anuncio. Estes percentuais sao uma estimativa a partir das faixas
+// praticadas em 2026 (Classico ~10-14%, Premium ~15-19%, variando por
+// categoria), com "Casa, Moveis e Decoracao" usando o valor de 11,5%
+// que o Guilherme confirmou de verdade na Central de Vendedores.
+// Confirme a taxa exata da sua categoria especifica antes de publicar.
+export interface CategoriaML {
+    nome: string;
+    classicoPct: number;
+    premiumPct: number;
+}
+
+export const CATEGORIAS_ML: CategoriaML[] = [
+    { nome: "Casa, Moveis e Decoracao", classicoPct: 11.5, premiumPct: 16.5 },
+    { nome: "Acessorios para Veiculos", classicoPct: 11.5, premiumPct: 16.5 },
+    { nome: "Celulares e Informatica", classicoPct: 12, premiumPct: 17 },
+    { nome: "Eletronicos, Audio e Video", classicoPct: 12, premiumPct: 17 },
+    { nome: "Eletrodomesticos", classicoPct: 12.5, premiumPct: 17.5 },
+    { nome: "Ferramentas e Construcao", classicoPct: 12.5, premiumPct: 17.5 },
+    { nome: "Esporte e Fitness", classicoPct: 13, premiumPct: 18 },
+    { nome: "Bebes", classicoPct: 13, premiumPct: 18 },
+    { nome: "Papelaria, Arte e Armarinho", classicoPct: 13, premiumPct: 18 },
+    { nome: "Brinquedos e Hobbies", classicoPct: 13.5, premiumPct: 18.5 },
+    { nome: "Beleza e Cuidado Pessoal", classicoPct: 13.5, premiumPct: 18.5 },
+    { nome: "Saude", classicoPct: 13.5, premiumPct: 18.5 },
+    { nome: "Calcados, Roupas e Bolsas", classicoPct: 14, premiumPct: 19 },
+];
+
+
 // Comissao do anuncio Premium no Mercado Livre. Faixa tipica de mercado
 // (Classico ~10-14%, Premium ~15-19%) -- o ML nao expoe uma tabela
 // publica fechada por categoria, entao esse e um valor de referencia
