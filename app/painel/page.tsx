@@ -384,7 +384,7 @@ export default function PainelPage() {
       <section className="relative mb-6 overflow-hidden rounded-2xl border border-[#1f1f26] bg-[#0d0d11] px-6 py-14 text-center sm:px-10">
         <div
           aria-hidden
-          className="pointer-events-none absolute -left-10 top-1/2 h-[280px] w-[420px] -translate-y-1/2 -rotate-6 overflow-hidden rounded-2xl border border-orange-500/30 blur-md [animation:heroFadeA_9s_ease-in-out_infinite]"
+          className="pointer-events-none absolute -left-10 top-1/2 h-[280px] w-[420px] -translate-y-1/2 -rotate-6 overflow-hidden rounded-2xl border border-orange-500/30 blur-sm [animation:heroFadeA_9s_ease-in-out_infinite]"
         >
           <img
             src="https://play-lh.googleusercontent.com/jcwNHNLapN3E_ztR3i6aptU0KU025nAKSzRZ1wteL8NDJnGjcqcbzImydkn73b9aq-hJpbiAjFJMO0JT7oox9w=w1080"
@@ -395,7 +395,7 @@ export default function PainelPage() {
 
         <div
           aria-hidden
-          className="pointer-events-none absolute -right-10 top-1/2 h-[280px] w-[420px] -translate-y-1/2 rotate-6 overflow-hidden rounded-2xl border border-yellow-400/30 blur-md [animation:heroFadeB_9s_ease-in-out_infinite]"
+          className="pointer-events-none absolute -right-10 top-1/2 h-[280px] w-[420px] -translate-y-1/2 rotate-6 overflow-hidden rounded-2xl border border-yellow-400/30 blur-sm [animation:heroFadeB_9s_ease-in-out_infinite]"
         >
           <img
             src="https://play-lh.googleusercontent.com/nQEMqLaTlpN1U8nbiKVG2q-5z7-amXpIPduo9cdG8kp2Ln7RO0D0mCQokEJIfqf0UvP4midRrxtaM8gSDtBA=w1080"
@@ -404,7 +404,7 @@ export default function PainelPage() {
           />
         </div>
 
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0d0d11]/60 via-[#0d0d11]/80 to-[#0d0d11]/60" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0d0d11]/35 via-transparent to-[#0d0d11]/50" />
 
         <div className="relative z-10">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-500">
