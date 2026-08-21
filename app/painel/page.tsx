@@ -3,9 +3,11 @@
 import { useMemo, useState } from "react";
 import {
   taxaPesoML,
+  taxaFixaMLSemFreteGratis,
   comissaoShopeePct,
   taxaFixaShopee,
   COMISSAO_ML_CLASSICO_PCT,
+  COMISSAO_ML_PREMIUM_PCT,
   formatBRL,
 } from "@/lib/precificacao";
 
@@ -202,6 +204,9 @@ export default function PainelPage() {
   const [adsMLPct, setAdsMLPct] = useState("5");
   const [adsShopeePct, setAdsShopeePct] = useState("10");
   const [afiliadoShopeePct, setAfiliadoShopeePct] = useState("0");
+  const [usaAfiliadoShopee, setUsaAfiliadoShopee] = useState(false);
+  const [tipoAnuncioML, setTipoAnuncioML] = useState<"classico" | "premium">("classico");
+  const [freteGratisML, setFreteGratisML] = useState(true);
   const [usaFlexML, setUsaFlexML] = useState(false);
   const [custoFlexML, setCustoFlexML] = useState("");
   const [reembolsoFlexML, setReembolsoFlexML] = useState("");
@@ -250,22 +255,22 @@ export default function PainelPage() {
       adsPct: toNum(adsMLPct),
       margemAlvoPct: margemAlvo,
       comissaoPct: () => toNum(comissaoMLPct),
-      taxaFixa: () => taxaPesoML(pesoKgParaML) + flexCustoML,
+      taxaFixa: (preco) => (freteGratisML ? taxaPesoML(pesoKgParaML) : taxaFixaMLSemFreteGratis(preco)) + flexCustoML,
     });
     const comissao = preco * (toNum(comissaoMLPct) / 100);
-    const fixa = taxaPesoML(pesoKgParaML) + flexCustoML;
+    const fixa = (freteGratisML ? taxaPesoML(pesoKgParaML) : taxaFixaMLSemFreteGratis(preco)) + flexCustoML;
     const imposto = preco * (toNum(impostoPct) / 100);
     const ads = preco * (toNum(adsMLPct) / 100);
     const lucro = preco - comissao - fixa - imposto - ads - custoParaPrecificacao;
     return { preco, comissao, fixa, imposto, ads, lucro, margemPct: preco > 0 ? (lucro / preco) * 100 : 0 };
-  }, [custoParaPrecificacao, impostoPct, adsMLPct, margemAlvo, comissaoMLPct, pesoKgParaML, flexCustoML]);
+  }, [custoParaPrecificacao, impostoPct, adsMLPct, margemAlvo, comissaoMLPct, pesoKgParaML, flexCustoML, freteGratisML]);
 
   const resultadoShopee = useMemo(() => {
     const preco = resolverPreco({
       custoParaPrecificacao,
       impostoPct: toNum(impostoPct),
       adsPct: toNum(adsShopeePct),
-      afiliadoPct: toNum(afiliadoShopeePct),
+      afiliadoPct: usaAfiliadoShopee ? toNum(afiliadoShopeePct) : 0,
       margemAlvoPct: margemAlvo,
       comissaoPct: (p) => comissaoShopeePct(p),
       taxaFixa: (p) => taxaFixaShopee(p),
@@ -274,10 +279,10 @@ export default function PainelPage() {
     const fixa = taxaFixaShopee(preco);
     const imposto = preco * (toNum(impostoPct) / 100);
     const ads = preco * (toNum(adsShopeePct) / 100);
-    const afiliado = preco * (toNum(afiliadoShopeePct) / 100);
+    const afiliado = preco * ((usaAfiliadoShopee ? toNum(afiliadoShopeePct) : 0) / 100);
     const lucro = preco - comissao - fixa - imposto - ads - afiliado - custoParaPrecificacao;
     return { preco, comissao, fixa, imposto, ads, afiliado, lucro, margemPct: preco > 0 ? (lucro / preco) * 100 : 0 };
-  }, [custoParaPrecificacao, impostoPct, adsShopeePct, afiliadoShopeePct, margemAlvo]);
+  }, [custoParaPrecificacao, impostoPct, adsShopeePct, afiliadoShopeePct, margemAlvo, usaAfiliadoShopee]);
 
   return (
     <div className="min-h-screen bg-[#0a0a0d] px-4 py-6 sm:px-8">
@@ -503,10 +508,14 @@ export default function PainelPage() {
             </button>
           </div>
 
-          <Card icon="P9" title="Qual sua margem desejada?" subtitle="Digite a margem de lucro que voce quer pra ver os precos sugeridos">
-            <div className="max-w-[200px]">
+          <Card icon="P9" title="Margem e imposto" subtitle="Digite a margem de lucro que voce quer e o imposto que voce paga por venda">
+            <div className="grid max-w-[320px] grid-cols-2 gap-2">
               <Field label="Margem liquida desejada" value={margemDesejadaPct} onChange={setMargemDesejadaPct} suffix="%" />
+              <Field label="Imposto (%)" value={impostoPct} onChange={setImpostoPct} suffix="%" />
             </div>
+            <p className="mt-2 text-[10px] leading-relaxed text-[#5c5c66]">
+              Imposto: MEI ~5% do salario minimo (fixo), Simples Nacional varia - confirme com sua contadora.
+            </p>
           </Card>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -532,12 +541,70 @@ export default function PainelPage() {
                   </span>
                 </div>
               </div>
+              <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div>
+                  <p className="mb-1.5 text-[11px] font-medium text-[#c8c8d0]">Tipo de anuncio</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTipoAnuncioML("classico");
+                        setComissaoMLPct(String(COMISSAO_ML_CLASSICO_PCT).replace(".", ","));
+                      }}
+                      className={
+                        "rounded-lg border px-2 py-1.5 text-xs font-medium " +
+                        (tipoAnuncioML === "classico" ? "border-amber-500 bg-[#2a1a0a] text-amber-400" : "border-[#2c2c36] text-[#c8c8d0]")
+                      }
+                    >
+                      Classico
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTipoAnuncioML("premium");
+                        setComissaoMLPct(String(COMISSAO_ML_PREMIUM_PCT).replace(".", ","));
+                      }}
+                      className={
+                        "rounded-lg border px-2 py-1.5 text-xs font-medium " +
+                        (tipoAnuncioML === "premium" ? "border-amber-500 bg-[#2a1a0a] text-amber-400" : "border-[#2c2c36] text-[#c8c8d0]")
+                      }
+                    >
+                      Premium
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <p className="mb-1.5 text-[11px] font-medium text-[#c8c8d0]">Frete gratis pro comprador?</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFreteGratisML(true)}
+                      className={
+                        "rounded-lg border px-2 py-1.5 text-xs font-medium " +
+                        (freteGratisML ? "border-amber-500 bg-[#2a1a0a] text-amber-400" : "border-[#2c2c36] text-[#c8c8d0]")
+                      }
+                    >
+                      Sim
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFreteGratisML(false)}
+                      className={
+                        "rounded-lg border px-2 py-1.5 text-xs font-medium " +
+                        (!freteGratisML ? "border-amber-500 bg-[#2a1a0a] text-amber-400" : "border-[#2c2c36] text-[#c8c8d0]")
+                      }
+                    >
+                      Nao
+                    </button>
+                  </div>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Comissao ML (%)" value={comissaoMLPct} onChange={setComissaoMLPct} suffix="%" />
                 <Field label="Ads ML (%)" value={adsMLPct} onChange={setAdsMLPct} suffix="%" />
               </div>
               <p className="mt-1 text-[10px] leading-relaxed text-[#5c5c66]">
-                Comissao: taxa que o Mercado Livre cobra sobre o preco de venda (padrao categoria Classico ~{COMISSAO_ML_CLASSICO_PCT}%). Ads: seu investimento em Mercado Ads sobre a venda.
+                Comissao: taxa que o Mercado Livre cobra sobre o preco de venda (Classico ~{COMISSAO_ML_CLASSICO_PCT}%, Premium ~{COMISSAO_ML_PREMIUM_PCT}% - clique acima ou ajuste o numero manualmente). Ads: seu investimento em Mercado Ads sobre a venda.
               </p>
               <div className="mt-3 grid grid-cols-3 gap-2">
                 <Field label="Peso do produto" value={pesoProdutoKg} onChange={setPesoProdutoKg} suffix="kg" placeholder={(toNum(pesoUsado) / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} />
@@ -551,7 +618,7 @@ export default function PainelPage() {
                 </div>
               </div>
               <p className="mt-1 text-[10px] leading-relaxed text-[#5c5c66]">
-                A taxa fixa do ML e por faixa de peso. Se a caixa (C x L x A) resultar num peso cubado maior que o peso real do produto, o ML cobra pelo cubado - preencha as dimensoes pra ver a taxa correta.
+                A taxa fixa do ML muda conforme voce oferece frete gratis ou nao, e tambem e por faixa de peso/preco. Se a caixa (C x L x A) resultar num peso cubado maior que o peso real do produto, o ML cobra pelo cubado - preencha as dimensoes pra ver a taxa correta.
               </p>
               <div className="mt-3 border-t border-[#23232b] pt-3">
                 <p className="mb-1.5 text-[11px] font-medium text-[#c8c8d0]">Voce envia por Mercado Envios Flex?</p>
@@ -611,12 +678,39 @@ export default function PainelPage() {
                   </span>
                 </div>
               </div>
+              <div className="mb-2">
+                <p className="mb-1.5 text-[11px] font-medium text-[#c8c8d0]">Participa do programa de afiliados?</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setUsaAfiliadoShopee(false)}
+                    className={
+                      "rounded-lg border px-2 py-1.5 text-xs font-medium " +
+                      (!usaAfiliadoShopee ? "border-amber-500 bg-[#2a1a0a] text-amber-400" : "border-[#2c2c36] text-[#c8c8d0]")
+                    }
+                  >
+                    Nao uso afiliados
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUsaAfiliadoShopee(true)}
+                    className={
+                      "rounded-lg border px-2 py-1.5 text-xs font-medium " +
+                      (usaAfiliadoShopee ? "border-amber-500 bg-[#2a1a0a] text-amber-400" : "border-[#2c2c36] text-[#c8c8d0]")
+                    }
+                  >
+                    Uso afiliados
+                  </button>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Ads Shopee (%)" value={adsShopeePct} onChange={setAdsShopeePct} suffix="%" />
-                <Field label="Afiliado (%)" value={afiliadoShopeePct} onChange={setAfiliadoShopeePct} suffix="%" />
+                {usaAfiliadoShopee && (
+                  <Field label="Afiliado (%)" value={afiliadoShopeePct} onChange={setAfiliadoShopeePct} suffix="%" />
+                )}
               </div>
               <p className="mt-1 text-[10px] leading-relaxed text-[#5c5c66]">
-                Ads: seu investimento em Shopee Ads sobre a venda. Afiliado: comissao paga a criadores de conteudo/afiliados que divulgam seu produto (0% se voce nao participa do programa).
+                Ads: seu investimento em Shopee Ads sobre a venda. Afiliado: comissao paga a criadores de conteudo/afiliados que divulgam seu produto - so entra na conta se voce marcar "Uso afiliados" acima.
               </p>
               <div className="mt-2 rounded-lg bg-[#0e0e12] p-3 text-[11px] text-[#8b8b96]">
                 Comissao automatica da Shopee: <span className="text-white">{fmtPct(comissaoShopeePct(resultadoShopee.preco))}</span> - Taxa fixa: <span className="text-white">{formatBRL(resultadoShopee.fixa)}</span>
