@@ -38,6 +38,17 @@ import {
 // header (pedido do Guilherme), e os 8 cards da aba Custos reagrupados
 // em 4 (Impressora fica sozinho, os outros 7 campos viraram 3 cards
 // tematicos) pra ficar visualmente mais limpo.
+//
+// 2026-08-21: aba Precificacao Marketplace virou a primeira/padrao (Custo
+// Produto 3D passou a ser a 2a aba, pedido do Guilherme), logo aumentada,
+// e adicionados: toggle de afiliado (Parceiros) no card do Mercado Livre
+// igual ao da Shopee, comparativo de preco vendendo com Flex vs sem Flex,
+// e um detalhamento completo das taxas em ambos os cards. A tarifa por
+// peso do ML (taxaPesoML) tambem foi atualizada pra tabela oficial
+// "Custos para MercadoLideres, com reputacao verde ou sem reputacao"
+// (vendedores.mercadolivre.com.br/knowledge-hub/48392), valida a partir
+// de 24/08/2026 - ver comentario em lib/precificacao.ts sobre a ressalva
+// de reputacao/tier.
 
 function toNum(v: string): number {
   const n = Number(v.replace(",", "."));
@@ -47,8 +58,6 @@ function toNum(v: string): number {
 function fmtPct(v: number): string {
   return `${v.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 }
-
-
 
 const IMPRESSORAS = [
   { nome: "Ender 3 / S1", watts: 125 },
@@ -61,8 +70,6 @@ const IMPRESSORAS = [
   { nome: "Bambu X1C", watts: 120 },
   { nome: "Centauri Carbon", watts: 80 },
 ];
-
-const MARGENS_PRESET = [15, 20, 25, 30, 35, 40, 45, 50];
 
 // Resolve o preco de anuncio pra bater uma margem liquida alvo (% sobre
 // o preco), dado o custo total de producao e as regras de taxa de uma
@@ -160,8 +167,17 @@ function Field({
   );
 }
 
+function LinhaTaxa({ label, valor, destaque = false }: { label: string; valor: string; destaque?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className={destaque ? "text-[#c8c8d0]" : "text-[#8b8b96]"}>{label}</span>
+      <span className={destaque ? "font-semibold text-white" : "text-white"}>{valor}</span>
+    </div>
+  );
+}
+
 export default function PainelPage() {
-  const [aba, setAba] = useState<"custos" | "precificacao">("custos");
+  const [aba, setAba] = useState<"custos" | "precificacao">("precificacao");
 
   // Impressora / energia
   const [impressora, setImpressora] = useState("Bambu A1");
@@ -205,6 +221,8 @@ export default function PainelPage() {
   const [adsShopeePct, setAdsShopeePct] = useState("10");
   const [afiliadoShopeePct, setAfiliadoShopeePct] = useState("0");
   const [usaAfiliadoShopee, setUsaAfiliadoShopee] = useState(false);
+  const [afiliadoMLPct, setAfiliadoMLPct] = useState("0");
+  const [usaAfiliadoML, setUsaAfiliadoML] = useState(false);
   const [tipoAnuncioML, setTipoAnuncioML] = useState<"classico" | "premium">("classico");
   const [freteGratisML, setFreteGratisML] = useState(true);
   const [usaFlexML, setUsaFlexML] = useState(false);
@@ -246,24 +264,50 @@ export default function PainelPage() {
   const pesoRealKg = toNum(pesoProdutoKg) || toNum(pesoUsado) / 1000;
   const pesoCubadoKg = (toNum(comprimentoCm) * toNum(larguraCm) * toNum(alturaCm)) / 6000;
   const pesoKgParaML = Math.max(pesoRealKg, pesoCubadoKg || 0);
-  const flexCustoML = usaFlexML ? Math.max(0, toNum(custoFlexML) - toNum(reembolsoFlexML)) : 0;
+  const flexLiquidoML = Math.max(0, toNum(custoFlexML) - toNum(reembolsoFlexML));
 
   const resultadoML = useMemo(() => {
-    const preco = resolverPreco({
-      custoTotal: custoParaPrecificacao,
-      impostoPct: toNum(impostoPct),
-      adsPct: toNum(adsMLPct),
-      margemAlvoPct: margemAlvo,
-      comissaoPct: () => toNum(comissaoMLPct),
-      taxaFixa: (preco) => (freteGratisML ? taxaPesoML(pesoKgParaML) : taxaFixaMLSemFreteGratis(preco)) + flexCustoML,
-    });
-    const comissao = preco * (toNum(comissaoMLPct) / 100);
-    const fixa = (freteGratisML ? taxaPesoML(pesoKgParaML) : taxaFixaMLSemFreteGratis(preco)) + flexCustoML;
-    const imposto = preco * (toNum(impostoPct) / 100);
-    const ads = preco * (toNum(adsMLPct) / 100);
-    const lucro = preco - comissao - fixa - imposto - ads - custoParaPrecificacao;
-    return { preco, comissao, fixa, imposto, ads, lucro, margemPct: preco > 0 ? (lucro / preco) * 100 : 0 };
-  }, [custoParaPrecificacao, impostoPct, adsMLPct, margemAlvo, comissaoMLPct, pesoKgParaML, flexCustoML, freteGratisML]);
+    const afiliadoPctAtivo = usaAfiliadoML ? toNum(afiliadoMLPct) : 0;
+
+    function calcular(comFlex: boolean) {
+      const taxaFixaFn = (preco: number) =>
+        (freteGratisML ? taxaPesoML(pesoKgParaML, preco) : taxaFixaMLSemFreteGratis(preco)) +
+        (comFlex ? flexLiquidoML : 0);
+      const preco = resolverPreco({
+        custoTotal: custoParaPrecificacao,
+        impostoPct: toNum(impostoPct),
+        adsPct: toNum(adsMLPct),
+        afiliadoPct: afiliadoPctAtivo,
+        margemAlvoPct: margemAlvo,
+        comissaoPct: () => toNum(comissaoMLPct),
+        taxaFixa: taxaFixaFn,
+      });
+      const comissao = preco * (toNum(comissaoMLPct) / 100);
+      const fixa = taxaFixaFn(preco);
+      const imposto = preco * (toNum(impostoPct) / 100);
+      const ads = preco * (toNum(adsMLPct) / 100);
+      const afiliado = preco * (afiliadoPctAtivo / 100);
+      const lucro = preco - comissao - fixa - imposto - ads - afiliado - custoParaPrecificacao;
+      return { preco, comissao, fixa, imposto, ads, afiliado, lucro, margemPct: preco > 0 ? (lucro / preco) * 100 : 0 };
+    }
+
+    const semFlex = calcular(false);
+    const comFlex = calcular(true);
+    const ativo = usaFlexML ? comFlex : semFlex;
+    return { ...ativo, semFlex, comFlex };
+  }, [
+    custoParaPrecificacao,
+    impostoPct,
+    adsMLPct,
+    margemAlvo,
+    comissaoMLPct,
+    pesoKgParaML,
+    freteGratisML,
+    usaFlexML,
+    flexLiquidoML,
+    usaAfiliadoML,
+    afiliadoMLPct,
+  ]);
 
   const resultadoShopee = useMemo(() => {
     const preco = resolverPreco({
@@ -287,19 +331,10 @@ export default function PainelPage() {
   return (
     <div className="min-h-screen bg-[#0a0a0d] px-4 py-6 sm:px-8">
       <header className="mb-6 flex items-center justify-center">
-        <img src="/logo-7x7.png" alt="7x7 Escala Ecommerce" className="h-12 w-auto sm:h-20" />
+        <img src="/logo-7x7.png" alt="7x7 Escala Ecommerce" className="h-16 w-auto sm:h-28" />
       </header>
 
       <div className="mb-6 flex gap-2">
-        <button
-          onClick={() => setAba("custos")}
-          className={
-            "rounded-lg px-4 py-2 text-sm font-medium " +
-            (aba === "custos" ? "bg-amber-500 text-black" : "bg-[#131318] text-[#8b8b96] border border-[#23232b]")
-          }
-        >
-          Custo Produto 3D
-        </button>
         <button
           onClick={() => setAba("precificacao")}
           className={
@@ -309,175 +344,183 @@ export default function PainelPage() {
         >
           Precificação Marketplace
         </button>
+        <button
+          onClick={() => setAba("custos")}
+          className={
+            "rounded-lg px-4 py-2 text-sm font-medium " +
+            (aba === "custos" ? "bg-amber-500 text-black" : "bg-[#131318] text-[#8b8b96] border border-[#23232b]")
+          }
+        >
+          Custo Produto 3D
+        </button>
       </div>
 
       {aba === "custos" && (
         <div className="flex flex-col gap-4">
           <div className={impressoraConfirmada ? "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" : "flex justify-center"}>
             <div className={impressoraConfirmada ? "" : "w-full max-w-sm"}>
-            <Card icon="P1" title="Impressora" subtitle="Consumo medio durante a impressao">
-              {!impressoraAberta && (
-                <div className="flex flex-col items-center gap-3 py-6">
-                  <button
-                    type="button"
-                    onClick={() => setImpressoraAberta(true)}
-                    className="rounded-2xl border border-[#23232b] bg-[#131318] px-8 py-6 text-sm font-medium text-white transition hover:border-amber-500 hover:text-amber-400"
-                  >
-                    Escolha sua impressora
-                  </button>
-                </div>
-              )}
-              {impressoraAberta && (
-                <>
-              <div className="grid grid-cols-2 gap-2">
-                {IMPRESSORAS.map((imp) => (
-                  <button
-                    key={imp.nome}
-                    onClick={() => setImpressora(imp.nome)}
-                    className={
-                      "rounded-lg border px-2 py-1.5 text-left text-[11px] " +
-                      (impressora === imp.nome
-                        ? "border-amber-500 bg-[#2a1a0a] text-amber-400"
-                        : "border-[#2c2c36] text-[#c8c8d0]")
-                    }
-                  >
-                    <div className="font-medium">{imp.nome}</div>
-                    <div className="text-[10px] text-[#8b8b96]">~{imp.watts}W medio</div>
-                  </button>
-                ))}
-                <button
-                  onClick={() => setImpressora("outra")}
-                  className={
-                    "rounded-lg border px-2 py-1.5 text-left text-[11px] " +
-                    (impressora === "outra"
-                      ? "border-amber-500 bg-[#2a1a0a] text-amber-400"
-                      : "border-[#2c2c36] text-[#c8c8d0]")
-                  }
-                >
-                  <div className="font-medium">Outra</div>
-                  <div className="text-[10px] text-[#8b8b96]">Digitar watts</div>
-                </button>
-              </div>
-              {impressora === "outra" && (
-                <div className="mt-2">
-                  <Field label="Potencia (W)" value={wattsCustom} onChange={setWattsCustom} suffix="W" />
-                </div>
-              )}
-              <label className="mt-3 flex items-center gap-2 text-[11px] text-[#8b8b96]">
-                <input
-                  type="checkbox"
-                  checked={naoContabilizarEnergia}
-                  onChange={(e) => setNaoContabilizarEnergia(e.target.checked)}
-                />
-                Nao contabilizar energia
-              </label>
-                  {!impressoraConfirmada && (
+              <Card icon="P1" title="Impressora" subtitle="Consumo medio durante a impressao">
+                {!impressoraAberta && (
+                  <div className="flex flex-col items-center gap-3 py-6">
                     <button
                       type="button"
-                      onClick={() => setImpressoraConfirmada(true)}
-                      className="mt-3 w-full rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-amber-400"
+                      onClick={() => setImpressoraAberta(true)}
+                      className="rounded-2xl border border-[#23232b] bg-[#131318] px-8 py-6 text-sm font-medium text-white transition hover:border-amber-500 hover:text-amber-400"
                     >
-                      OK
+                      Escolha sua impressora
                     </button>
-                  )}
-                </>
-              )}
-            </Card>
+                  </div>
+                )}
+                {impressoraAberta && (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      {IMPRESSORAS.map((imp) => (
+                        <button
+                          key={imp.nome}
+                          onClick={() => setImpressora(imp.nome)}
+                          className={
+                            "rounded-lg border px-2 py-1.5 text-left text-[11px] " +
+                            (impressora === imp.nome
+                              ? "border-amber-500 bg-[#2a1a0a] text-amber-400"
+                              : "border-[#2c2c36] text-[#c8c8d0]")
+                          }
+                        >
+                          <div className="font-medium">{imp.nome}</div>
+                          <div className="text-[10px] text-[#8b8b96]">~{imp.watts}W medio</div>
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => setImpressora("outra")}
+                        className={
+                          "rounded-lg border px-2 py-1.5 text-left text-[11px] " +
+                          (impressora === "outra"
+                            ? "border-amber-500 bg-[#2a1a0a] text-amber-400"
+                            : "border-[#2c2c36] text-[#c8c8d0]")
+                        }
+                      >
+                        <div className="font-medium">Outra</div>
+                        <div className="text-[10px] text-[#8b8b96]">Digitar watts</div>
+                      </button>
+                    </div>
+                    {impressora === "outra" && (
+                      <div className="mt-2">
+                        <Field label="Potencia (W)" value={wattsCustom} onChange={setWattsCustom} suffix="W" />
+                      </div>
+                    )}
+                    <label className="mt-3 flex items-center gap-2 text-[11px] text-[#8b8b96]">
+                      <input
+                        type="checkbox"
+                        checked={naoContabilizarEnergia}
+                        onChange={(e) => setNaoContabilizarEnergia(e.target.checked)}
+                      />
+                      Nao contabilizar energia
+                    </label>
+                    {!impressoraConfirmada && (
+                      <button
+                        type="button"
+                        onClick={() => setImpressoraConfirmada(true)}
+                        className="mt-3 w-full rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-amber-400"
+                      >
+                        OK
+                      </button>
+                    )}
+                  </>
+                )}
+              </Card>
             </div>
 
             {impressoraConfirmada && (
               <>
+                <Card icon="P2" title="Consumo e Operacao" subtitle="Manutencao, energia, falha, embalagem e mao de obra">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    <Field label="Manutencao" value={manutencaoHora} onChange={setManutencaoHora} suffix="R$/h" />
+                    <Field label="Energia" value={tarifaKwh} onChange={setTarifaKwh} suffix="R$/kWh" />
+                    <Field label="Falha de impressao" value={falhaPct} onChange={setFalhaPct} suffix="%" />
+                    <Field label="Embalagem" value={embalagem} onChange={setEmbalagem} suffix="R$" />
+                  </div>
+                  {maoDeObraAtiva ? (
+                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      <Field label="Mao de obra" value={maoDeObra} onChange={setMaoDeObra} suffix="R$" />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setMaoDeObraAtiva(true)}
+                      className="mt-2 flex items-center gap-1 text-xs font-medium text-amber-400 transition hover:text-amber-300"
+                    >
+                      + Mao de obra
+                    </button>
+                  )}
+                  <p className="mt-2 text-[10px] leading-relaxed text-[#5c5c66]">
+                    Manutencao cobre bicos, correias e depreciacao do equipamento. Falha de impressao encarece energia, material e maquina pra cobrir as reimpressoes. Media Brasil de energia ~R$0,90/kWh.
+                  </p>
+                </Card>
 
-            <Card icon="P2" title="Consumo e Operacao" subtitle="Manutencao, energia, falha, embalagem e mao de obra">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                <Field label="Manutencao" value={manutencaoHora} onChange={setManutencaoHora} suffix="R$/h" />
-                <Field label="Energia" value={tarifaKwh} onChange={setTarifaKwh} suffix="R$/kWh" />
-                <Field label="Falha de impressao" value={falhaPct} onChange={setFalhaPct} suffix="%" />
-                <Field label="Embalagem" value={embalagem} onChange={setEmbalagem} suffix="R$" />
-              </div>
-              {maoDeObraAtiva ? (
-                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  <Field label="Mao de obra" value={maoDeObra} onChange={setMaoDeObra} suffix="R$" />
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setMaoDeObraAtiva(true)}
-                  className="mt-2 flex items-center gap-1 text-xs font-medium text-amber-400 transition hover:text-amber-300"
-                >
-                  + Mao de obra
-                </button>
-              )}
-              <p className="mt-2 text-[10px] leading-relaxed text-[#5c5c66]">
-                Manutencao cobre bicos, correias e depreciacao do equipamento. Falha de impressao encarece energia, material e maquina pra cobrir as reimpressoes. Media Brasil de energia ~R$0,90/kWh.
-              </p>
-            </Card>
+                <Card icon="P3" title="Material e Tempo" subtitle="Filamento usado e duracao da impressao">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Field label="Peso usado" value={pesoUsado} onChange={setPesoUsado} suffix="g" />
+                    <Field label="Custo do kg" value={custoKg} onChange={setCustoKg} suffix="R$" />
+                    <Field label="Horas" value={horas} onChange={setHoras} suffix="h" />
+                    <Field label="Minutos" value={minutos} onChange={setMinutos} suffix="min" />
+                    <Field label="Quantidade de pecas" value={quantidadePecas} onChange={setQuantidadePecas} suffix="un" />
+                  </div>
+                  <p className="mt-2 text-[11px] text-[#8b8b96]">
+                    Custo por grama: <span className="text-white">{formatBRL(custoPorGrama)}</span>
+                  </p>
+                </Card>
 
-            <Card icon="P3" title="Material e Tempo" subtitle="Filamento usado e duracao da impressao">
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="Peso usado" value={pesoUsado} onChange={setPesoUsado} suffix="g" />
-                <Field label="Custo do kg" value={custoKg} onChange={setCustoKg} suffix="R$" />
-                <Field label="Horas" value={horas} onChange={setHoras} suffix="h" />
-                <Field label="Minutos" value={minutos} onChange={setMinutos} suffix="min" />
-                <Field label="Quantidade de pecas" value={quantidadePecas} onChange={setQuantidadePecas} suffix="un" />
-              </div>
-              <p className="mt-2 text-[11px] text-[#8b8b96]">
-                Custo por grama: <span className="text-white">{formatBRL(custoPorGrama)}</span>
-              </p>
-            </Card>
-
-            <Card icon="P4" title="Custos Extras" subtitle="Frete, imposto e desperdicio de material">
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="Frete" value={frete} onChange={setFrete} suffix="R$" />
-                <Field label="Imposto" value={impostoPct} onChange={setImpostoPct} suffix="%" />
-                <Field label="% de desperdicio" value={desperdicioPct} onChange={setDesperdicioPct} suffix="%" />
-              </div>
-              <p className="mt-2 text-[10px] leading-relaxed text-[#5c5c66]">
-                Frete e opcional. Imposto e usado na aba Precificacao - MEI ~5% do salario minimo (fixo), Simples Nacional varia. Desperdicio de material aumenta o custo do filamento usado. Deixe 0 se nao se aplica.
-              </p>
-            </Card>
+                <Card icon="P4" title="Custos Extras" subtitle="Frete, imposto e desperdicio de material">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Field label="Frete" value={frete} onChange={setFrete} suffix="R$" />
+                    <Field label="Imposto" value={impostoPct} onChange={setImpostoPct} suffix="%" />
+                    <Field label="% de desperdicio" value={desperdicioPct} onChange={setDesperdicioPct} suffix="%" />
+                  </div>
+                  <p className="mt-2 text-[10px] leading-relaxed text-[#5c5c66]">
+                    Frete e opcional. Imposto e usado na aba Precificacao - MEI ~5% do salario minimo (fixo), Simples Nacional varia. Desperdicio de material aumenta o custo do filamento usado. Deixe 0 se nao se aplica.
+                  </p>
+                </Card>
               </>
             )}
           </div>
 
           {impressoraConfirmada && (
-          <div className="rounded-2xl border border-amber-500/30 bg-[#161108] p-5">
-            <p className="text-[11px] text-[#8b8b96]">Custo total de producao</p>
-            <p className="mt-1 text-3xl font-bold text-amber-400">{formatBRL(custoTotal)}</p>
-            <p className="mt-1 text-xs text-[#8b8b96]">Custo por peca ({qtdPecas}un): <span className="text-white font-semibold">{formatBRL(custoPorPeca)}</span></p>
-            <div className="mt-4 grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 lg:grid-cols-6">
-              <div>
-                <p className="text-[#5c5c66]">Energia</p>
-                <p className="text-white">{formatBRL(custoEnergia)}</p>
+            <div className="rounded-2xl border border-amber-500/30 bg-[#161108] p-5">
+              <p className="text-[11px] text-[#8b8b96]">Custo total de producao</p>
+              <p className="mt-1 text-3xl font-bold text-amber-400">{formatBRL(custoTotal)}</p>
+              <p className="mt-1 text-xs text-[#8b8b96]">Custo por peca ({qtdPecas}un): <span className="text-white font-semibold">{formatBRL(custoPorPeca)}</span></p>
+              <div className="mt-4 grid grid-cols-2 gap-3 text-xs sm:grid-cols-3 lg:grid-cols-6">
+                <div>
+                  <p className="text-[#5c5c66]">Energia</p>
+                  <p className="text-white">{formatBRL(custoEnergia)}</p>
+                </div>
+                <div>
+                  <p className="text-[#5c5c66]">Material</p>
+                  <p className="text-white">{formatBRL(custoMaterial)}</p>
+                </div>
+                <div>
+                  <p className="text-[#5c5c66]">Manutencao</p>
+                  <p className="text-white">{formatBRL(custoManutencao)}</p>
+                </div>
+                <div>
+                  <p className="text-[#5c5c66]">Embalagem</p>
+                  <p className="text-white">{formatBRL(custoEmbalagem)}</p>
+                </div>
+                <div>
+                  <p className="text-[#5c5c66]">Mao de obra</p>
+                  <p className="text-white">{formatBRL(custoMaoDeObra)}</p>
+                </div>
+                <div>
+                  <p className="text-[#5c5c66]">Frete</p>
+                  <p className="text-white">{formatBRL(custoFrete)}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-[#5c5c66]">Material</p>
-                <p className="text-white">{formatBRL(custoMaterial)}</p>
-              </div>
-              <div>
-                <p className="text-[#5c5c66]">Manutencao</p>
-                <p className="text-white">{formatBRL(custoManutencao)}</p>
-              </div>
-              <div>
-                <p className="text-[#5c5c66]">Embalagem</p>
-                <p className="text-white">{formatBRL(custoEmbalagem)}</p>
-              </div>
-              <div>
-                <p className="text-[#5c5c66]">Mao de obra</p>
-                <p className="text-white">{formatBRL(custoMaoDeObra)}</p>
-              </div>
-              <div>
-                <p className="text-[#5c5c66]">Frete</p>
-                <p className="text-white">{formatBRL(custoFrete)}</p>
-              </div>
+              {falhaFrac > 0 && (
+                <p className="mt-3 text-[10px] text-[#5c5c66]">
+                  Energia, material e manutencao ja incluem a taxa de falha de {fmtPct(toNum(falhaPct))} (fator x
+                  {fatorFalha.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}).
+                </p>
+              )}
             </div>
-            {falhaFrac > 0 && (
-              <p className="mt-3 text-[10px] text-[#5c5c66]">
-                Energia, material e manutencao ja incluem a taxa de falha de {fmtPct(toNum(falhaPct))} (fator x
-                {fatorFalha.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}).
-              </p>
-            )}
-          </div>
           )}
         </div>
       )}
@@ -501,11 +544,8 @@ export default function PainelPage() {
               </div>
             </div>
             <p className="mt-2 text-[10px] leading-relaxed text-[#5c5c66]">
-              Digite aqui o custo real do seu produto. Se deixar em branco, o sistema usa o valor calculado na aba Custos (material + energia + mao de obra + embalagem etc) como referencia.
+              Digite aqui o custo real do seu produto (essa aba funciona sozinha, sem depender da aba Custo Produto 3D). Se preferir, use a aba Custo Produto 3D so como apoio pra chegar nesse numero.
             </p>
-            <button onClick={() => setAba("custos")} className="mt-1 text-xs text-amber-400 hover:underline">
-              Calcular esse valor na aba Custos
-            </button>
           </div>
 
           <Card icon="P9" title="Margem e imposto" subtitle="Digite a margem de lucro que voce quer e o imposto que voce paga por venda">
@@ -541,6 +581,7 @@ export default function PainelPage() {
                   </span>
                 </div>
               </div>
+
               <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div>
                   <p className="mb-1.5 text-[11px] font-medium text-[#c8c8d0]">Tipo de anuncio</p>
@@ -599,6 +640,7 @@ export default function PainelPage() {
                   </div>
                 </div>
               </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Comissao ML (%)" value={comissaoMLPct} onChange={setComissaoMLPct} suffix="%" />
                 <Field label="Ads ML (%)" value={adsMLPct} onChange={setAdsMLPct} suffix="%" />
@@ -606,6 +648,7 @@ export default function PainelPage() {
               <p className="mt-1 text-[10px] leading-relaxed text-[#5c5c66]">
                 Comissao: taxa que o Mercado Livre cobra sobre o preco de venda (Classico ~{COMISSAO_ML_CLASSICO_PCT}%, Premium ~{COMISSAO_ML_PREMIUM_PCT}% - clique acima ou ajuste o numero manualmente). Ads: seu investimento em Mercado Ads sobre a venda.
               </p>
+
               <div className="mt-3 grid grid-cols-3 gap-2">
                 <Field label="Peso do produto" value={pesoProdutoKg} onChange={setPesoProdutoKg} suffix="kg" placeholder={(toNum(pesoUsado) / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} />
                 <Field label="Comprimento" value={comprimentoCm} onChange={setComprimentoCm} suffix="cm" />
@@ -618,8 +661,9 @@ export default function PainelPage() {
                 </div>
               </div>
               <p className="mt-1 text-[10px] leading-relaxed text-[#5c5c66]">
-                A taxa fixa do ML muda conforme voce oferece frete gratis ou nao, e tambem e por faixa de peso/preco. Se a caixa (C x L x A) resultar num peso cubado maior que o peso real do produto, o ML cobra pelo cubado - preencha as dimensoes pra ver a taxa correta.
+                A taxa fixa do ML muda conforme voce oferece frete gratis ou nao, e tambem e por faixa de peso/preco (tabela oficial do ML, valida a partir de 24/08/2026). Se a caixa (C x L x A) resultar num peso cubado maior que o peso real do produto, o ML cobra pelo cubado - preencha as dimensoes pra ver a taxa correta.
               </p>
+
               <div className="mt-3 border-t border-[#23232b] pt-3">
                 <p className="mb-1.5 text-[11px] font-medium text-[#c8c8d0]">Voce envia por Mercado Envios Flex?</p>
                 <div className="grid grid-cols-2 gap-2">
@@ -650,9 +694,70 @@ export default function PainelPage() {
                     <Field label="Reembolso do Flex" value={reembolsoFlexML} onChange={setReembolsoFlexML} suffix="R$" />
                   </div>
                 )}
+                <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-[#0e0e12] p-3">
+                  <div>
+                    <p className="text-[11px] text-[#8b8b96]">Vendendo sem Flex</p>
+                    <p className="text-lg font-bold text-white">{formatBRL(resultadoML.semFlex.preco)}</p>
+                    <p className="text-[10px] text-[#8b8b96]">Lucro <span className="text-green-400">{formatBRL(resultadoML.semFlex.lucro)}</span></p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-[#8b8b96]">Vendendo com Flex</p>
+                    <p className="text-lg font-bold text-white">{formatBRL(resultadoML.comFlex.preco)}</p>
+                    <p className="text-[10px] text-[#8b8b96]">Lucro <span className="text-green-400">{formatBRL(resultadoML.comFlex.lucro)}</span></p>
+                  </div>
+                </div>
                 <p className="mt-1 text-[10px] leading-relaxed text-[#5c5c66]">
-                  O Flex tem um custo de entrega que o ML repassa e reembolsa parte dele. Preencha os dois valores reais (confira no seu extrato) pra descontar so o custo liquido do Flex na sua margem.
+                  O Flex tem um custo de entrega que o ML repassa e reembolsa parte dele. Preencha os dois valores reais (confira no seu extrato) pra comparar quanto voce recebe liquido vendendo com Flex e sem Flex.
                 </p>
+              </div>
+
+              <div className="mt-3 border-t border-[#23232b] pt-3">
+                <p className="mb-1.5 text-[11px] font-medium text-[#c8c8d0]">Participa do programa de parceiros (afiliados)?</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setUsaAfiliadoML(false)}
+                    className={
+                      "rounded-lg border px-2 py-1.5 text-xs font-medium " +
+                      (!usaAfiliadoML ? "border-amber-500 bg-[#2a1a0a] text-amber-400" : "border-[#2c2c36] text-[#c8c8d0]")
+                    }
+                  >
+                    Nao uso afiliados
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUsaAfiliadoML(true)}
+                    className={
+                      "rounded-lg border px-2 py-1.5 text-xs font-medium " +
+                      (usaAfiliadoML ? "border-amber-500 bg-[#2a1a0a] text-amber-400" : "border-[#2c2c36] text-[#c8c8d0]")
+                    }
+                  >
+                    Uso afiliados
+                  </button>
+                </div>
+                {usaAfiliadoML && (
+                  <div className="mt-2">
+                    <Field label="Afiliado ML (%)" value={afiliadoMLPct} onChange={setAfiliadoMLPct} suffix="%" />
+                  </div>
+                )}
+                <p className="mt-1 text-[10px] leading-relaxed text-[#5c5c66]">
+                  Parceiros Mercado Livre: comissao paga a criadores/afiliados que divulgam seu produto - so entra na conta se voce marcar "Uso afiliados" acima.
+                </p>
+              </div>
+
+              <div className="mt-3 rounded-lg bg-[#0e0e12] p-3 text-[11px]">
+                <p className="mb-2 font-medium text-[#c8c8d0]">Detalhamento das taxas (sobre o preco de venda)</p>
+                <div className="flex flex-col gap-1">
+                  <LinhaTaxa label={`Comissao (${comissaoMLPct}%)`} valor={formatBRL(resultadoML.comissao)} />
+                  <LinhaTaxa label="Taxa fixa de envio" valor={formatBRL(resultadoML.fixa)} />
+                  <LinhaTaxa label={`Imposto (${impostoPct}%)`} valor={formatBRL(resultadoML.imposto)} />
+                  <LinhaTaxa label={`Ads (${adsMLPct}%)`} valor={formatBRL(resultadoML.ads)} />
+                  {usaAfiliadoML && <LinhaTaxa label={`Afiliado (${afiliadoMLPct}%)`} valor={formatBRL(resultadoML.afiliado)} />}
+                  <LinhaTaxa label="Custo do produto" valor={formatBRL(custoParaPrecificacao)} />
+                  <div className="mt-1 border-t border-[#23232b] pt-1">
+                    <LinhaTaxa label="Lucro liquido" valor={formatBRL(resultadoML.lucro)} destaque />
+                  </div>
+                </div>
               </div>
             </Card>
 
@@ -678,6 +783,7 @@ export default function PainelPage() {
                   </span>
                 </div>
               </div>
+
               <div className="mb-2">
                 <p className="mb-1.5 text-[11px] font-medium text-[#c8c8d0]">Participa do programa de afiliados?</p>
                 <div className="grid grid-cols-2 gap-2">
@@ -712,9 +818,21 @@ export default function PainelPage() {
               <p className="mt-1 text-[10px] leading-relaxed text-[#5c5c66]">
                 Ads: seu investimento em Shopee Ads sobre a venda. Afiliado: comissao paga a criadores de conteudo/afiliados que divulgam seu produto - so entra na conta se voce marcar "Uso afiliados" acima.
               </p>
-              <div className="mt-2 rounded-lg bg-[#0e0e12] p-3 text-[11px] text-[#8b8b96]">
-                Comissao automatica da Shopee: <span className="text-white">{fmtPct(comissaoShopeePct(resultadoShopee.preco))}</span> - Taxa fixa: <span className="text-white">{formatBRL(resultadoShopee.fixa)}</span>
-                <p className="mt-1 text-[10px] text-[#5c5c66]">Regra oficial 2026: preco maior ou igual a R$80 paga 14% + taxa fixa por faixa. Preco menor que R$80 paga 20% + R$4 fixo.</p>
+
+              <div className="mt-2 rounded-lg bg-[#0e0e12] p-3 text-[11px]">
+                <p className="mb-2 font-medium text-[#c8c8d0]">Detalhamento das taxas (sobre o preco de venda)</p>
+                <div className="flex flex-col gap-1">
+                  <LinhaTaxa label={`Comissao (${fmtPct(comissaoShopeePct(resultadoShopee.preco))})`} valor={formatBRL(resultadoShopee.comissao)} />
+                  <LinhaTaxa label="Taxa fixa" valor={formatBRL(resultadoShopee.fixa)} />
+                  <LinhaTaxa label={`Imposto (${impostoPct}%)`} valor={formatBRL(resultadoShopee.imposto)} />
+                  <LinhaTaxa label={`Ads (${adsShopeePct}%)`} valor={formatBRL(resultadoShopee.ads)} />
+                  {usaAfiliadoShopee && <LinhaTaxa label={`Afiliado (${afiliadoShopeePct}%)`} valor={formatBRL(resultadoShopee.afiliado)} />}
+                  <LinhaTaxa label="Custo do produto" valor={formatBRL(custoParaPrecificacao)} />
+                  <div className="mt-1 border-t border-[#23232b] pt-1">
+                    <LinhaTaxa label="Lucro liquido" valor={formatBRL(resultadoShopee.lucro)} destaque />
+                  </div>
+                </div>
+                <p className="mt-2 text-[10px] text-[#5c5c66]">Regra oficial 2026: preco maior ou igual a R$80 paga 14% + taxa fixa por faixa. Preco menor que R$80 paga 20% + R$4 fixo.</p>
               </div>
             </Card>
           </div>
