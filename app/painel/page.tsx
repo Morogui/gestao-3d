@@ -383,6 +383,35 @@ export default function PainelPage() {
         <img src="/logo-7x7.png" alt="7x7 Escala Ecommerce" className="h-16 w-auto sm:h-28" />
       </header>
 
+      <div className="mb-6 flex gap-2">
+        <button
+          onClick={() => {
+            setAba("precificacao");
+            setMostrarFerramenta(true);
+            setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavior: "smooth" }), 50);
+          }}
+          className={
+            "rounded-lg px-4 py-2 text-sm font-medium " +
+            (aba === "precificacao" ? "bg-amber-500 text-black" : "bg-[#131318] text-[#8b8b96] border border-[#23232b]")
+          }
+        >
+          Precificação Marketplace
+        </button>
+        <button
+          onClick={() => {
+            setAba("custos");
+            setMostrarFerramenta(true);
+            setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavior: "smooth" }), 50);
+          }}
+          className={
+            "rounded-lg px-4 py-2 text-sm font-medium " +
+            (aba === "custos" ? "bg-amber-500 text-black" : "bg-[#131318] text-[#8b8b96] border border-[#23232b]")
+          }
+        >
+          Custo Produto 3D
+        </button>
+      </div>
+
       <section className="relative mb-6 overflow-hidden rounded-2xl border border-[#1f1f26] bg-[#0d0d11] px-6 py-14 text-center sm:px-10">
         <div
           aria-hidden
@@ -461,8 +490,8 @@ export default function PainelPage() {
           Sua precificação nas plataformas está correta?
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-sm text-black/80 sm:text-base">
-          Confira agora nossa calculadora pra Mercado Livre e Shopee, o custo disso:{" "}
-          <span className="font-bold">R$ 0,00</span>.
+          Confira agora nossa calculadora pra <span className="font-bold">Mercado Livre e Shopee</span>, o custo disso:{" "}
+          <span className="text-lg font-bold sm:text-xl">R$ 0,00</span>.
         </p>
         <button
           onClick={() => {
@@ -480,26 +509,7 @@ export default function PainelPage() {
 
       {mostrarFerramenta && (
       <div id="calculadora">
-        <div className="mb-6 flex gap-2">
-        <button
-          onClick={() => setAba("precificacao")}
-          className={
-            "rounded-lg px-4 py-2 text-sm font-medium " +
-            (aba === "precificacao" ? "bg-amber-500 text-black" : "bg-[#131318] text-[#8b8b96] border border-[#23232b]")
-          }
-        >
-          Precificação Marketplace
-        </button>
-        <button
-          onClick={() => setAba("custos")}
-          className={
-            "rounded-lg px-4 py-2 text-sm font-medium " +
-            (aba === "custos" ? "bg-amber-500 text-black" : "bg-[#131318] text-[#8b8b96] border border-[#23232b]")
-          }
-        >
-          Custo Produto 3D
-        </button>
-      </div>
+        
 
       {aba === "custos" && (
         <div className="flex flex-col gap-4">
