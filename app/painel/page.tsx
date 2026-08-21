@@ -380,6 +380,79 @@ export default function PainelPage() {
         <img src="/logo-7x7.png" alt="7x7 Escala Ecommerce" className="h-16 w-auto sm:h-28" />
       </header>
 
+      <section className="mb-6 overflow-hidden rounded-2xl border border-[#1f1f26] bg-[#0d0d11] px-6 py-14 text-center sm:px-10">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-500">
+          O que é o Escala 7x7 Ecommerce
+        </p>
+        <h1 className="mx-auto mt-4 max-w-3xl text-3xl font-extrabold leading-tight text-white sm:text-5xl">
+          Uma <span className="text-amber-500">plataforma de soluções</span> pro seu{" "}
+          <span className="text-amber-500">ecommerce</span> ou{" "}
+          <span className="text-amber-500">produção 3D</span>.
+        </h1>
+        <p className="mx-auto mt-5 max-w-2xl text-sm text-[#8b8b96] sm:text-base">
+          Gestão, produção, estoque, precificação e financeiro em um só lugar — pensado
+          pra quem vende em marketplace ou produz sob demanda e quer crescer com margem,
+          caixa e previsibilidade.
+        </p>
+      </section>
+
+      <section className="mb-6 grid gap-6 rounded-2xl border border-[#1f1f26] bg-[#0d0d11] p-6 sm:grid-cols-[280px_1fr] sm:p-8">
+        <div className="flex flex-col justify-between rounded-xl border border-[#1f1f26] bg-black px-6 py-6">
+          <span className="text-5xl font-extrabold text-white">2019</span>
+          <div className="mt-8 flex items-center gap-1">
+            <span className="h-1.5 flex-1 rounded-full bg-[#2a2a33]" />
+            <span className="h-1.5 flex-1 rounded-full bg-[#2a2a33]" />
+            <span className="h-1.5 flex-1 rounded-full bg-[#2a2a33]" />
+            <span className="h-1.5 flex-1 rounded-full bg-[#2a2a33]" />
+            <span className="h-1.5 flex-1 rounded-full bg-amber-500" />
+            <span className="h-1.5 flex-1 rounded-full bg-[#2a2a33]" />
+            <span className="h-1.5 flex-1 rounded-full bg-[#2a2a33]" />
+          </div>
+        </div>
+        <div>
+          <h2 className="text-2xl font-extrabold text-white sm:text-3xl">
+            <span className="text-amber-500">7 anos</span> no mercado de marketplace.
+          </h2>
+          <p className="mt-3 max-w-xl text-sm text-[#8b8b96] sm:text-base">
+            Tempo suficiente pra testar o que funciona e descartar o que só parece
+            funcionar. Gestão de conta, execução de campanha, precificação e produção —
+            validado na prática, todo dia.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <span className="rounded-full border border-[#2a2a33] px-4 py-2 text-sm text-white">
+              Gestão
+            </span>
+            <span className="rounded-full border border-[#2a2a33] px-4 py-2 text-sm text-white">
+              Execução
+            </span>
+          </div>
+          <p className="mt-6 text-sm font-semibold text-white sm:text-base">
+            É nisso que o Escala 7x7 Ecommerce foi construído.
+          </p>
+        </div>
+      </section>
+
+      <section className="mb-6 overflow-hidden rounded-2xl bg-gradient-to-r from-amber-600 via-amber-500 to-orange-500 px-6 py-10 text-center sm:px-10">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-black/70">
+          Precificação
+        </p>
+        <h2 className="mx-auto mt-3 max-w-2xl text-2xl font-extrabold leading-tight text-black sm:text-4xl">
+          Sua precificação nas plataformas está correta?
+        </h2>
+        <p className="mx-auto mt-4 max-w-xl text-sm text-black/80 sm:text-base">
+          Confira agora nossa calculadora pra Mercado Livre e Shopee — o custo disso:{" "}
+          <span className="font-bold">R$ 0,00</span>.
+        </p>
+        <button
+          onClick={() => setAba("precificacao")}
+          className="mt-6 inline-flex items-center gap-2 rounded-full bg-black px-6 py-3 text-sm font-semibold text-white transition hover:bg-black/80"
+        >
+          Calcular minha precificação
+          <span aria-hidden>{"\u2192"}</span>
+        </button>
+      </section>
+
+
       <div className="mb-6 flex gap-2">
         <button
           onClick={() => setAba("precificacao")}
