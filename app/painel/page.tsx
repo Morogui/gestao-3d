@@ -416,7 +416,7 @@ export default function PainelPage() {
             <span className="text-amber-500">produção 3D</span>.
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-sm text-[#8b8b96] sm:text-base">
-            Gestão, produção, estoque, precificação e financeiro em um só lugar — pensado
+            Gestão, produção, estoque, precificação e financeiro em um só lugar, pensado
             pra quem vende em marketplace ou produz sob demanda e quer crescer com margem,
             caixa e previsibilidade.
           </p>
@@ -429,11 +429,13 @@ export default function PainelPage() {
           <span className="text-amber-500">Marketplace</span>.
         </h2>
         <p className="mx-auto mt-3 max-w-xl text-sm text-[#8b8b96] sm:text-base">
-          Tempo suficiente pra testar o que funciona e descartar o que só parece
-          funcionar.
-          <br />
-          Gestão de conta, execução de campanha, precificação e produção —
-          validado na prática, todo dia.
+          <span className="block whitespace-nowrap font-bold text-white">
+            Tempo suficiente pra testar o que funciona e descartar o que só parece funcionar.
+          </span>
+          <span className="mt-1 block">
+            Gestão de conta, execução de campanha, precificação e produção
+            validado na prática, todo dia.
+          </span>
         </p>
 
         <div className="mx-auto mt-8 flex max-w-xl items-center gap-4">
@@ -457,7 +459,7 @@ export default function PainelPage() {
           Sua precificação nas plataformas está correta?
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-sm text-black/80 sm:text-base">
-          Confira agora nossa calculadora pra Mercado Livre e Shopee — o custo disso:{" "}
+          Confira agora nossa calculadora pra Mercado Livre e Shopee, o custo disso:{" "}
           <span className="font-bold">R$ 0,00</span>.
         </p>
         <button
