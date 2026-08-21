@@ -443,7 +443,7 @@ export default function PainelPage() {
           <div className="relative h-1 flex-1 overflow-hidden rounded-full bg-[#2a2a33]">
             <div className="absolute inset-y-0 left-0 w-full rounded-full bg-gradient-to-r from-amber-600 to-amber-400" />
           </div>
-          <span className="text-xs font-semibold text-amber-500">hoje</span>
+          <span className="text-xs font-semibold text-amber-500">2026</span>
         </div>
 
         <p className="mt-6 text-sm font-semibold text-white sm:text-base">
