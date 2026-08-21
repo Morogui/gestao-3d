@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
+import {
+  corFilamentoDaPlaca,
+  corPetgDe,
+  CORES_COM_PETG,
+  labelCorFilamento,
+} from "@/lib/placas";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +66,34 @@ export async function POST(request: NextRequest) {
   }
 
   const materialNormalizado = material === "PETG" ? "PETG" : null;
+  // Trava de seguranca - pedido do Guilherme em 2026-08-21: bloquear
+  // carregamento de producao quando o estoque de filamento da cor+material
+  // escolhido estiver zerado (corFilamentoDaPlaca usa a mesma logica ja
+  // aplicada na fila de prioridade). Cores nao identificaveis no nome ou
+  // "colorido" (multicor) nunca sao bloqueadas.
+  const placaRows = await sql`SELECT nome FROM placas WHERE id = ${placaId}`;
+  const nomePlaca = placaRows[0]?.nome as string | undefined;
+  if (nomePlaca) {
+    const cor = corFilamentoDaPlaca(nomePlaca);
+    if (cor && cor !== "colorido") {
+      const corParaChecar =
+        materialNormalizado === "PETG" && (CORES_COM_PETG as readonly string[]).includes(cor)
+          ? corPetgDe(cor)
+          : cor;
+      const estoqueRows = await sql`
+        SELECT quantidade_gramas FROM estoque_filamento WHERE cor = ${corParaChecar}
+      `;
+      const gramas = Number(estoqueRows[0]?.quantidade_gramas ?? 0);
+      if (gramas <= 0) {
+        return NextResponse.json(
+          {
+            error: `Estoque de filamento ${labelCorFilamento(corParaChecar)} zerado - nao e possivel carregar essa producao.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+  }
 
   const rows = await sql`
     INSERT INTO producoes (machine_id, placa_id, quantidade_placas, status, material)
