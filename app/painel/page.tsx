@@ -185,6 +185,7 @@ function LinhaTaxa({ label, valor, destaque = false }: { label: string; valor: s
 
 export default function PainelPage() {
   const [aba, setAba] = useState<"custos" | "precificacao">("precificacao");
+  const [mostrarFerramenta, setMostrarFerramenta] = useState(false);
 
   // Impressora / energia
   const [impressora, setImpressora] = useState("Bambu A1");
@@ -444,7 +445,11 @@ export default function PainelPage() {
           <span className="font-bold">R$ 0,00</span>.
         </p>
         <button
-          onClick={() => setAba("precificacao")}
+          onClick={() => {
+            setAba("precificacao");
+            setMostrarFerramenta(true);
+            setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavior: "smooth" }), 50);
+          }}
           className="mt-6 inline-flex items-center gap-2 rounded-full bg-black px-6 py-3 text-sm font-semibold text-white transition hover:bg-black/80"
         >
           Calcular minha precificação
@@ -453,7 +458,9 @@ export default function PainelPage() {
       </section>
 
 
-      <div className="mb-6 flex gap-2">
+      {mostrarFerramenta && (
+      <div id="calculadora">
+        <div className="mb-6 flex gap-2">
         <button
           onClick={() => setAba("precificacao")}
           className={
@@ -1070,5 +1077,8 @@ export default function PainelPage() {
         </div>
       )}
     </div>
+      )}
+
+      </div>
   );
 }
