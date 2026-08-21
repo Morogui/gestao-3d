@@ -454,7 +454,23 @@ export default function PainelPage() {
         </div>
       </section>
 
-      <section className="mb-6 overflow-hidden rounded-2xl bg-gradient-to-r from-amber-600 via-amber-500 to-orange-500 px-6 py-10 text-center sm:px-10">
+      <section className="relative mb-6 overflow-hidden rounded-2xl bg-gradient-to-r from-amber-600 via-amber-500 to-orange-500 px-6 py-10 text-center sm:px-10">
+        <style>{`
+          @keyframes ctaFloatPrice {
+            0%, 100% { transform: translateY(0px); opacity: 0.16; }
+            50% { transform: translateY(-16px); opacity: 0.38; }
+          }
+        `}</style>
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <span className="absolute left-[4%] top-[10%] font-mono text-2xl font-bold text-black/20 sm:text-3xl" style={{ animation: "ctaFloatPrice 5s ease-in-out infinite" }}>R$ 49,90</span>
+          <span className="absolute left-[20%] top-[64%] font-mono text-lg font-bold text-black/15 sm:text-xl" style={{ animation: "ctaFloatPrice 6.5s ease-in-out infinite", animationDelay: "0.8s" }}>-12%</span>
+          <span className="absolute left-[46%] top-[6%] font-mono text-xl font-bold text-black/15 sm:text-2xl" style={{ animation: "ctaFloatPrice 7s ease-in-out infinite", animationDelay: "1.6s" }}>R$ 129,90</span>
+          <span className="absolute right-[6%] top-[18%] font-mono text-2xl font-bold text-black/20 sm:text-3xl" style={{ animation: "ctaFloatPrice 5.5s ease-in-out infinite", animationDelay: "0.4s" }}>+8%</span>
+          <span className="absolute right-[16%] top-[68%] font-mono text-lg font-bold text-black/15 sm:text-xl" style={{ animation: "ctaFloatPrice 6s ease-in-out infinite", animationDelay: "1.2s" }}>R$ 0,00</span>
+          <span className="absolute left-[10%] bottom-[8%] font-mono text-lg font-bold text-black/15 sm:text-xl" style={{ animation: "ctaFloatPrice 7.5s ease-in-out infinite", animationDelay: "2s" }}>34,99</span>
+          <span className="absolute right-[34%] bottom-[6%] font-mono text-xl font-bold text-black/20 sm:text-2xl" style={{ animation: "ctaFloatPrice 6.2s ease-in-out infinite", animationDelay: "0.6s" }}>+15%</span>
+        </div>
+        <div className="relative z-10">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-black/70">
           Precificação
         </p>
@@ -476,6 +492,7 @@ export default function PainelPage() {
           Calcular minha precificação
           <span aria-hidden>{"\u2192"}</span>
         </button>
+        </div>
       </section>
 
       <section className="mb-6 rounded-2xl border border-[#1f1f26] bg-[#0d0d11] px-6 py-12 text-center sm:px-10">
