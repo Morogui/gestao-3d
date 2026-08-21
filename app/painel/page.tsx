@@ -384,50 +384,24 @@ export default function PainelPage() {
       <section className="relative mb-6 overflow-hidden rounded-2xl border border-[#1f1f26] bg-[#0d0d11] px-6 py-14 text-center sm:px-10">
         <div
           aria-hidden
-          className="pointer-events-none absolute -left-10 top-1/2 h-[260px] w-[420px] -translate-y-1/2 -rotate-6 rounded-2xl border border-orange-500/30 bg-gradient-to-br from-orange-600/40 via-orange-500/20 to-black/40 blur-md [animation:heroFadeA_9s_ease-in-out_infinite]"
+          className="pointer-events-none absolute -left-10 top-1/2 h-[280px] w-[420px] -translate-y-1/2 -rotate-6 overflow-hidden rounded-2xl border border-orange-500/30 blur-md [animation:heroFadeA_9s_ease-in-out_infinite]"
         >
-          <div className="flex h-full flex-col gap-3 p-5">
-            <div className="flex gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-white/40" />
-              <span className="h-2 w-2 rounded-full bg-white/40" />
-              <span className="h-2 w-2 rounded-full bg-white/40" />
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="h-10 rounded-md bg-white/20" />
-              <div className="h-10 rounded-md bg-white/20" />
-              <div className="h-10 rounded-md bg-white/20" />
-            </div>
-            <div className="flex flex-1 items-end gap-2">
-              <div className="h-1/3 flex-1 rounded bg-white/25" />
-              <div className="h-1/2 flex-1 rounded bg-white/25" />
-              <div className="h-2/3 flex-1 rounded bg-white/25" />
-              <div className="h-full flex-1 rounded bg-white/25" />
-              <div className="h-1/2 flex-1 rounded bg-white/25" />
-            </div>
-          </div>
+          <img
+            src="https://play-lh.googleusercontent.com/jcwNHNLapN3E_ztR3i6aptU0KU025nAKSzRZ1wteL8NDJnGjcqcbzImydkn73b9aq-hJpbiAjFJMO0JT7oox9w=w1080"
+            alt=""
+            className="h-full w-full object-cover"
+          />
         </div>
 
         <div
           aria-hidden
-          className="pointer-events-none absolute -right-10 top-1/2 h-[260px] w-[420px] -translate-y-1/2 rotate-6 rounded-2xl border border-yellow-400/30 bg-gradient-to-br from-yellow-400/30 via-blue-500/20 to-black/40 blur-md [animation:heroFadeB_9s_ease-in-out_infinite]"
+          className="pointer-events-none absolute -right-10 top-1/2 h-[280px] w-[420px] -translate-y-1/2 rotate-6 overflow-hidden rounded-2xl border border-yellow-400/30 blur-md [animation:heroFadeB_9s_ease-in-out_infinite]"
         >
-          <div className="flex h-full flex-col gap-3 p-5">
-            <div className="flex gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-white/40" />
-              <span className="h-2 w-2 rounded-full bg-white/40" />
-              <span className="h-2 w-2 rounded-full bg-white/40" />
-            </div>
-            <div className="space-y-2">
-              <div className="h-3 w-2/3 rounded bg-white/25" />
-              <div className="h-3 w-1/2 rounded bg-white/20" />
-              <div className="h-3 w-3/4 rounded bg-white/20" />
-              <div className="h-3 w-1/3 rounded bg-white/20" />
-            </div>
-            <div className="grid flex-1 grid-cols-2 gap-2">
-              <div className="rounded-md bg-white/20" />
-              <div className="rounded-md bg-white/15" />
-            </div>
-          </div>
+          <img
+            src="https://play-lh.googleusercontent.com/nQEMqLaTlpN1U8nbiKVG2q-5z7-amXpIPduo9cdG8kp2Ln7RO0D0mCQokEJIfqf0UvP4midRrxtaM8gSDtBA=w1080"
+            alt=""
+            className="h-full w-full object-cover"
+          />
         </div>
 
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0d0d11]/60 via-[#0d0d11]/80 to-[#0d0d11]/60" />
