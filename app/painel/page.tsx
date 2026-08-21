@@ -195,8 +195,8 @@ export default function PainelPage() {
   const [impostoPct, setImpostoPct] = useState("6");
 
   // Precificacao
-  const [margemSelecionada, setMargemSelecionada] = useState<number | null>(30);
-  const [margemCustom, setMargemCustom] = useState("");
+  const [margemDesejadaPct, setMargemDesejadaPct] = useState("30");
+  const [custoProdutoManual, setCustoProdutoManual] = useState("");
   const [pesoProdutoKg, setPesoProdutoKg] = useState("");
   const [comissaoMLPct, setComissaoMLPct] = useState(String(COMISSAO_ML_CLASSICO_PCT).replace(".", ","));
   const [adsMLPct, setAdsMLPct] = useState("5");
@@ -235,8 +235,9 @@ export default function PainelPage() {
     custoEnergia + custoMaterial + custoManutencao + custoEmbalagem + custoMaoDeObra + custoFrete;
   const qtdPecas = Math.max(1, toNum(quantidadePecas) || 1);
   const custoPorPeca = custoTotal / qtdPecas;
+  const custoParaPrecificacao = toNum(custoProdutoManual) || custoTotal;
 
-  const margemAlvo = margemSelecionada ?? toNum(margemCustom);
+  const margemAlvo = toNum(margemDesejadaPct);
   const pesoRealKg = toNum(pesoProdutoKg) || toNum(pesoUsado) / 1000;
   const pesoCubadoKg = (toNum(comprimentoCm) * toNum(larguraCm) * toNum(alturaCm)) / 6000;
   const pesoKgParaML = Math.max(pesoRealKg, pesoCubadoKg || 0);
@@ -244,7 +245,7 @@ export default function PainelPage() {
 
   const resultadoML = useMemo(() => {
     const preco = resolverPreco({
-      custoTotal,
+      custoParaPrecificacao,
       impostoPct: toNum(impostoPct),
       adsPct: toNum(adsMLPct),
       margemAlvoPct: margemAlvo,
@@ -255,13 +256,13 @@ export default function PainelPage() {
     const fixa = taxaPesoML(pesoKgParaML) + flexCustoML;
     const imposto = preco * (toNum(impostoPct) / 100);
     const ads = preco * (toNum(adsMLPct) / 100);
-    const lucro = preco - comissao - fixa - imposto - ads - custoTotal;
+    const lucro = preco - comissao - fixa - imposto - ads - custoParaPrecificacao;
     return { preco, comissao, fixa, imposto, ads, lucro, margemPct: preco > 0 ? (lucro / preco) * 100 : 0 };
-  }, [custoTotal, impostoPct, adsMLPct, margemAlvo, comissaoMLPct, pesoKgParaML, flexCustoML]);
+  }, [custoParaPrecificacao, impostoPct, adsMLPct, margemAlvo, comissaoMLPct, pesoKgParaML, flexCustoML]);
 
   const resultadoShopee = useMemo(() => {
     const preco = resolverPreco({
-      custoTotal,
+      custoParaPrecificacao,
       impostoPct: toNum(impostoPct),
       adsPct: toNum(adsShopeePct),
       afiliadoPct: toNum(afiliadoShopeePct),
@@ -274,9 +275,9 @@ export default function PainelPage() {
     const imposto = preco * (toNum(impostoPct) / 100);
     const ads = preco * (toNum(adsShopeePct) / 100);
     const afiliado = preco * (toNum(afiliadoShopeePct) / 100);
-    const lucro = preco - comissao - fixa - imposto - ads - afiliado - custoTotal;
+    const lucro = preco - comissao - fixa - imposto - ads - afiliado - custoParaPrecificacao;
     return { preco, comissao, fixa, imposto, ads, afiliado, lucro, margemPct: preco > 0 ? (lucro / preco) * 100 : 0 };
-  }, [custoTotal, impostoPct, adsShopeePct, afiliadoShopeePct, margemAlvo]);
+  }, [custoParaPrecificacao, impostoPct, adsShopeePct, afiliadoShopeePct, margemAlvo]);
 
   return (
     <div className="min-h-screen bg-[#0a0a0d] px-4 py-6 sm:px-8">
@@ -478,52 +479,34 @@ export default function PainelPage() {
 
       {aba === "precificacao" && (
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between rounded-2xl border border-[#23232b] bg-[#131318] p-5">
-            <div>
-              <p className="text-[11px] text-[#8b8b96]">Custo de producao</p>
-              <p className="text-2xl font-bold text-green-400">{formatBRL(custoTotal)}</p>
+          <div className="rounded-2xl border border-[#23232b] bg-[#131318] p-5">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div className="max-w-[220px] flex-1">
+                <Field
+                  label="Custo do produto (por peca)"
+                  value={custoProdutoManual}
+                  onChange={setCustoProdutoManual}
+                  suffix="R$"
+                  placeholder={custoTotal > 0 ? custoTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0"}
+                />
+              </div>
+              <div className="text-right">
+                <p className="text-[11px] text-[#8b8b96]">Custo usado no calculo</p>
+                <p className="text-xl font-bold text-green-400">{formatBRL(custoParaPrecificacao)}</p>
+              </div>
             </div>
-            <button onClick={() => setAba("custos")} className="text-xs text-amber-400 hover:underline">
-              Editar custos
+            <p className="mt-2 text-[10px] leading-relaxed text-[#5c5c66]">
+              Digite aqui o custo real do seu produto. Se deixar em branco, o sistema usa o valor calculado na aba Custos (material + energia + mao de obra + embalagem etc) como referencia.
+            </p>
+            <button onClick={() => setAba("custos")} className="mt-1 text-xs text-amber-400 hover:underline">
+              Calcular esse valor na aba Custos
             </button>
           </div>
 
-          <Card icon="P9" title="Qual sua margem desejada?" subtitle="Selecione a margem de lucro para ver os precos sugeridos">
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-              {MARGENS_PRESET.map((m) => (
-                <button
-                  key={m}
-                  onClick={() => {
-                    setMargemSelecionada(m);
-                    setMargemCustom("");
-                  }}
-                  className={
-                    "rounded-lg border px-2 py-1.5 text-xs font-medium " +
-                    (margemSelecionada === m
-                      ? "border-amber-500 bg-[#2a1a0a] text-amber-400"
-                      : "border-[#2c2c36] text-[#c8c8d0]")
-                  }
-                >
-                  {m}%
-                </button>
-              ))}
-              <button
-                onClick={() => setMargemSelecionada(null)}
-                className={
-                  "rounded-lg border px-2 py-1.5 text-xs font-medium " +
-                  (margemSelecionada === null
-                    ? "border-amber-500 bg-[#2a1a0a] text-amber-400"
-                    : "border-[#2c2c36] text-[#c8c8d0]")
-                }
-              >
-                Outra
-              </button>
+          <Card icon="P9" title="Qual sua margem desejada?" subtitle="Digite a margem de lucro que voce quer pra ver os precos sugeridos">
+            <div className="max-w-[200px]">
+              <Field label="Margem liquida desejada" value={margemDesejadaPct} onChange={setMargemDesejadaPct} suffix="%" />
             </div>
-            {margemSelecionada === null && (
-              <div className="mt-2 max-w-[160px]">
-                <Field label="Margem liquida desejada" value={margemCustom} onChange={setMargemCustom} suffix="%" />
-              </div>
-            )}
           </Card>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
