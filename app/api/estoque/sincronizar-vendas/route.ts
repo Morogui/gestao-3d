@@ -27,6 +27,41 @@ function normalize(s: string): string {
     .trim();
 }
 
+// Credita/debita peças em estoque_placas com o mesmo padrão de upsert já
+// usado em /api/producoes/[id] e POST /api/estoque — 2026-08-21: essa
+// rota tinha o MESMO bug do REGUA BOLO 3X10 (placa 89), só que nos dois
+// sentidos (baixa de venda e devolução por cancelamento): um UPDATE
+// direto em estoque_placas falha em silêncio, sem erro, quando a placa
+// ainda não tem linha na tabela. O INSERT ... ON CONFLICT DO NOTHING
+// garante que a linha exista antes do UPDATE rodar.
+async function creditarPecas(placaId: number, pecas: number) {
+  if (!Number.isFinite(pecas) || pecas <= 0) return;
+  await sql`
+    INSERT INTO estoque_placas (placa_id, quantidade_pecas, atualizado_em)
+    VALUES (${placaId}, 0, now())
+    ON CONFLICT (placa_id) DO NOTHING
+  `;
+  await sql`
+    UPDATE estoque_placas
+    SET quantidade_pecas = quantidade_pecas + ${pecas}, atualizado_em = now()
+    WHERE placa_id = ${placaId}
+  `;
+}
+
+async function debitarPecas(placaId: number, pecas: number) {
+  if (!Number.isFinite(pecas) || pecas <= 0) return;
+  await sql`
+    INSERT INTO estoque_placas (placa_id, quantidade_pecas, atualizado_em)
+    VALUES (${placaId}, 0, now())
+    ON CONFLICT (placa_id) DO NOTHING
+  `;
+  await sql`
+    UPDATE estoque_placas
+    SET quantidade_pecas = GREATEST(0, quantidade_pecas - ${pecas}), atualizado_em = now()
+    WHERE placa_id = ${placaId}
+  `;
+}
+
 // Só olha pedidos CRIADOS nos últimos N dias — de propósito curto. Essa
 // baixa automática está começando agora (pedido do Guilherme em
 // 2026-07-22): não é um backfill de histórico. Se olhássemos meses pra
@@ -151,11 +186,7 @@ export async function POST() {
         `) as { id: number }[];
 
         if (inseridos.length > 0) {
-          await sql`
-            UPDATE estoque_placas
-            SET quantidade_pecas = GREATEST(0, quantidade_pecas - ${pecas}), atualizado_em = now()
-            WHERE placa_id = ${placaId}
-          `;
+          await debitarPecas(placaId, pecas);
           combosNovos += 1;
           pecasBaixadas += pecas;
           detalhes.push({
@@ -178,11 +209,7 @@ export async function POST() {
       `) as { id: number; placa_id: number; pecas: number }[];
 
       for (const row of existentes) {
-        await sql`
-          UPDATE estoque_placas
-          SET quantidade_pecas = quantidade_pecas + ${row.pecas}, atualizado_em = now()
-          WHERE placa_id = ${row.placa_id}
-        `;
+        await creditarPecas(row.placa_id, row.pecas);
         await sql`DELETE FROM baixas_estoque_vendas WHERE id = ${row.id}`;
         combosRevertidos += 1;
         pecasDevolvidas += row.pecas;
