@@ -42,6 +42,27 @@ export const DEFAULT_CONFIG_PRECIFICACAO: ConfigPrecificacao = {
 // Guilherme -- deu 11,49% a 11,50% em todos os pontos de preco testados.
 export const COMISSAO_ML_CLASSICO_PCT = 11.5;
 
+// Comissao do anuncio Premium no Mercado Livre. Faixa tipica de mercado
+// (Classico ~10-14%, Premium ~15-19%) -- o ML nao expoe uma tabela
+// publica fechada por categoria, entao esse e um valor de referencia
+// editavel; confira o breakdown real do seu anuncio (Central de
+// Vendedores) antes de fechar preco no Premium.
+export const COMISSAO_ML_PREMIUM_PCT = 16.5;
+
+// Tarifa fixa do ML quando o vendedor NAO oferece frete gratis (frete
+// pago pelo comprador). Nesse caso o ML cobra uma tarifa fixa por
+// faixa de preco, bem menor que a tarifa por peso do frete gratis, e
+// zera acima de ~R$79. Baseado em faixas publicamente divulgadas --
+// confirme no seu extrato antes de fechar preco (nao e uma tabela
+// auditada como a de frete gratis acima).
+export function taxaFixaMLSemFreteGratis(preco: number): number {
+      if (preco < 12.5) return 0;
+      if (preco < 29) return 6.25;
+      if (preco < 50) return 6.5;
+      if (preco < 79) return 6.75;
+      return 0;
+}
+
 // Tarifa fixa por peso do Mercado Livre. Substituiu a antiga taxa fixa
 // de R$6,75 em 2/mar/2026 -- agora e calculada por peso cubado (o maior
 // entre peso real e peso volumetrico, C x L x A / 6000) cruzado com faixa
