@@ -280,11 +280,8 @@ export default function PainelPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0d] px-4 py-6 sm:px-8">
-      <header className="mb-6 flex items-center gap-3">
+      <header className="mb-6 flex items-center justify-center">
         <img src="/logo-7x7.png" alt="7x7 Escala Ecommerce" className="h-12 w-auto sm:h-20" />
-        <div>
-          <h1 className="text-base font-semibold text-white sm:text-lg">Custo Produto 3D - Precificador Marketplace</h1>
-        </div>
       </header>
 
       <div className="mb-6 flex gap-2">
