@@ -425,7 +425,8 @@ export default function PainelPage() {
 
       <section className="mb-6 rounded-2xl border border-[#1f1f26] bg-[#0d0d11] px-6 py-12 text-center sm:px-10">
         <h2 className="text-2xl font-extrabold text-white sm:text-3xl">
-          <span className="text-amber-500">7 anos</span> no mercado de marketplace.
+          <span className="text-amber-500">11 anos</span> no Mercado de{" "}
+          <span className="text-amber-500">Marketplace</span>.
         </h2>
         <p className="mx-auto mt-3 max-w-xl text-sm text-[#8b8b96] sm:text-base">
           Tempo suficiente pra testar o que funciona e descartar o que só parece
