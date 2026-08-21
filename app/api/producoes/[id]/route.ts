@@ -48,6 +48,32 @@ async function descontarFilamento(cor: string | null, gramas: number) {
   `;
 }
 
+// Credita peças no estoque_placas de uma placa — 2026-08-21: passou a
+// usar o mesmo padrão de upsert (INSERT ... ON CONFLICT DO NOTHING antes
+// do UPDATE) já usado em ajustarFilamentoPorPecas/POST /api/estoque.
+// Motivo: nem toda placa tem uma linha em estoque_placas ainda na hora
+// de concluir a primeira produção dela (o mesmo bug já resolvido pro
+// ajuste manual em 2026-07-XX "Suporte Secador de Cabelo Preto" —
+// UPDATE sem linha nenhuma pra atualizar falha em silêncio, sem erro,
+// sem afetar nada). Foi exatamente o que aconteceu com REGUA BOLO 3X10
+// (placa 89): 3 produções concluídas com sucesso (status/concluido_em
+// gravados certinho) mas o crédito de peças nunca apareceu no estoque
+// porque a linha em estoque_placas nunca tinha sido criada. Backfill do
+// saldo real dessa placa específica feito à parte, direto no banco.
+async function creditarPecas(placaId: number, pecas: number) {
+  if (!Number.isFinite(pecas) || pecas === 0) return;
+  await sql`
+    INSERT INTO estoque_placas (placa_id, quantidade_pecas, atualizado_em)
+    VALUES (${placaId}, 0, now())
+    ON CONFLICT (placa_id) DO NOTHING
+  `;
+  await sql`
+    UPDATE estoque_placas
+    SET quantidade_pecas = quantidade_pecas + ${pecas}, atualizado_em = now()
+    WHERE placa_id = ${placaId}
+  `;
+}
+
 // Marca uma produção como concluída (credita o estoque da placa) ou
 // cancelada (não credita nada). É aqui que a peça "sai da impressora e
 // entra no estoque".
@@ -158,11 +184,7 @@ export async function PATCH(
       Number(quantidadePlacas) * pecasPorPlaca - pecasComFalha
     );
 
-    await sql`
-      UPDATE estoque_placas
-      SET quantidade_pecas = quantidade_pecas + ${pecasProduzidas}, atualizado_em = now()
-      WHERE placa_id = ${placaId}
-    `;
+    await creditarPecas(placaId, pecasProduzidas);
 
     // Placa "mista" (ex: Suporte Carro - Mista): cada impressão também
     // rende peças de uma OUTRA placa (saida_extra_placa_id), além da
@@ -174,11 +196,7 @@ export async function PATCH(
     let pecasExtraProduzidas = 0;
     if (saidaExtraPlacaId && saidaExtraPecas > 0) {
       pecasExtraProduzidas = Number(quantidadePlacas) * saidaExtraPecas;
-      await sql`
-        UPDATE estoque_placas
-        SET quantidade_pecas = quantidade_pecas + ${pecasExtraProduzidas}, atualizado_em = now()
-        WHERE placa_id = ${saidaExtraPlacaId}
-      `;
+      await creditarPecas(saidaExtraPlacaId, pecasExtraProduzidas);
     }
 
     // Baixa do estoque de filamento por cor — pedido do Guilherme em
