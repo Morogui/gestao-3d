@@ -454,6 +454,30 @@ export default function PainelPage() {
         </div>
       </section>
 
+      <section className="mb-6 overflow-hidden rounded-2xl bg-gradient-to-r from-amber-600 via-amber-500 to-orange-500 px-6 py-10 text-center sm:px-10">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-black/70">
+          Precificação
+        </p>
+        <h2 className="mx-auto mt-3 max-w-2xl text-2xl font-extrabold leading-tight text-black sm:text-4xl">
+          Sua precificação nas plataformas está correta?
+        </h2>
+        <p className="mx-auto mt-4 max-w-xl text-sm text-black/80 sm:text-base">
+          Confira agora nossa calculadora pra <span className="font-bold">Mercado Livre e Shopee</span>.{" "}
+          <span className="whitespace-nowrap">O custo disso: <span className="text-lg font-bold sm:text-xl">R$ 0,00</span>.</span>
+        </p>
+        <button
+          onClick={() => {
+            setAba("precificacao");
+            setMostrarFerramenta(true);
+            setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavior: "smooth" }), 50);
+          }}
+          className="mt-6 inline-flex items-center gap-2 rounded-full bg-black px-6 py-3 text-sm font-semibold text-white transition hover:bg-black/80"
+        >
+          Calcular minha precificação
+          <span aria-hidden>{"\u2192"}</span>
+        </button>
+      </section>
+
       <section className="mb-6 rounded-2xl border border-[#1f1f26] bg-[#0d0d11] px-6 py-12 text-center sm:px-10">
         <h2 className="text-2xl font-extrabold text-white sm:text-3xl">
           <span className="text-amber-500">11 anos</span> no Mercado de{" "}
@@ -480,30 +504,6 @@ export default function PainelPage() {
         <p className="mt-6 text-sm font-semibold text-white sm:text-base">
           É nisso que o Escala 7x7 Ecommerce foi construído.
         </p>
-      </section>
-
-      <section className="mb-6 overflow-hidden rounded-2xl bg-gradient-to-r from-amber-600 via-amber-500 to-orange-500 px-6 py-10 text-center sm:px-10">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-black/70">
-          Precificação
-        </p>
-        <h2 className="mx-auto mt-3 max-w-2xl text-2xl font-extrabold leading-tight text-black sm:text-4xl">
-          Sua precificação nas plataformas está correta?
-        </h2>
-        <p className="mx-auto mt-4 max-w-xl text-sm text-black/80 sm:text-base">
-          Confira agora nossa calculadora pra <span className="font-bold">Mercado Livre e Shopee</span>, o custo disso:{" "}
-          <span className="text-lg font-bold sm:text-xl">R$ 0,00</span>.
-        </p>
-        <button
-          onClick={() => {
-            setAba("precificacao");
-            setMostrarFerramenta(true);
-            setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavior: "smooth" }), 50);
-          }}
-          className="mt-6 inline-flex items-center gap-2 rounded-full bg-black px-6 py-3 text-sm font-semibold text-white transition hover:bg-black/80"
-        >
-          Calcular minha precificação
-          <span aria-hidden>{"\u2192"}</span>
-        </button>
       </section>
 
 
