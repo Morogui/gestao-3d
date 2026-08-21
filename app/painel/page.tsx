@@ -429,7 +429,9 @@ export default function PainelPage() {
         </h2>
         <p className="mx-auto mt-3 max-w-xl text-sm text-[#8b8b96] sm:text-base">
           Tempo suficiente pra testar o que funciona e descartar o que só parece
-          funcionar. Gestão de conta, execução de campanha, precificação e produção —
+          funcionar.
+          <br />
+          Gestão de conta, execução de campanha, precificação e produção —
           validado na prática, todo dia.
         </p>
 
@@ -439,15 +441,6 @@ export default function PainelPage() {
             <div className="absolute inset-y-0 left-0 w-full rounded-full bg-gradient-to-r from-amber-600 to-amber-400" />
           </div>
           <span className="text-xs font-semibold text-amber-500">hoje</span>
-        </div>
-
-        <div className="mt-6 flex flex-wrap justify-center gap-2">
-          <span className="rounded-full border border-[#2a2a33] px-4 py-2 text-sm text-white">
-            Gestão
-          </span>
-          <span className="rounded-full border border-[#2a2a33] px-4 py-2 text-sm text-white">
-            Execução
-          </span>
         </div>
 
         <p className="mt-6 text-sm font-semibold text-white sm:text-base">
