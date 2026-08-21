@@ -250,7 +250,7 @@ export default function PainelPage() {
 
   const resultadoML = useMemo(() => {
     const preco = resolverPreco({
-      custoParaPrecificacao,
+      custoTotal: custoParaPrecificacao,
       impostoPct: toNum(impostoPct),
       adsPct: toNum(adsMLPct),
       margemAlvoPct: margemAlvo,
@@ -267,7 +267,7 @@ export default function PainelPage() {
 
   const resultadoShopee = useMemo(() => {
     const preco = resolverPreco({
-      custoParaPrecificacao,
+      custoTotal: custoParaPrecificacao,
       impostoPct: toNum(impostoPct),
       adsPct: toNum(adsShopeePct),
       afiliadoPct: usaAfiliadoShopee ? toNum(afiliadoShopeePct) : 0,
