@@ -8,6 +8,7 @@ import {
   taxaFixaShopee,
   COMISSAO_ML_CLASSICO_PCT,
   COMISSAO_ML_PREMIUM_PCT,
+  CATEGORIAS_ML,
   formatBRL,
 } from "@/lib/precificacao";
 
@@ -238,6 +239,7 @@ export default function PainelPage() {
   const [afiliadoMLPct, setAfiliadoMLPct] = useState("0");
   const [usaAfiliadoML, setUsaAfiliadoML] = useState(false);
   const [tipoAnuncioML, setTipoAnuncioML] = useState<"classico" | "premium">("classico");
+  const [categoriaML, setCategoriaML] = useState("Casa, Moveis e Decoracao");
   const [freteGratisML, setFreteGratisML] = useState(true);
   const [usaFlexML, setUsaFlexML] = useState(false);
   const [custoFlexML, setCustoFlexML] = useState("");
@@ -765,6 +767,28 @@ export default function PainelPage() {
                 </div>
               </div>
 
+              <div className="mb-2">
+                <p className="mb-1.5 text-[11px] font-medium text-[#c8c8d0]">Categoria (Mercado Livre)</p>
+                <select
+                  value={categoriaML}
+                  onChange={(e) => {
+                    const nome = e.target.value;
+                    setCategoriaML(nome);
+                    const cat = CATEGORIAS_ML.find((c) => c.nome === nome);
+                    if (cat) {
+                      const pct = tipoAnuncioML === "premium" ? cat.premiumPct : cat.classicoPct;
+                      setComissaoMLPct(String(pct).replace(".", ","));
+                    }
+                  }}
+                  className="w-full rounded-lg border border-[#2c2c36] bg-[#0e0e12] px-2.5 py-1.5 text-sm text-white outline-none"
+                >
+                  {CATEGORIAS_ML.map((cat) => (
+                    <option key={cat.nome} value={cat.nome}>{cat.nome}</option>
+                  ))}
+                  <option value="outra">Outra (digitar manualmente)</option>
+                </select>
+              </div>
+
               <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div>
                   <p className="mb-1.5 text-[11px] font-medium text-[#c8c8d0]">Tipo de anuncio</p>
@@ -773,7 +797,8 @@ export default function PainelPage() {
                       type="button"
                       onClick={() => {
                         setTipoAnuncioML("classico");
-                        setComissaoMLPct(String(COMISSAO_ML_CLASSICO_PCT).replace(".", ","));
+                        const catC = CATEGORIAS_ML.find((c) => c.nome === categoriaML);
+                        setComissaoMLPct(String(catC ? catC.classicoPct : COMISSAO_ML_CLASSICO_PCT).replace(".", ","));
                       }}
                       className={
                         "rounded-lg border px-2 py-1.5 text-xs font-medium " +
@@ -786,7 +811,8 @@ export default function PainelPage() {
                       type="button"
                       onClick={() => {
                         setTipoAnuncioML("premium");
-                        setComissaoMLPct(String(COMISSAO_ML_PREMIUM_PCT).replace(".", ","));
+                        const catP = CATEGORIAS_ML.find((c) => c.nome === categoriaML);
+                        setComissaoMLPct(String(catP ? catP.premiumPct : COMISSAO_ML_PREMIUM_PCT).replace(".", ","));
                       }}
                       className={
                         "rounded-lg border px-2 py-1.5 text-xs font-medium " +
