@@ -56,13 +56,6 @@ import {
 // quer vender e ver a margem liquida resultante em cada plataforma (o
 // mesmo preco e aplicado nas duas, mas a margem final difere porque as
 // taxas de ML e Shopee sao diferentes).
-//
-// 2026-08-21 (3): adicionado comparativo de Flex tambem na Shopee (Shopee
-// Entrega Direta / Envio Flex, mesmo conceito do Flex do ML: entrega
-// propria em vez de Correios/transportadora da Shopee) e um campo de
-// Embalagem separado na propria aba Precificacao (antes so existia
-// embalagem na aba Custo Produto 3D - pedido do Guilherme pra poder usar
-// a aba Precificacao 100% sozinha, sem depender da outra aba).
 
 function toNum(v: string): number {
   const n = Number(v.replace(",", "."));
@@ -289,9 +282,8 @@ export default function PainelPage() {
   const flexLiquidoShopee = Math.max(0, toNum(custoFlexShopee) - toNum(reembolsoFlexShopee));
 
   const resultadoML = useMemo(() => {
-    const afiliadoPctAtivo = usaAfiliadoML ? toNum(afiliadoMLPct) : 0;
-
-    function calcular(comFlex: boolean) {
+    function calcular(comFlex: boolean, comAfiliado: boolean) {
+      const afiliadoPctAtivo = comAfiliado ? toNum(afiliadoMLPct) : 0;
       const taxaFixaFn = (preco: number) =>
         (freteGratisML ? taxaPesoML(pesoKgParaML, preco) : taxaFixaMLSemFreteGratis(preco)) +
         (comFlex ? flexLiquidoML : 0);
@@ -316,10 +308,12 @@ export default function PainelPage() {
       return { preco, comissao, fixa, imposto, ads, afiliado, lucro, margemPct: preco > 0 ? (lucro / preco) * 100 : 0 };
     }
 
-    const semFlex = calcular(false);
-    const comFlex = calcular(true);
-    const ativo = usaFlexML ? comFlex : semFlex;
-    return { ...ativo, semFlex, comFlex };
+    const ativo = calcular(usaFlexML, usaAfiliadoML);
+    const semFlex = calcular(false, usaAfiliadoML);
+    const comFlex = calcular(true, usaAfiliadoML);
+    const semAfiliado = calcular(usaFlexML, false);
+    const comAfiliado = calcular(usaFlexML, true);
+    return { ...ativo, semFlex, comFlex, semAfiliado, comAfiliado };
   }, [
     custoParaPrecificacao,
     impostoPct,
@@ -337,9 +331,8 @@ export default function PainelPage() {
   ]);
 
   const resultadoShopee = useMemo(() => {
-    const afiliadoPctAtivo = usaAfiliadoShopee ? toNum(afiliadoShopeePct) : 0;
-
-    function calcular(comFlex: boolean) {
+    function calcular(comFlex: boolean, comAfiliado: boolean) {
+      const afiliadoPctAtivo = comAfiliado ? toNum(afiliadoShopeePct) : 0;
       const taxaFixaFn = (preco: number) => taxaFixaShopee(preco) + (comFlex ? flexLiquidoShopee : 0);
       const preco =
         modoPrecificacao === "preco"
@@ -362,10 +355,12 @@ export default function PainelPage() {
       return { preco, comissao, fixa, imposto, ads, afiliado, lucro, margemPct: preco > 0 ? (lucro / preco) * 100 : 0 };
     }
 
-    const semFlex = calcular(false);
-    const comFlex = calcular(true);
-    const ativo = usaFlexShopee ? comFlex : semFlex;
-    return { ...ativo, semFlex, comFlex };
+    const ativo = calcular(usaFlexShopee, usaAfiliadoShopee);
+    const semFlex = calcular(false, usaAfiliadoShopee);
+    const comFlex = calcular(true, usaAfiliadoShopee);
+    const semAfiliado = calcular(usaFlexShopee, false);
+    const comAfiliado = calcular(usaFlexShopee, true);
+    return { ...ativo, semFlex, comFlex, semAfiliado, comAfiliado };
   }, [
     custoParaPrecificacao,
     impostoPct,
@@ -830,6 +825,18 @@ export default function PainelPage() {
                     <Field label="Afiliado ML (%)" value={afiliadoMLPct} onChange={setAfiliadoMLPct} suffix="%" />
                   </div>
                 )}
+                <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-[#0e0e12] p-3">
+                  <div>
+                    <p className="text-[11px] text-[#8b8b96]">Sem afiliados</p>
+                    <p className="text-lg font-bold text-white">{formatBRL(resultadoML.semAfiliado.preco)}</p>
+                    <p className="text-[10px] text-[#8b8b96]">Lucro <span className="text-green-400">{formatBRL(resultadoML.semAfiliado.lucro)}</span></p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-[#8b8b96]">Com afiliados</p>
+                    <p className="text-lg font-bold text-white">{formatBRL(resultadoML.comAfiliado.preco)}</p>
+                    <p className="text-[10px] text-[#8b8b96]">Lucro <span className="text-green-400">{formatBRL(resultadoML.comAfiliado.lucro)}</span></p>
+                  </div>
+                </div>
                 <p className="mt-1 text-[10px] leading-relaxed text-[#5c5c66]">
                   Parceiros Mercado Livre: comissao paga a criadores/afiliados que divulgam seu produto - so entra na conta se voce marcar "Uso afiliados" acima.
                 </p>
@@ -905,6 +912,18 @@ export default function PainelPage() {
                 {usaAfiliadoShopee && (
                   <Field label="Afiliado (%)" value={afiliadoShopeePct} onChange={setAfiliadoShopeePct} suffix="%" />
                 )}
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-[#0e0e12] p-3">
+                <div>
+                  <p className="text-[11px] text-[#8b8b96]">Sem afiliados</p>
+                  <p className="text-lg font-bold text-white">{formatBRL(resultadoShopee.semAfiliado.preco)}</p>
+                  <p className="text-[10px] text-[#8b8b96]">Lucro <span className="text-green-400">{formatBRL(resultadoShopee.semAfiliado.lucro)}</span></p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-[#8b8b96]">Com afiliados</p>
+                  <p className="text-lg font-bold text-white">{formatBRL(resultadoShopee.comAfiliado.preco)}</p>
+                  <p className="text-[10px] text-[#8b8b96]">Lucro <span className="text-green-400">{formatBRL(resultadoShopee.comAfiliado.lucro)}</span></p>
+                </div>
               </div>
               <p className="mt-1 text-[10px] leading-relaxed text-[#5c5c66]">
                 Ads: seu investimento em Shopee Ads sobre a venda. Afiliado: comissao paga a criadores de conteudo/afiliados que divulgam seu produto - so entra na conta se voce marcar "Uso afiliados" acima.
