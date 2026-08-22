@@ -2191,7 +2191,7 @@ function PrinterCard({
           <div className="flex flex-wrap gap-2">
             <button
               disabled={carregando}
-              onClick={() => onConcluir(producao.id)}
+                        onClick={() => { if (window.confirm("Confirmar que essa placa foi impressa com sucesso? Isso vai dar baixa no estoque.")) onConcluir(producao.id); }}
               className="rounded bg-green-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-40"
             >
               {carregando ? "Salvando..." : "Placa impressa com sucesso"}
@@ -2212,7 +2212,7 @@ function PrinterCard({
             </button>
             <button
               disabled={carregando}
-              onClick={() => onCancelar(producao.id)}
+                        onClick={() => { if (window.confirm("Cancelar essa produção? Isso vai descartar o que estava sendo impresso nessa placa.")) onCancelar(producao.id); }}
               className="rounded px-2.5 py-1.5 text-xs text-gray-500 hover:underline disabled:opacity-40"
             >
               Cancelar
