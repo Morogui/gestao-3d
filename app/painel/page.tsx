@@ -473,19 +473,19 @@ export default function PainelPage() {
           <span className="absolute right-[16%] top-[68%] font-mono text-lg font-bold text-black/15 sm:text-xl" style={{ animation: "ctaFloatPrice 6s ease-in-out infinite", animationDelay: "1.2s" }}>R$ 0,00</span>
           <span className="absolute left-[10%] bottom-[8%] font-mono text-lg font-bold text-black/15 sm:text-xl" style={{ animation: "ctaFloatPrice 7.5s ease-in-out infinite", animationDelay: "2s" }}>34,99</span>
           <span className="absolute right-[34%] bottom-[6%] font-mono text-xl font-bold text-black/20 sm:text-2xl" style={{ animation: "ctaFloatPrice 6.2s ease-in-out infinite", animationDelay: "0.6s" }}>+15%</span>
-          <div className="absolute left-[3%] bottom-[6%] flex h-10 items-end gap-1 sm:h-14">
-            <div className="w-1.5 rounded-t bg-black/20 sm:w-2" style={{ height: "40%", transformOrigin: "bottom", animation: "ctaBarPulse 2.2s ease-in-out infinite" }} />
-            <div className="w-1.5 rounded-t bg-black/20 sm:w-2" style={{ height: "70%", transformOrigin: "bottom", animation: "ctaBarPulse 2.6s ease-in-out infinite", animationDelay: "0.3s" }} />
-            <div className="w-1.5 rounded-t bg-black/20 sm:w-2" style={{ height: "55%", transformOrigin: "bottom", animation: "ctaBarPulse 2.4s ease-in-out infinite", animationDelay: "0.6s" }} />
-            <div className="w-1.5 rounded-t bg-black/20 sm:w-2" style={{ height: "85%", transformOrigin: "bottom", animation: "ctaBarPulse 2.8s ease-in-out infinite", animationDelay: "0.15s" }} />
-            <div className="w-1.5 rounded-t bg-black/20 sm:w-2" style={{ height: "65%", transformOrigin: "bottom", animation: "ctaBarPulse 2.3s ease-in-out infinite", animationDelay: "0.45s" }} />
+          <div className="absolute left-[3%] inset-y-0 flex items-end gap-1">
+            <div className="w-1.5 rounded-t bg-white/25 sm:w-2" style={{ height: "40%", transformOrigin: "bottom", animation: "ctaBarPulse 2.2s ease-in-out infinite" }} />
+            <div className="w-1.5 rounded-t bg-white/25 sm:w-2" style={{ height: "70%", transformOrigin: "bottom", animation: "ctaBarPulse 2.6s ease-in-out infinite", animationDelay: "0.3s" }} />
+            <div className="w-1.5 rounded-t bg-white/25 sm:w-2" style={{ height: "55%", transformOrigin: "bottom", animation: "ctaBarPulse 2.4s ease-in-out infinite", animationDelay: "0.6s" }} />
+            <div className="w-1.5 rounded-t bg-white/25 sm:w-2" style={{ height: "85%", transformOrigin: "bottom", animation: "ctaBarPulse 2.8s ease-in-out infinite", animationDelay: "0.15s" }} />
+            <div className="w-1.5 rounded-t bg-white/25 sm:w-2" style={{ height: "65%", transformOrigin: "bottom", animation: "ctaBarPulse 2.3s ease-in-out infinite", animationDelay: "0.45s" }} />
           </div>
-          <div className="absolute right-[3%] bottom-[6%] flex h-10 items-end gap-1 sm:h-14">
-            <div className="w-1.5 rounded-t bg-black/20 sm:w-2" style={{ height: "60%", transformOrigin: "bottom", animation: "ctaBarPulse 2.5s ease-in-out infinite", animationDelay: "0.2s" }} />
-            <div className="w-1.5 rounded-t bg-black/20 sm:w-2" style={{ height: "35%", transformOrigin: "bottom", animation: "ctaBarPulse 2.1s ease-in-out infinite", animationDelay: "0.5s" }} />
-            <div className="w-1.5 rounded-t bg-black/20 sm:w-2" style={{ height: "80%", transformOrigin: "bottom", animation: "ctaBarPulse 2.7s ease-in-out infinite", animationDelay: "0.1s" }} />
-            <div className="w-1.5 rounded-t bg-black/20 sm:w-2" style={{ height: "50%", transformOrigin: "bottom", animation: "ctaBarPulse 2.4s ease-in-out infinite", animationDelay: "0.7s" }} />
-            <div className="w-1.5 rounded-t bg-black/20 sm:w-2" style={{ height: "90%", transformOrigin: "bottom", animation: "ctaBarPulse 2.9s ease-in-out infinite", animationDelay: "0.35s" }} />
+          <div className="absolute right-[3%] inset-y-0 flex items-end gap-1">
+            <div className="w-1.5 rounded-t bg-white/25 sm:w-2" style={{ height: "60%", transformOrigin: "bottom", animation: "ctaBarPulse 2.5s ease-in-out infinite", animationDelay: "0.2s" }} />
+            <div className="w-1.5 rounded-t bg-white/25 sm:w-2" style={{ height: "35%", transformOrigin: "bottom", animation: "ctaBarPulse 2.1s ease-in-out infinite", animationDelay: "0.5s" }} />
+            <div className="w-1.5 rounded-t bg-white/25 sm:w-2" style={{ height: "80%", transformOrigin: "bottom", animation: "ctaBarPulse 2.7s ease-in-out infinite", animationDelay: "0.1s" }} />
+            <div className="w-1.5 rounded-t bg-white/25 sm:w-2" style={{ height: "50%", transformOrigin: "bottom", animation: "ctaBarPulse 2.4s ease-in-out infinite", animationDelay: "0.7s" }} />
+            <div className="w-1.5 rounded-t bg-white/25 sm:w-2" style={{ height: "90%", transformOrigin: "bottom", animation: "ctaBarPulse 2.9s ease-in-out infinite", animationDelay: "0.35s" }} />
           </div>
         </div>
         <div className="relative z-10">
