@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   taxaPesoML,
   taxaFixaMLSemFreteGratis,
@@ -185,6 +186,7 @@ function LinhaTaxa({ label, valor, destaque = false }: { label: string; valor: s
 }
 
 export default function PainelPage() {
+    const router = useRouter();
   const [aba, setAba] = useState<"custos" | "precificacao">("precificacao");
   const [mostrarFerramenta, setMostrarFerramenta] = useState(false);
 
@@ -386,10 +388,8 @@ export default function PainelPage() {
       <div className="mb-6 flex gap-2">
         <button
           onClick={() => {
-            setAba("precificacao");
-            setMostrarFerramenta(true);
-            setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavior: "smooth" }), 50);
-          }}
+            router.push("/precificacao");
+                    }}
           className={
             "rounded-lg px-4 py-2 text-sm font-medium " +
             (aba === "precificacao" ? "bg-amber-500 text-black" : "bg-[#131318] text-[#8b8b96] border border-[#23232b]")
@@ -399,10 +399,8 @@ export default function PainelPage() {
         </button>
         <button
           onClick={() => {
-            setAba("custos");
-            setMostrarFerramenta(true);
-            setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavior: "smooth" }), 50);
-          }}
+            router.push("/custo");
+                    }}
           className={
             "rounded-lg px-4 py-2 text-sm font-medium " +
             (aba === "custos" ? "bg-amber-500 text-black" : "bg-[#131318] text-[#8b8b96] border border-[#23232b]")
