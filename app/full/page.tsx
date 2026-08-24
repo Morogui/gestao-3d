@@ -186,7 +186,7 @@ export default function FullPage() {
       } else {
         porChave.set(chaveGrupo, {
           chaveGrupo,
-          sku: l.sku || l.nome,
+          sku: l.sku || l.titulo || l.nome,
           nome: l.nome,
           titulo: l.titulo,
           placaIds: [l.placaId],
