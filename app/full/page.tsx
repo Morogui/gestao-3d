@@ -672,6 +672,17 @@ function AgendamentoFullPanel({
   const [resultadosBusca, setResultadosBusca] = useState<SkuResult[]>([]);
   const [gruposExtras, setGruposExtras] = useState<GrupoAgendamento[]>([]);
   const todosGrupos = [...grupos, ...gruposExtras];
+  
+  const [estoquePorPlaca, setEstoquePorPlaca] = useState<Record<number, number>>({});
+
+  useEffect(() => {
+    if (!aberto) return;
+    fetch("/api/estoque")
+      .then((r) => r.json())
+      .then((dados: { id: number; estoque: number }[]) => {
+        setEstoquePorPlaca(Object.fromEntries(dados.map((d) => [d.id, d.estoque])));
+      });
+  }, [aberto]);
 
   useEffect(() => {
     if (buscaProduto.trim().length < 2) {
@@ -797,10 +808,15 @@ function AgendamentoFullPanel({
                       key={r.sku}
                       type="button"
                       onClick={() => adicionarProduto(r)}
-                      className="block w-full border-b border-gray-100 px-3 py-2 text-left text-xs last:border-0 hover:bg-gray-50"
+                      className="flex w-full items-center justify-between gap-2 border-b border-gray-100 px-3 py-2 text-left text-xs last:border-0 hover:bg-gray-50"
                     >
-                      <p className="font-medium text-gray-900">{r.sku}</p>
-                      <p className="text-gray-400">{r.placa_nome}</p>
+                      <span>
+                        <p className="font-medium text-gray-900">{r.sku}</p>
+                        <p className="text-gray-400">{r.placa_nome}</p>
+                      </span>
+                      <span className="shrink-0 whitespace-nowrap text-gray-500">
+                        Estoque: {estoquePorPlaca[r.placa_id] ?? "-"}
+                      </span>
                     </button>
                   ))}
                 </div>
