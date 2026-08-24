@@ -835,6 +835,7 @@ function AgendamentoFullPanel({
                     <th className="px-3 py-2">Incluir</th>
                     <th className="px-3 py-2">Produto / SKU</th>
                     <th className="px-3 py-2 text-right">Vendido (7d)</th>
+                                        <th className="px-3 py-2 text-right">Estoque</th>
                     <th className="px-3 py-2 text-right">Quantidade a enviar</th>
                   </tr>
                 </thead>
@@ -861,6 +862,7 @@ function AgendamentoFullPanel({
                         )}
                       </td>
                       <td className="px-3 py-2 text-right text-gray-700">{g.vendidoFull7d}</td>
+                                            <td className="px-3 py-2 text-right text-gray-700">{g.placaIds.reduce((soma, id) => soma + (estoquePorPlaca[id] ?? 0), 0)}</td>
                       <td className="px-3 py-2 text-right">
                         <input
                           type="number"
