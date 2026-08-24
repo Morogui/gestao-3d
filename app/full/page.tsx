@@ -668,6 +668,46 @@ function AgendamentoFullPanel({
   const [incluidos, setIncluidos] = useState<Record<string, boolean>>({});
   const [dataEnvio, setDataEnvio] = useState(todaySP());
   const [enviando, setEnviando] = useState(false);
+    const [buscaProduto, setBuscaProduto] = useState("");
+  const [resultadosBusca, setResultadosBusca] = useState<SkuResult[]>([]);
+  const [gruposExtras, setGruposExtras] = useState<GrupoAgendamento[]>([]);
+  const todosGrupos = [...grupos, ...gruposExtras];
+
+  useEffect(() => {
+    if (buscaProduto.trim().length < 2) {
+      setResultadosBusca([]);
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      const res = await fetch(
+        `/api/skus?q=${encodeURIComponent(buscaProduto.trim())}&agrupar=false`
+      );
+      const dados: SkuResult[] = await res.json();
+      const jaIncluidos = new Set(todosGrupos.map((g) => g.chaveGrupo));
+      setResultadosBusca(dados.filter((r) => !jaIncluidos.has(r.sku)));
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [buscaProduto]);
+
+  function adicionarProduto(r: SkuResult) {
+    const chave = r.sku;
+    const novoGrupo: GrupoAgendamento = {
+      chaveGrupo: chave,
+      sku: r.sku,
+      nome: r.placa_nome,
+      titulo: "",
+      placaIds: [r.placa_id],
+      pecasPorUnidade: { [r.placa_id]: Number(r.pecas_por_unidade) || 1 },
+      vendidoFull7d: 0,
+      recomendado: 0,
+    };
+    setGruposExtras((prev) => [...prev, novoGrupo]);
+    setIncluidos((prev) => ({ ...prev, [chave]: true }));
+    setQuantidades((prev) => ({ ...prev, [chave]: "0" }));
+    setBuscaProduto("");
+    setResultadosBusca([]);
+  }
+
 
   useEffect(() => {
     if (!aberto) return;
@@ -680,12 +720,12 @@ function AgendamentoFullPanel({
 
   if (!aberto) return null;
 
-  const totalSelecionado = grupos
+  const totalSelecionado = todosGrupos
     .filter((g) => incluidos[g.chaveGrupo])
     .reduce((soma, g) => soma + (Number(quantidades[g.chaveGrupo]) || 0), 0);
 
   async function confirmar() {
-    const itens = grupos
+    const itens = todosGrupos
       .filter((g) => incluidos[g.chaveGrupo])
       .map((g) => ({
         sku: g.sku,
@@ -738,7 +778,36 @@ function AgendamentoFullPanel({
               className="rounded border border-gray-300 px-2 py-1.5 text-sm"
             />
           </div>
-          {grupos.length === 0 ? (
+          <div className="mb-4">
+            <label className="mb-1 block text-xs font-medium text-gray-500">
+              Adicionar produto ao envio
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                value={buscaProduto}
+                onChange={(e) => setBuscaProduto(e.target.value)}
+                placeholder="Buscar produto por nome ou SKU..."
+                className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+              />
+              {resultadosBusca.length > 0 && (
+                <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded border border-gray-200 bg-white shadow-lg">
+                  {resultadosBusca.map((r) => (
+                    <button
+                      key={r.sku}
+                      type="button"
+                      onClick={() => adicionarProduto(r)}
+                      className="block w-full border-b border-gray-100 px-3 py-2 text-left text-xs last:border-0 hover:bg-gray-50"
+                    >
+                      <p className="font-medium text-gray-900">{r.sku}</p>
+                      <p className="text-gray-400">{r.placa_nome}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          {todosGrupos.length === 0 ? (
             <p className="text-sm text-gray-400">
               Nenhum produto com recomendação de envio essa semana.
             </p>
@@ -754,7 +823,7 @@ function AgendamentoFullPanel({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {grupos.map((g) => (
+                  {todosGrupos.map((g) => (
                     <tr key={g.chaveGrupo}>
                       <td className="px-3 py-2">
                         <input
@@ -799,7 +868,7 @@ function AgendamentoFullPanel({
         </div>
         <div className="flex items-center justify-between border-t border-gray-200 p-4">
           <p className="text-xs text-gray-500">
-            {grupos.filter((g) => incluidos[g.chaveGrupo]).length} produto(s)
+            {todosGrupos.filter((g) => incluidos[g.chaveGrupo]).length} produto(s)
             selecionado(s) · {totalSelecionado} peças no total
           </p>
           <div className="flex gap-2">
@@ -812,7 +881,7 @@ function AgendamentoFullPanel({
             </button>
             <button
               type="button"
-              disabled={enviando || grupos.length === 0}
+              disabled={enviando || todosGrupos.length === 0}
               onClick={confirmar}
               className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-40"
             >
