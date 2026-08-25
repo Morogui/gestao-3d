@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   taxaPesoML,
   taxaFixaMLSemFreteGratis,
@@ -125,18 +125,20 @@ function Card({
   subtitle,
   children,
 titleClassName,
+titleStyle,
 }: {
   icon: React.ReactNode;
   title: string;
   subtitle?: string;
   children: React.ReactNode;
 titleClassName?: string;
+titleStyle?: React.CSSProperties;
 }) {
   return (
     <div className="rounded-2xl border border-[#23232b] bg-[#131318] p-5">
       <div className="mb-4 flex items-start gap-3">
                 <div>
-          <h3 className={"text-sm font-semibold " + (titleClassName || "text-white")}>{title}</h3>
+          <h3 className={titleClassName || "text-sm font-semibold text-white"} style={titleStyle}>{title}</h3>
           {subtitle && <p className="mt-0.5 text-[11px] text-[#8b8b96]">{subtitle}</p>}
         </div>
       </div>
@@ -188,6 +190,15 @@ function LinhaTaxa({ label, valor, destaque = false }: { label: string; valor: s
 }
 
 export default function PainelPage() {
+useEffect(() => {
+if (document.getElementById("fonts-marketplace")) return;
+const link = document.createElement("link");
+link.id = "fonts-marketplace";
+link.rel = "stylesheet";
+link.href = "https://fonts.googleapis.com/css2?family=Montserrat:wght@800;900&family=Roboto:wght@700;900&display=swap";
+document.head.appendChild(link);
+}, []);
+
   const [aba, setAba] = useState<"custos" | "precificacao">("precificacao");
   const [mostrarFerramenta, setMostrarFerramenta] = useState(false);
 
@@ -798,7 +809,7 @@ onClickCapture={() => setCardFocado("ml")}
 onMouseEnter={() => setCardFocado("ml")}
 className={"transition-opacity duration-200 " + (cardFocado === "shopee" ? "opacity-40" : "opacity-100")}
 >
-<Card icon="ML" title="Mercado Livre" titleClassName="text-[#FFE600]" subtitle="Comissao + taxa fixa por peso + imposto + ads">
+<Card icon="ML" title="Mercado Livre" titleClassName="text-2xl font-extrabold text-[#FFE600]" titleStyle={{ fontFamily: "'Montserrat', sans-serif" }} subtitle="Comissao + taxa fixa por peso + imposto + ads">
               <div className="mb-3 grid grid-cols-1 gap-2 rounded-lg bg-[#0e0e12] p-3 sm:grid-cols-2">
                 <div>
                   <p className="text-[11px] text-[#8b8b96]">Preco de venda</p>
@@ -1044,7 +1055,7 @@ onClickCapture={() => setCardFocado("shopee")}
 onMouseEnter={() => setCardFocado("shopee")}
 className={"transition-opacity duration-200 " + (cardFocado === "ml" ? "opacity-40" : "opacity-100")}
 >
-<Card icon="SH" title="Shopee" titleClassName="text-[#EE4D2D]" subtitle="Comissao + taxa fixa automatica + ads + afiliado">
+<Card icon="SH" title="Shopee" titleClassName="text-2xl font-black text-[#EE4D2D]" titleStyle={{ fontFamily: "'Roboto', sans-serif" }} subtitle="Comissao + taxa fixa automatica + ads + afiliado">
               <div className="mb-3 grid grid-cols-1 gap-2 rounded-lg bg-[#0e0e12] p-3 sm:grid-cols-2">
                 <div>
                   <p className="text-[11px] text-[#8b8b96]">Preco de venda</p>
