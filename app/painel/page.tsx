@@ -150,26 +150,28 @@ function Field({
   onChange,
   suffix,
   placeholder = "0",
+highlight = false,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   suffix?: string;
   placeholder?: string;
+highlight?: boolean;
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[11px] text-[#8b8b96]">{label}</span>
-      <div className="flex items-center gap-1.5 rounded-lg border border-[#2c2c36] bg-[#0e0e12] px-2.5 py-1.5">
+      <span className={highlight ? "text-[11px] font-semibold text-amber-400" : "text-[11px] text-[#8b8b96]"}>{label}</span>
+      <div className={highlight ? "flex items-center gap-1.5 rounded-lg border border-amber-500 bg-[#1c1206] ring-1 ring-amber-500/30 px-2.5 py-1.5" : "flex items-center gap-1.5 rounded-lg border border-[#2c2c36] bg-[#0e0e12] px-2.5 py-1.5"}>
         <input
           type="text"
           inputMode="decimal"
           value={value}
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full bg-transparent text-base text-white outline-none placeholder:text-[#5c5c66] sm:text-sm"
+          className={highlight ? "w-full bg-transparent text-lg font-bold text-amber-300 outline-none placeholder:text-[#5c5c66] sm:text-base" : "w-full bg-transparent text-base text-white outline-none placeholder:text-[#5c5c66] sm:text-sm"}
         />
-        {suffix && <span className="text-xs text-[#5c5c66]">{suffix}</span>}
+        {suffix && <span className={highlight ? "text-xs font-semibold text-amber-400" : "text-xs text-[#5c5c66]"}>{suffix}</span>}
       </div>
     </label>
   );
@@ -234,6 +236,7 @@ export default function PainelPage() {
   const [afiliadoShopeePct, setAfiliadoShopeePct] = useState("0");
   const [usaAfiliadoShopee, setUsaAfiliadoShopee] = useState(false);
   const [usaFlexShopee, setUsaFlexShopee] = useState(false);
+const [cardFocado, setCardFocado] = useState("");
   const [custoFlexShopee, setCustoFlexShopee] = useState("");
   const [reembolsoFlexShopee, setReembolsoFlexShopee] = useState("");
   const [afiliadoMLPct, setAfiliadoMLPct] = useState("0");
@@ -725,7 +728,8 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                   onChange={setCustoProdutoManual}
                   suffix="R$"
                   placeholder={custoTotal > 0 ? custoTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0"}
-                />
+                highlight
+/>
               </div>
               <div className="max-w-[220px] flex-1">
                 <Field label="Embalagem (por peca)" value={embalagemPrecificacao} onChange={setEmbalagemPrecificacao} suffix="R$" />
@@ -787,7 +791,12 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
           </Card>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Card icon="ML" title="Mercado Livre" subtitle="Comissao + taxa fixa por peso + imposto + ads">
+            <div
+onFocusCapture={() => setCardFocado("ml")}
+onBlurCapture={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setCardFocado(""); }}
+className={"transition-opacity duration-200 " + (cardFocado === "shopee" ? "opacity-40" : "opacity-100")}
+>
+<Card icon="ML" title="Mercado Livre" subtitle="Comissao + taxa fixa por peso + imposto + ads">
               <div className="mb-3 grid grid-cols-1 gap-2 rounded-lg bg-[#0e0e12] p-3 sm:grid-cols-2">
                 <div>
                   <p className="text-[11px] text-[#8b8b96]">Preco de venda</p>
@@ -1025,8 +1034,14 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                 </div>
               </div>
             </Card>
+</div>
 
-            <Card icon="SH" title="Shopee" subtitle="Comissao + taxa fixa automatica + ads + afiliado">
+            <div
+onFocusCapture={() => setCardFocado("shopee")}
+onBlurCapture={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setCardFocado(""); }}
+className={"transition-opacity duration-200 " + (cardFocado === "ml" ? "opacity-40" : "opacity-100")}
+>
+<Card icon="SH" title="Shopee" subtitle="Comissao + taxa fixa automatica + ads + afiliado">
               <div className="mb-3 grid grid-cols-1 gap-2 rounded-lg bg-[#0e0e12] p-3 sm:grid-cols-2">
                 <div>
                   <p className="text-[11px] text-[#8b8b96]">Preco de venda</p>
@@ -1160,6 +1175,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                 <p className="mt-2 text-[10px] text-[#5c5c66]">Regra oficial 2026: preco maior ou igual a R$80 paga 14% + taxa fixa por faixa. Preco menor que R$80 paga 20% + R$4 fixo.</p>
               </div>
             </Card>
+</div>
           </div>
         </div>
       )}
