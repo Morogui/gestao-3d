@@ -793,7 +793,8 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div
 onFocusCapture={() => setCardFocado("ml")}
-onBlurCapture={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setCardFocado(""); }}
+onClickCapture={() => setCardFocado("ml")}
+onMouseEnter={() => setCardFocado("ml")}
 className={"transition-opacity duration-200 " + (cardFocado === "shopee" ? "opacity-40" : "opacity-100")}
 >
 <Card icon="ML" title="Mercado Livre" subtitle="Comissao + taxa fixa por peso + imposto + ads">
@@ -1038,7 +1039,8 @@ className={"transition-opacity duration-200 " + (cardFocado === "shopee" ? "opac
 
             <div
 onFocusCapture={() => setCardFocado("shopee")}
-onBlurCapture={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setCardFocado(""); }}
+onClickCapture={() => setCardFocado("shopee")}
+onMouseEnter={() => setCardFocado("shopee")}
 className={"transition-opacity duration-200 " + (cardFocado === "ml" ? "opacity-40" : "opacity-100")}
 >
 <Card icon="SH" title="Shopee" subtitle="Comissao + taxa fixa automatica + ads + afiliado">
