@@ -757,6 +757,9 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
           <div className="rounded-2xl border border-[#23232b] bg-[#131318] p-5">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div className="max-w-[220px] flex-1">
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-amber-400">
+                  Preencha primeiro - obrigatorio
+                </p>
                 <Field
                   label="Custo do produto (por peca)"
                   value={custoProdutoManual}
@@ -788,6 +791,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                 : "Digite o preco de venda que voce quer praticar e veja a margem liquida resultante em cada plataforma"
             }
           >
+            <p className="mb-2 text-[11px] font-semibold text-[#c8c8d0]">Escolha como quer precificar</p>
             <div className="mb-3 grid max-w-[320px] grid-cols-2 gap-2">
               <button
                 type="button"
