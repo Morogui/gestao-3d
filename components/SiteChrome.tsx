@@ -3,19 +3,21 @@
 import { usePathname } from "next/navigation";
 import TabsNav from "./TabsNav";
 
-// A /painel (e tudo dentro dela) e a pagina publica generica do Escala
-// 7x7 Ecommerce - pedido do Guilherme: ela precisa funcionar sozinha,
-// sem o cabecalho/nav interno do Gestao 3D (que exige login em
-// /custo, /vendas etc). Antes o header aparecia ali tambem e os links
-// levavam visitantes pra tela de login. Aqui a gente esconde o
-// cabecalho/nav quando a rota comeca com /painel.
+// A /painel (e a home "/", que reexporta o mesmo componente - ver
+// app/page.tsx) e a pagina publica generica do Escala 7x7 Ecommerce -
+// pedido do Guilherme: ela precisa funcionar sozinha, sem o
+// cabecalho/nav interno do Gestao 3D (que exige login em /custo,
+// /vendas etc). Cobre os dois casos porque a home "/" mantem a URL
+// "/" mesmo renderizando o conteudo de /painel (export default from
+// "./painel/page"), entao usePathname() aqui retorna "/", nao
+// "/painel".
 export default function SiteChrome({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const isPainel = pathname?.startsWith("/painel");
+  const isPainel = pathname === "/" || pathname?.startsWith("/painel");
 
   if (isPainel) {
     return <>{children}</>;
