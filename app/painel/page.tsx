@@ -124,18 +124,19 @@ function Card({
   title,
   subtitle,
   children,
+titleClassName,
 }: {
   icon: React.ReactNode;
   title: string;
   subtitle?: string;
   children: React.ReactNode;
+titleClassName?: string;
 }) {
   return (
     <div className="rounded-2xl border border-[#23232b] bg-[#131318] p-5">
       <div className="mb-4 flex items-start gap-3">
-        <IconBadge>{icon}</IconBadge>
-        <div>
-          <h3 className="text-sm font-semibold text-white">{title}</h3>
+                <div>
+          <h3 className={"text-sm font-semibold " + (titleClassName || "text-white")}>{title}</h3>
           {subtitle && <p className="mt-0.5 text-[11px] text-[#8b8b96]">{subtitle}</p>}
         </div>
       </div>
@@ -797,7 +798,7 @@ onClickCapture={() => setCardFocado("ml")}
 onMouseEnter={() => setCardFocado("ml")}
 className={"transition-opacity duration-200 " + (cardFocado === "shopee" ? "opacity-40" : "opacity-100")}
 >
-<Card icon="ML" title="Mercado Livre" subtitle="Comissao + taxa fixa por peso + imposto + ads">
+<Card icon="ML" title="Mercado Livre" titleClassName="text-[#FFE600]" subtitle="Comissao + taxa fixa por peso + imposto + ads">
               <div className="mb-3 grid grid-cols-1 gap-2 rounded-lg bg-[#0e0e12] p-3 sm:grid-cols-2">
                 <div>
                   <p className="text-[11px] text-[#8b8b96]">Preco de venda</p>
@@ -1043,7 +1044,7 @@ onClickCapture={() => setCardFocado("shopee")}
 onMouseEnter={() => setCardFocado("shopee")}
 className={"transition-opacity duration-200 " + (cardFocado === "ml" ? "opacity-40" : "opacity-100")}
 >
-<Card icon="SH" title="Shopee" subtitle="Comissao + taxa fixa automatica + ads + afiliado">
+<Card icon="SH" title="Shopee" titleClassName="text-[#EE4D2D]" subtitle="Comissao + taxa fixa automatica + ads + afiliado">
               <div className="mb-3 grid grid-cols-1 gap-2 rounded-lg bg-[#0e0e12] p-3 sm:grid-cols-2">
                 <div>
                   <p className="text-[11px] text-[#8b8b96]">Preco de venda</p>
