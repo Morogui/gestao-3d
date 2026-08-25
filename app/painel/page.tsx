@@ -521,48 +521,71 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
           className="mt-6 inline-flex items-center gap-2 rounded-full bg-black px-6 py-3 text-sm font-semibold text-white transition hover:bg-black/80"
         >
           Calcular minha precificação
-          <span aria-hidden>{"\u2192"}</span>
+          <span aria-hidden>{"→"}</span>
         </button>
         </div>
       </section>
 
-      <section className="mb-6 rounded-2xl border border-[#1f1f26] bg-[#0d0d11] px-6 py-12 text-center sm:px-10">
-        <h2 className="text-2xl font-extrabold text-white sm:text-3xl">
-          <span className="text-amber-500">11 anos</span> no Mercado de{" "}
-          <span className="text-amber-500">Marketplace</span>.
-        </h2>
-        <p className="mx-auto mt-3 max-w-xl text-sm text-[#8b8b96] sm:text-base">
-          <span className="block whitespace-nowrap font-bold text-white">
-            Tempo suficiente pra testar o que funciona e descartar o que só parece funcionar.
-          </span>
-          <span className="mt-1 block">
-            Gestão de conta, execução de campanha, precificação e produção
-            validado na prática, todo dia.
-          </span>
-        </p>
-
-        <div className="mx-auto mt-8 flex max-w-xl items-center gap-4">
-          <span className="text-xs font-semibold text-[#8b8b96]">2019</span>
-          <div className="relative h-1 flex-1 overflow-hidden rounded-full bg-[#2a2a33]">
-            <div className="absolute inset-y-0 left-0 w-full rounded-full bg-gradient-to-r from-amber-600 to-amber-400" />
+      <section className="relative mb-6 overflow-hidden rounded-2xl border border-[#1f1f26] bg-[#0d0d11] px-6 py-12 text-center sm:px-10">
+        <style>{`
+          @keyframes marqueeScrollLeft {
+            from { transform: translateX(0); }
+            to { transform: translateX(-50%); }
+          }
+        `}</style>
+        <div className="pointer-events-none absolute inset-0 flex items-center overflow-hidden">
+          <div className="flex shrink-0 items-center gap-4" style={{ animation: "marqueeScrollLeft 32s linear infinite" }}>
+            {["/carrossel-1.jpg", "/carrossel-2.jpg", "/carrossel-3.jpg", "/carrossel-4.jpg", "/carrossel-1.jpg", "/carrossel-2.jpg", "/carrossel-3.jpg", "/carrossel-4.jpg"].map((src, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={i}
+                src={src}
+                alt="Trajetória Escala 7x7 Ecommerce"
+                className="h-40 w-56 flex-shrink-0 rounded-xl object-cover opacity-80 sm:h-48 sm:w-72"
+              />
+            ))}
           </div>
-          <span className="text-xs font-semibold text-amber-500">2026</span>
         </div>
+        <div className="pointer-events-none absolute inset-0 bg-[#0d0d11]/20" />
 
-        <p className="mt-6 text-sm font-semibold text-white sm:text-base">
-          É nisso que o Escala 7x7 Ecommerce foi construído.
-        </p>
+        <div className="relative z-10 mx-auto max-w-2xl rounded-2xl bg-[#0d0d11]/75 px-5 py-7 backdrop-blur-md sm:px-10 sm:py-9">
+          <h2 className="text-2xl font-extrabold text-white sm:text-3xl">
+            <span className="text-amber-500">11 anos</span> no Mercado de{" "}
+            <span className="text-amber-500">Marketplace</span>.
+          </h2>
+          <p className="mx-auto mt-3 max-w-xl text-sm text-[#8b8b96] sm:text-base">
+            <span className="block whitespace-nowrap font-bold text-white">
+              Tempo suficiente pra testar o que funciona e descartar o que só parece funcionar.
+            </span>
+            <span className="mt-1 block">
+              Gestão de conta, execução de campanha, precificação e produção
+              validado na prática, todo dia.
+            </span>
+          </p>
+
+          <div className="mx-auto mt-8 flex max-w-xl items-center gap-4">
+            <span className="text-xs font-semibold text-[#8b8b96]">2019</span>
+            <div className="relative h-1 flex-1 overflow-hidden rounded-full bg-[#2a2a33]">
+              <div className="absolute inset-y-0 left-0 w-full rounded-full bg-gradient-to-r from-amber-600 to-amber-400" />
+            </div>
+            <span className="text-xs font-semibold text-amber-500">2026</span>
+          </div>
+
+          <p className="mt-6 text-sm font-semibold text-white sm:text-base">
+            É nisso que o Escala 7x7 Ecommerce foi construído.
+          </p>
+        </div>
       </section>
 
 
       {mostrarFerramenta && (
       <div id="calculadora">
-        
+
 
       {aba === "custos" && (
         <div className="flex flex-col gap-4">
           <div className={impressoraConfirmada ? "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" : "flex justify-center"}>
-            <div className={impressoraConfirmada ? "" : "w-full max-w-sm"}>
+            <div className={impressoraConfirmada ? "" : "w-full max-w-sm">
               <Card icon="P1" title="Impressora" subtitle="Consumo medio durante a impressao">
                 {!impressoraAberta && (
                   <div className="flex flex-col items-center gap-3 py-6">
@@ -657,7 +680,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                   )}
                   <p className="mt-2 text-[10px] leading-relaxed text-[#5c5c66]">
                     Manutencao cobre bicos, correias e depreciacao do equipamento. Falha de impressao encarece energia, material e maquina pra cobrir as reimpressoes. Media Brasil de energia ~R$0,90/kWh.
-                  </p>
+                </p>
                 </Card>
 
                 <Card icon="P3" title="Material e Tempo" subtitle="Filamento usado e duracao da impressao">
