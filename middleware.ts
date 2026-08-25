@@ -27,8 +27,21 @@ const DOMINIO_CANONICO = "gestao-3d-ecru.vercel.app";
 
 const PUBLIC_PATHS = ["/", "/painel", "/login", "/logo-7x7.png"];
 
+// Qualquer arquivo estático de imagem direto na raiz de /public (logo,
+// fotos do carrossel da /painel, etc.) é sempre público — por definição
+// tudo que está em /public é servido como asset estático, então barrar
+// esses arquivos atrás de sessão nunca fazia sentido e quebrava
+// silenciosamente qualquer imagem nova adicionada à página pública
+// /painel sem que alguém lembrasse de listar o arquivo aqui manualmente
+// (bug real encontrado em 2026-08-25: as fotos do carrossel da /painel
+// redirecionavam pra /login pra qualquer visitante sem cookie de sessão,
+// porque só /logo-7x7.png estava na allowlist).
+const PUBLIC_STATIC_FILE = /\.(png|jpe?g|svg|webp|gif|ico)$/i;
+
 function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
+  if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"))) return true;
+  if (PUBLIC_STATIC_FILE.test(pathname)) return true;
+  return false;
 }
 
 async function hmacHex(secret: string, data: string): Promise<string> {
