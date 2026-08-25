@@ -534,8 +534,8 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
           }
         `}</style>
         <div className="pointer-events-none absolute inset-0 flex items-center overflow-hidden">
-          <div className="flex shrink-0 items-center gap-4" style={{ animation: "marqueeScrollLeft 32s linear infinite" }}>
-            {["/carrossel-1.jpg", "/carrossel-2.jpg", "/carrossel-3.jpg", "/carrossel-4.jpg", "/carrossel-1.jpg", "/carrossel-2.jpg", "/carrossel-3.jpg", "/carrossel-4.jpg"].map((src, i) => (
+          <div className="flex shrink-0 items-center gap-4" style={{ animation: "marqueeScrollLeft 48s linear infinite" }}>
+            {["/carrossel-1.jpg", "/carrossel-2.jpg", "/carrossel-3.jpg", "/carrossel-4.jpg", "/carrossel-5.jpg", "/carrossel-6.jpg", "/carrossel-7.jpg", "/carrossel-8.jpg", "/carrossel-1.jpg", "/carrossel-2.jpg", "/carrossel-3.jpg", "/carrossel-4.jpg", "/carrossel-5.jpg", "/carrossel-6.jpg", "/carrossel-7.jpg", "/carrossel-8.jpg"].map((src, i) => (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 key={i}
