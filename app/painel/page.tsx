@@ -113,7 +113,7 @@ function resolverPreco(opts: {
 
 function IconBadge({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#2a1a0a] text-lg">
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#2a1a0a] text-lg font-bold text-amber-400">
       {children}
     </div>
   );
