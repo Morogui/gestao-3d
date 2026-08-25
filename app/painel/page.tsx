@@ -534,14 +534,14 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
           }
         `}</style>
         <div className="pointer-events-none absolute inset-0 flex items-center overflow-hidden">
-          <div className="flex shrink-0 items-center gap-4" style={{ animation: "marqueeScrollLeft 48s linear infinite" }}>
-            {["/carrossel-1.jpg", "/carrossel-2.jpg", "/carrossel-3.jpg", "/carrossel-4.jpg", "/carrossel-5.jpg", "/carrossel-6.jpg", "/carrossel-7.jpg", "/carrossel-8.jpg", "/carrossel-1.jpg", "/carrossel-2.jpg", "/carrossel-3.jpg", "/carrossel-4.jpg", "/carrossel-5.jpg", "/carrossel-6.jpg", "/carrossel-7.jpg", "/carrossel-8.jpg"].map((src, i) => (
+          <div className="flex shrink-0 items-center gap-4" style={{ animation: "marqueeScrollLeft 96s linear infinite" }}>
+            {["/carrossel-1.jpg","/carrossel-2.jpg","/carrossel-3.jpg","/carrossel-4.jpg","/carrossel-5.jpg","/carrossel-6.jpg","/carrossel-7.jpg","/carrossel-8.jpg","/carrossel-9.jpg","/carrossel-10.jpg","/carrossel-11.jpg","/carrossel-12.jpg","/carrossel-13.jpg","/carrossel-14.jpg","/carrossel-15.jpg","/carrossel-16.jpg","/carrossel-1.jpg","/carrossel-2.jpg","/carrossel-3.jpg","/carrossel-4.jpg","/carrossel-5.jpg","/carrossel-6.jpg","/carrossel-7.jpg","/carrossel-8.jpg","/carrossel-9.jpg","/carrossel-10.jpg","/carrossel-11.jpg","/carrossel-12.jpg","/carrossel-13.jpg","/carrossel-14.jpg","/carrossel-15.jpg","/carrossel-16.jpg"].map((src, i) => (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 key={i}
                 src={src}
                 alt="Trajetória Escala 7x7 Ecommerce"
-                className="h-40 w-56 flex-shrink-0 rounded-xl object-cover opacity-80 sm:h-48 sm:w-72"
+                className="h-40 w-56 flex-shrink-0 rounded-xl bg-[#15151d] object-contain opacity-90 sm:h-48 sm:w-72"
               />
             ))}
           </div>
