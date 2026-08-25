@@ -518,7 +518,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
             setMostrarFerramenta(true);
             setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavior: "smooth" }), 50);
           }}
-          className="mt-6 inline-flex items-center gap-2 rounded-full bg-black px-6 py-3 text-sm font-semibold text-white transition hover:bg-black/80"
+          className="mt-6 inline-flex items-center gap-2 rounded-full bg-black px-6 py-3 text-sm font-semibold text-white transition hover:bz-black/80"
         >
           Calcular minha precificação
           <span aria-hidden>{"→"}</span>
@@ -585,7 +585,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
       {aba === "custos" && (
         <div className="flex flex-col gap-4">
           <div className={impressoraConfirmada ? "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" : "flex justify-center"}>
-            <div className={impressoraConfirmada ? "" : "w-full max-w-sm">
+            <div className={impressoraConfirmada ? "" : "w-full max-w-sm"}>
               <Card icon="P1" title="Impressora" subtitle="Consumo medio durante a impressao">
                 {!impressoraAberta && (
                   <div className="flex flex-col items-center gap-3 py-6">
@@ -615,7 +615,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                           <div className="font-medium">{imp.nome}</div>
                           <div className="text-[10px] text-[#8b8b96]">~{imp.watts}W medio</div>
                         </button>
-                      ))}
+                    ))}
                       <button
                         onClick={() => setImpressora("outra")}
                         className={
@@ -1018,7 +1018,7 @@ className={"transition-opacity duration-200 " + (cardFocado === "shopee" ? "opac
                       "rounded-lg border px-2 py-1.5 text-xs font-medium " +
                       (!usaAfiliadoML ? "border-amber-500 bg-[#2a1a0a] text-amber-400" : "border-[#2c2c36] text-[#c8c8d0]")
                     }
-                  >
+                >
                     Nao uso afiliados
                   </button>
                   <button
