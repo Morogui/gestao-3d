@@ -393,7 +393,13 @@ const [cardFocado, setCardFocado] = useState("");
   ]);
 
   return (
-    <div className="min-h-screen bg-[#0a0a0d] px-4 py-6 sm:px-8">
+    <div className="relative min-h-screen bg-[#0a0a0d] px-4 py-6 sm:px-8">
+      <a
+        href="/login"
+        className="absolute right-4 top-6 z-20 rounded-lg border border-[#2c2c36] bg-[#131318] px-3 py-1.5 text-xs font-semibold text-[#c8c8d0] transition-colors hover:border-amber-500 hover:text-amber-400 sm:right-8"
+      >
+        Entrar
+      </a>
       <header className="mb-6 flex items-center justify-center">
         <img src="/logo-7x7.png" alt="7x7 Escala Ecommerce" className="h-16 w-auto sm:h-28" />
       </header>
@@ -574,6 +580,33 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
           <p className="mt-6 text-sm font-semibold text-white sm:text-base">
             É nisso que o Escala 7x7 Ecommerce foi construído.
           </p>
+
+          <div className="mt-5 flex items-center justify-center gap-4">
+            <a
+              href="https://www.instagram.com/_morogui/"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Instagram"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-[#2c2c36] bg-[#131318] text-[#c8c8d0] transition-colors hover:border-amber-500 hover:text-amber-400"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+                <rect x="3" y="3" width="18" height="18" rx="5" ry="5" />
+                <path d="M16 11.37a4 4 0 1 1-7.914 1.174A4 4 0 0 1 16 11.37z" />
+                <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+              </svg>
+            </a>
+            <a
+              href="https://www.linkedin.com/in/guilherme-moro-484221168/"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="LinkedIn"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-[#2c2c36] bg-[#131318] text-[#c8c8d0] transition-colors hover:border-amber-500 hover:text-amber-400"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.024-3.037-1.852-3.037-1.853 0-2.136 1.446-2.136 2.94v5.666H9.351V9h3.414v1.561h.049c.476-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 1 1 0-4.124 2.062 2.062 0 0 1 0 4.124zM7.114 20.452H3.558V9h3.556v11.452z" />
+              </svg>
+            </a>
+          </div>
         </div>
       </section>
 
