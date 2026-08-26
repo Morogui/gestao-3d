@@ -434,9 +434,17 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
       </div>
 
       <section className="relative mb-6 overflow-hidden rounded-2xl border border-[#1f1f26] bg-[#0d0d11] px-6 py-14 text-center sm:px-10">
+        {/* Mockups ML/Shopee no fundo do hero — pedido do Guilherme em
+            2026-08-26: no mobile os dois blocos borrados de 420x280px
+            ficavam sem nenhuma variante responsiva, entao no celular eles
+            colidiam bem no meio da tela, atras do titulo, em vez de ficar
+            elegantes nas laterais como no desktop. Agora no mobile eles
+            encolhem pra um tamanho de "selo" no canto superior (com menos
+            blur, pra dar pra reconhecer que sao ML/Shopee) e voltam pro
+            tamanho/posicao originais a partir do breakpoint sm. */}
         <div
           aria-hidden
-          className="pointer-events-none absolute -left-10 top-1/2 h-[280px] w-[420px] -translate-y-1/2 -rotate-6 overflow-hidden rounded-2xl border border-orange-500/30 blur-sm [animation:heroFadeA_9s_ease-in-out_infinite]"
+          className="pointer-events-none absolute -left-4 -top-4 h-24 w-36 -rotate-6 overflow-hidden rounded-xl border border-orange-500/30 opacity-70 blur-[1px] [animation:heroFadeA_9s_ease-in-out_infinite] sm:-left-10 sm:top-1/2 sm:h-[280px] sm:w-[420px] sm:-translate-y-1/2 sm:rounded-2xl sm:opacity-100 sm:blur-sm"
         >
           <img
             src="https://play-lh.googleusercontent.com/jcwNHNLapN3E_ztR3i6aptU0KU025nAKSzRZ1wteL8NDJnGjcqcbzImydkn73b9aq-hJpbiAjFJMO0JT7oox9w=w1080"
@@ -447,7 +455,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
 
         <div
           aria-hidden
-          className="pointer-events-none absolute -right-10 top-1/2 h-[280px] w-[420px] -translate-y-1/2 rotate-6 overflow-hidden rounded-2xl border border-yellow-400/30 blur-sm [animation:heroFadeB_9s_ease-in-out_infinite]"
+          className="pointer-events-none absolute -right-4 -top-4 h-24 w-36 rotate-6 overflow-hidden rounded-xl border border-yellow-400/30 opacity-70 blur-[1px] [animation:heroFadeB_9s_ease-in-out_infinite] sm:-right-10 sm:top-1/2 sm:h-[280px] sm:w-[420px] sm:-translate-y-1/2 sm:rounded-2xl sm:opacity-100 sm:blur-sm"
         >
           <img
             src="https://play-lh.googleusercontent.com/JFCnnrFW5VO0sTnoBcDfiQnINwI1PH9eaxMq7KidJpjsup6-fQbSDhYfsikZzufkv6sUD42OZWlkbpQaMRnP=w1080"
@@ -532,14 +540,42 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
         </div>
       </section>
 
-      <section className="relative mb-6 overflow-hidden rounded-2xl border border-[#1f1f26] bg-[#0d0d11] px-6 py-12 text-center sm:px-10">
+      <section className="relative mb-6 overflow-hidden rounded-2xl border border-[#1f1f26] bg-[#0d0d11] py-6 text-center sm:px-10 sm:py-12">
         <style>{`
           @keyframes marqueeScrollLeft {
             from { transform: translateX(0); }
             to { transform: translateX(-50%); }
           }
         `}</style>
-        <div className="pointer-events-none absolute inset-0 flex items-center overflow-hidden">
+
+        {/* Mobile: faixa de fotos separada, em fluxo normal, acima do texto
+            — pedido do Guilherme em 2026-08-26: as fotos nao estavam
+            dando pra ver direito no celular, so aparecia uma tira cortada
+            sobrepondo o texto. Isso acontecia porque o efeito de colagem
+            de fundo (fotos atras, card de texto flutuando por cima) so
+            funciona quando sobra espaco nas laterais do card — no mobile
+            o card ocupa quase a largura toda da tela, entao so escapava
+            uma tira fina da foto por cima do texto. Agora no mobile a
+            faixa de fotos e uma secao propria, sem sobrepor nada, e o
+            texto fica embaixo em fundo solido, sempre legivel. */}
+        <div className="overflow-hidden border-b border-[#1f1f26] py-4 sm:hidden">
+          <div className="flex w-max items-center gap-3" style={{ animation: "marqueeScrollLeft 40s linear infinite" }}>
+            {["/carrossel-1.jpg","/carrossel-2.jpg","/carrossel-3.jpg","/carrossel-4.jpg","/carrossel-5.jpg","/carrossel-6.jpg","/carrossel-7.jpg","/carrossel-8.jpg","/carrossel-9.jpg","/carrossel-10.jpg","/carrossel-11.jpg","/carrossel-12.jpg","/carrossel-13.jpg","/carrossel-14.jpg","/carrossel-15.jpg","/carrossel-16.jpg","/carrossel-1.jpg","/carrossel-2.jpg","/carrossel-3.jpg","/carrossel-4.jpg","/carrossel-5.jpg","/carrossel-6.jpg","/carrossel-7.jpg","/carrossel-8.jpg","/carrossel-9.jpg","/carrossel-10.jpg","/carrossel-11.jpg","/carrossel-12.jpg","/carrossel-13.jpg","/carrossel-14.jpg","/carrossel-15.jpg","/carrossel-16.jpg"].map((src, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={`m-${i}`}
+                src={src}
+                alt="Trajetória Escala 7x7 Ecommerce"
+                className="h-20 w-28 flex-shrink-0 rounded-lg bg-[#15151d] object-contain opacity-90"
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Desktop/tablet: colagem de fundo original (fotos atras, card de
+            texto translucido flutuando por cima) — inalterada, so
+            escondida no mobile porque e la que ela nao funcionava bem. */}
+        <div className="pointer-events-none absolute inset-0 hidden items-center overflow-hidden sm:flex">
           <div className="flex shrink-0 items-center gap-4" style={{ animation: "marqueeScrollLeft 96s linear infinite" }}>
             {["/carrossel-1.jpg","/carrossel-2.jpg","/carrossel-3.jpg","/carrossel-4.jpg","/carrossel-5.jpg","/carrossel-6.jpg","/carrossel-7.jpg","/carrossel-8.jpg","/carrossel-9.jpg","/carrossel-10.jpg","/carrossel-11.jpg","/carrossel-12.jpg","/carrossel-13.jpg","/carrossel-14.jpg","/carrossel-15.jpg","/carrossel-16.jpg","/carrossel-1.jpg","/carrossel-2.jpg","/carrossel-3.jpg","/carrossel-4.jpg","/carrossel-5.jpg","/carrossel-6.jpg","/carrossel-7.jpg","/carrossel-8.jpg","/carrossel-9.jpg","/carrossel-10.jpg","/carrossel-11.jpg","/carrossel-12.jpg","/carrossel-13.jpg","/carrossel-14.jpg","/carrossel-15.jpg","/carrossel-16.jpg"].map((src, i) => (
               // eslint-disable-next-line @next/next/no-img-element
@@ -547,20 +583,20 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                 key={i}
                 src={src}
                 alt="Trajetória Escala 7x7 Ecommerce"
-                className="h-40 w-56 flex-shrink-0 rounded-xl bg-[#15151d] object-contain opacity-90 sm:h-48 sm:w-72"
+                className="h-48 w-72 flex-shrink-0 rounded-xl bg-[#15151d] object-contain opacity-90"
               />
             ))}
           </div>
         </div>
-        <div className="pointer-events-none absolute inset-0 bg-[#0d0d11]/20" />
+        <div className="pointer-events-none absolute inset-0 hidden bg-[#0d0d11]/20 sm:block" />
 
-        <div className="relative z-10 mx-auto max-w-2xl rounded-2xl bg-[#0d0d11]/75 px-5 py-7 backdrop-blur-md sm:px-10 sm:py-9">
+        <div className="relative z-10 mx-auto max-w-2xl px-5 py-7 sm:rounded-2xl sm:bg-[#0d0d11]/75 sm:px-10 sm:py-9 sm:backdrop-blur-md">
           <h2 className="text-2xl font-extrabold text-white sm:text-3xl">
             <span className="text-amber-500">11 anos</span> no Mercado de{" "}
             <span className="text-amber-500">Marketplace</span>.
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-sm text-[#8b8b96] sm:text-base">
-            <span className="block whitespace-nowrap font-bold text-white">
+            <span className="block font-bold text-white sm:whitespace-nowrap">
               Tempo suficiente pra testar o que funciona e descartar o que só parece funcionar.
             </span>
             <span className="mt-1 block">
