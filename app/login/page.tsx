@@ -26,7 +26,16 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
-      router.push("/");
+      // "/" hoje é a landing page pública (/painel), não o sistema
+      // interno — desde que app/page.tsx passou a reexportar
+      // ./painel/page (pedido do Guilherme em 2026-08-24: "painel vira
+      // pagina inicial"). Antes disso, redirecionar pro login pra "/"
+      // caía direto no sistema. Bug real reportado pelo Guilherme em
+      // 2026-08-26: "quando coloco meu login ele volta pra pagina
+      // inicial do meu site" — o login funcionava, só mandava pro
+      // lugar errado. Redireciona pra "/custo" (primeira aba do
+      // sistema interno) em vez disso.
+      router.push("/custo");
       router.refresh();
     } catch {
       setError("Erro ao conectar. Tente novamente.");
