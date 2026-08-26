@@ -22,7 +22,6 @@
 // dados em qualquer tela é só trocar de onde vem o import, sem mexer no
 // resto da lógica (pedidoFoiVendido, calcularDemandaSemanal, resumoStats
 // etc. continuam recebendo o mesmíssimo formato OrderSummary[]).
-import { cookies } from "next/headers";
 import { sql } from "./db";
 import {
   getOrdersRange as getOrdersRangeMLAoVivo,
@@ -35,44 +34,54 @@ import {
 import { getOrdersRange as getOrdersRangeShopeeAoVivo } from "./shopee-orders";
 import { todaySP, diasAtras } from "./date";
 import { mlEstaConectado } from "./ml-auth";
+import { shopeeEstaConectado } from "./shopee-auth";
 
 type Plataforma = "ml" | "shopee";
 
-// Mesma checagem de cookie que getValidShopeeAccessToken/fetchOrdersInRange
-// já faziam — só olha se existe uma sessão, sem chamar a API. Preserva o
-// comportamento de "conecte sua conta"/"reconectar" nas telas mesmo lendo
-// os pedidos do cache em vez de ao vivo.
+// Mesma checagem que getValidMLAccessToken/getValidShopeeAccessToken já
+// fazem — só olha se existe uma sessão salva no banco, sem chamar a API.
+// Preserva o comportamento de "conecte sua conta"/"reconectar" nas telas
+// mesmo lendo os pedidos do cache em vez de ao vivo.
 async function mlConectado(): Promise<boolean> {
-    return mlEstaConectado();
+  return mlEstaConectado();
 }
 
-function shopeeConectado(): boolean {
-  const c = cookies();
-  return Boolean(c.get("shopee_shop_id")?.value);
+// 2026-08-26: migrado de leitura de cookie ("shopee_shop_id") pra
+// checagem no banco (tabela shopee_auth) — mesma causa raiz do "Shopee
+// caindo toda hora" corrigida em lib/shopee-auth.ts. O cron de 1 em 1
+// minuto nunca tinha cookie de navegador, então essa função sempre
+// devolvia false pra ele (mesmo com a conta Shopee de verdade conectada
+// e o refresh_token ainda válido por semanas) — e como tentouShopee
+// abaixo controla se sync_status é gravado, e getOrdersRangeShopeeAoVivo
+// também dependia do mesmo cookie, a Shopee só sincronizava quando
+// alguém abria o navegador com o cookie ainda vivo (o access_token da
+// Shopee dura só 4h). Agora consulta o banco, que é a fonte de verdade
+// pra qualquer contexto (cron incluso).
+async function shopeeConectado(): Promise<boolean> {
+  return shopeeEstaConectado();
 }
 
 // Pedido do Guilherme em 2026-07-27: "não está trazendo números da
 // Shopee" — a causa raiz era a sessão da Shopee ter expirado (token/
 // refresh_token mortos), mas a tela de Vendas nunca mostrava o aviso de
 // "sessão expirada, reconecte" porque mlConectado()/shopeeConectado()
-// acima só conferem se existe um COOKIE de sessão salvo, não se ele
-// ainda funciona de verdade — então "cookie existe mas tá morto" e
-// "nunca conectou" pareciam a mesma coisa (silêncio, zero pedidos, sem
-// pista do motivo).
+// acima só conferem se existe uma sessão salva, não se ela ainda
+// funciona de verdade — então "sessão existe mas tá morta" e "nunca
+// conectou" pareciam a mesma coisa (silêncio, zero pedidos, sem pista do
+// motivo).
 //
 // A tela não pode chamar a API ao vivo a cada carregamento (é o motivo
 // desse arquivo existir), então guardamos aqui o resultado da ÚLTIMA
 // tentativa REAL de falar com a API (a que sincronizarPedidos() já faz).
-// Importante: o cron de 1 em 1 minuto (vercel.json) roda sem cookie
-// nenhum — é uma chamada servidor-a-servidor da própria Vercel, não uma
-// visita de navegador — então ele NUNCA teria cookie de sessão pra
-// tentar. Se gravássemos o resultado dele sem filtro, a tabela abaixo
-// ficaria marcada como "desconectado" a cada minuto pras duas contas,
-// mesmo com a sessão do navegador perfeitamente válida. Por isso só
-// gravamos quando a própria chamada a sincronizarPedidos() tinha o
-// cookie da plataforma (viu de um pedido real: alguém abriu a aba
-// Estoque/Vendas, ou um sync manual) — só aí o resultado da tentativa
-// significa alguma coisa.
+// Importante: antes do fix de 2026-08-26 (ver shopeeConectado() acima),
+// o cron de 1 em 1 minuto (vercel.json) nunca tinha cookie/sessão
+// nenhuma pra tentar do lado da Shopee — se gravássemos o resultado dele
+// sem filtro, a tabela abaixo ficaria marcada como "desconectado" a cada
+// minuto, mesmo com a conta perfeitamente válida. Agora que
+// mlConectado()/shopeeConectado() consultam o banco (fonte de verdade
+// acessível de qualquer contexto), tentouML/tentouShopee refletem a
+// conexão real, não mais a presença de um cookie de navegador — mas o
+// filtro continua existindo por segurança/clareza do fluxo.
 async function garantirTabelaStatusSync() {
   await sql`
     CREATE TABLE IF NOT EXISTS sync_status (
@@ -153,7 +162,7 @@ export async function getOrdersRangeML(
   fromDay: string,
   toDay: string
 ): Promise<OrdersResult> {
-    if (!(await mlConectado())) return { connected: false };
+  if (!(await mlConectado())) return { connected: false };
   if ((await statusSyncPersistido("ml")) === "erro") return { connected: true, error: true };
   const orders = await queryRange(fromDay, toDay, "ml");
   return { connected: true, error: false, orders };
@@ -164,7 +173,7 @@ export async function getOrdersRangeShopee(
   fromDay: string,
   toDay: string
 ): Promise<OrdersResult> {
-  if (!shopeeConectado()) return { connected: false };
+  if (!(await shopeeConectado())) return { connected: false };
   if ((await statusSyncPersistido("shopee")) === "erro") return { connected: true, error: true };
   const orders = await queryRange(fromDay, toDay, "shopee");
   return { connected: true, error: false, orders };
@@ -195,7 +204,7 @@ export async function getDailyTotalsRangeML(
   fromDay: string,
   toDay: string
 ): Promise<DailyTotalsResult> {
-    if (!(await mlConectado())) return { connected: false };
+  if (!(await mlConectado())) return { connected: false };
   if ((await statusSyncPersistido("ml")) === "erro") return { connected: true, error: true };
   const porDia = await dailyTotals(fromDay, toDay, "ml");
   return { connected: true, error: false, porDia };
@@ -206,7 +215,7 @@ export async function getDailyTotalsRangeShopee(
   fromDay: string,
   toDay: string
 ): Promise<DailyTotalsResult> {
-  if (!shopeeConectado()) return { connected: false };
+  if (!(await shopeeConectado())) return { connected: false };
   if ((await statusSyncPersistido("shopee")) === "erro") return { connected: true, error: true };
   const porDia = await dailyTotals(fromDay, toDay, "shopee");
   return { connected: true, error: false, porDia };
@@ -269,13 +278,12 @@ export async function sincronizarPedidos(
   const inicio = diasAtras(hoje, Math.max(0, dias - 1));
 
   // Só é seguro gravar o status (ok/erro) em sync_status quando ESSA
-  // chamada de verdade tinha o cookie da plataforma pra tentar — senão o
-  // cron de 1 em 1 minuto (que roda sem cookie nenhum, servidor-a-
-  // servidor) gravaria "erro" toda hora pras duas contas, mesmo com a
-  // sessão do navegador do Guilherme funcionando normalmente. Ver
-  // comentário em cima de garantirTabelaStatusSync().
-    const tentouML = await mlConectado();
-  const tentouShopee = shopeeConectado();
+  // chamada de verdade tinha uma sessão da plataforma pra tentar — ver
+  // comentário em cima de garantirTabelaStatusSync(). Desde 2026-08-26
+  // mlConectado()/shopeeConectado() consultam o banco (não mais cookie),
+  // então o cron finalmente reflete a conexão real das duas contas.
+  const tentouML = await mlConectado();
+  const tentouShopee = await shopeeConectado();
 
   const [resultML, resultShopee] = await Promise.all([
     getOrdersRangeMLAoVivo(inicio, hoje),

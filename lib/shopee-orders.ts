@@ -4,15 +4,19 @@
 // ranking de produtos mais vendidos e o cálculo de demanda/produção sem
 // precisar duplicar essa lógica por plataforma.
 //
-// Igual à ML, a Shopee guarda o access_token em cookie httpOnly (setado
-// no /api/shopee/callback). Diferente da ML, o access_token da Shopee
-// dura só 4h — mas agora, se tiver expirado, getValidShopeeAccessToken()
-// (abaixo) renova ele na hora usando o refresh_token (válido por 30
-// dias), sem precisar que o usuário reautorize o app do zero. Só cai de
-// volta pro fluxo de "Conectar com Shopee" se o refresh_token também já
-// tiver expirado.
-import { cookies } from "next/headers";
-import { refreshAccessToken, signAuthenticatedRequest } from "./shopee";
+// 2026-08-26: a sessão da Shopee (access_token/refresh_token/shop_id)
+// passou a morar no banco (tabela shopee_auth), não mais em cookie —
+// mesmo fix já aplicado à ML em 2026-08-14 (lib/ml-auth.ts). Causa raiz
+// do "Shopee caindo toda hora": getValidShopeeAccessToken() antes lia
+// cookie httpOnly, que o cron de 1 em 1 minuto (vercel.json) nunca
+// enxergava (chamada servidor-a-servidor, sem navegador nenhum por
+// trás) — então a sincronização automática da Shopee nunca funcionava
+// de verdade, só quando alguém abria a aba Estoque/Vendas com o cookie
+// do navegador ainda vivo (o access_token da Shopee dura só 4h). Ver
+// lib/shopee-auth.ts pro detalhe completo e a nova implementação
+// (DB-first, com auto-refresh persistido de volta no banco).
+import { getValidShopeeAccessToken } from "./shopee-auth";
+import { signAuthenticatedRequest } from "./shopee";
 import {
   OrderItemSummary,
   OrderSummary,
@@ -51,86 +55,6 @@ interface ShopeeOrderDetail {
 interface ShopeeItemBaseInfo {
   item_id: number;
   image?: { image_url_list?: string[] };
-}
-
-// Sessão válida da Shopee pra fazer uma chamada autenticada. O
-// access_token dura só 4h — bem menos que o refresh_token, que dura 30
-// dias. Antes desse fix, assim que o cookie de access_token expirava
-// (ou seja, toda vez que passavam 4h desde o último login), a tela caía
-// direto pro fluxo de "Conectar com Shopee" — que abre a MESMA tela de
-// autorização de primeira vez, mesmo a conexão real (a autorização da
-// conta) ainda estando totalmente válida por até 30 dias. Reclamação do
-// Guilherme em 2026-07-24: "toda vez que a Shopee precisa reconectar,
-// fica parecendo que é a primeira vez". O refresh_token já era salvo em
-// cookie desde o /api/shopee/callback, mas nunca era usado — essa função
-// troca ele silenciosamente por um access_token novo sempre que o antigo
-// já tiver expirado, então o usuário só cai na tela de autorização de
-// verdade se o PRÓPRIO refresh_token também tiver expirado (só depois de
-// 30 dias sem nenhum acesso).
-//
-// Fix em 2026-07-29 (reclamação do Guilherme: "sempre que a shopee cai
-// nao consigo conectar com ela", confirmado que "conecta normalmente,
-// mas cai nas horas seguintes" — ou seja, dentro de poucas horas, o
-// tempo de vida do access_token de 4h). Causa raiz: essa função SEMPRE
-// pegava um access_token novo via refresh_token, mas nunca gravava o
-// token renovado de volta no cookie — cada chamada só valia pra ESSA
-// requisição. A Shopee, como boa parte das APIs OAuth2, ROTACIONA o
-// refresh_token a cada renovação (a resposta de refreshAccessToken traz
-// um refresh_token novo, e o antigo passa a valer só por uma janela
-// curta de tolerância). Sem salvar o refresh_token novo de volta, depois
-// dessa janela de tolerância passar, a PRÓXIMA renovação usa um
-// refresh_token já obsoleto e falha — aí sim a sessão "cai de vez" e só
-// resta reconectar do zero, mesmo a conta nunca tendo sido desautorizada
-// de verdade.
-// Os dois únicos lugares do sistema que chamam essa função (via
-// getOrdersRange abaixo) são /api/pedidos/sincronizar e
-// /api/estoque/sincronizar-vendas — ambos Route Handlers, não Server
-// Components, então `cookies().set(...)` funciona normalmente aqui (a
-// limitação de só conseguir LER cookies é só em Server Components/
-// páginas renderizadas no servidor). Por isso agora, sempre que o
-// refresh acontece, o access_token E o refresh_token novos são gravados
-// de volta no cookie na hora — a sessão real (conta autorizada) só cai
-// de verdade depois de 30 dias sem nenhum acesso, igual o comentário
-// acima sempre disse que deveria acontecer.
-async function getValidShopeeAccessToken(): Promise<
-  { accessToken: string; shopId: number } | null
-> {
-  const cookieStore = cookies();
-  const shopIdStr = cookieStore.get("shopee_shop_id")?.value;
-  if (!shopIdStr) return null;
-  const shopId = Number(shopIdStr);
-
-  const accessToken = cookieStore.get("shopee_access_token")?.value;
-  if (accessToken) return { accessToken, shopId };
-
-  const refreshToken = cookieStore.get("shopee_refresh_token")?.value;
-  if (!refreshToken) return null;
-
-  const renovado = await refreshAccessToken(refreshToken, shopId);
-  if (!renovado) return null;
-
-  try {
-    const cookieOptions = {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax" as const,
-      path: "/",
-    };
-    cookieStore.set("shopee_access_token", renovado.access_token, {
-      ...cookieOptions,
-      maxAge: renovado.expire_in,
-    });
-    cookieStore.set("shopee_refresh_token", renovado.refresh_token, {
-      ...cookieOptions,
-      maxAge: 60 * 60 * 24 * 30,
-    });
-  } catch {
-    // Se algum dia essa função passar a ser chamada de um contexto que
-    // não permite escrever cookie (Server Component), não trava a busca
-    // de pedidos por causa disso — só não persiste, como já era antes.
-  }
-
-  return { accessToken: renovado.access_token, shopId };
 }
 
 function toEpochSeconds(day: string, endOfDay: boolean): number {
