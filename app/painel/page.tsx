@@ -466,15 +466,15 @@ document.head.appendChild(link);
                   setMostrarFerramenta(true);
                   setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavior: "smooth" }), 50);
                 }}
-                className="rounded-xl border-2 border-gray-200 dark:border-[#23232b] p-5 text-left transition hover:border-[#FFE600]"
+                className="flex flex-col items-center justify-center gap-2.5 rounded-xl border-2 border-gray-200 dark:border-[#23232b] px-5 py-9 text-center transition hover:border-[#FFE600] hover:shadow-md"
               >
                 <span
-                  className="inline-block rounded-lg bg-[#1a1a1a] px-3 py-1 text-lg font-extrabold text-[#FFE600]"
+                  className="text-2xl font-extrabold leading-tight text-gray-900 dark:text-white"
                   style={{ fontFamily: "'Montserrat', sans-serif" }}
                 >
                   Mercado Livre
                 </span>
-                <p className="mt-2 text-sm text-gray-500 dark:text-[#8b8b96]">Comissao + taxa fixa por peso + imposto + ads</p>
+                <span className="h-1 w-12 rounded-full bg-[#FFE600]" />
               </button>
               <button
                 type="button"
@@ -484,15 +484,15 @@ document.head.appendChild(link);
                   setMostrarFerramenta(true);
                   setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavior: "smooth" }), 50);
                 }}
-                className="rounded-xl border-2 border-gray-200 dark:border-[#23232b] p-5 text-left transition hover:border-[#EE4D2D]"
+                className="flex flex-col items-center justify-center gap-2.5 rounded-xl border-2 border-gray-200 dark:border-[#23232b] px-5 py-9 text-center transition hover:border-[#EE4D2D] hover:shadow-md"
               >
                 <span
-                  className="inline-block rounded-lg bg-[#1a1a1a] px-3 py-1 text-lg font-black text-[#EE4D2D]"
+                  className="text-2xl font-black leading-tight text-gray-900 dark:text-white"
                   style={{ fontFamily: "'Roboto', sans-serif" }}
                 >
                   Shopee
                 </span>
-                <p className="mt-2 text-sm text-gray-500 dark:text-[#8b8b96]">Comissao + taxa fixa automatica + ads + afiliado</p>
+                <span className="h-1 w-12 rounded-full bg-[#EE4D2D]" />
               </button>
             </div>
             <button
@@ -1036,263 +1036,277 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                 {"←"} Trocar plataforma
               </button>
 <Card icon="ML" title="Mercado Livre" titleClassName="text-3xl font-extrabold text-[#FFE600]" titleStyle={{ fontFamily: "'Montserrat', sans-serif" }} subtitle="Comissao + taxa fixa por peso + imposto + ads">
-              <div className="mb-3 grid grid-cols-1 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3 sm:grid-cols-2">
-                <div>
-                  <p className="text-base text-gray-500 dark:text-[#8b8b96]">Preco de venda</p>
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.preco)}</p>
-                </div>
-                <div>
-                  <p className="text-base text-gray-500 dark:text-[#8b8b96]">Preco para anunciar (+30%)</p>
-                  <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">{formatBRL(resultadoML.preco * 1.3)}</p>
-                </div>
-                <p className="col-span-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66] sm:col-span-2">
-                  Anuncie pelo preco maior pra abrir espaco pra promocao/cupom na central de promocoes sem furar sua margem. O preco de venda real (o que voce recebe liquido) e sempre o da esquerda.
-                </p>
-                <div className="col-span-1 mt-1 flex gap-4 text-base sm:col-span-2">
-                  <span className="text-gray-500 dark:text-[#8b8b96]">
-                    Margem liquida <span className="text-green-600 dark:text-green-400">{fmtPct(resultadoML.margemPct)}</span>
-                  </span>
-                  <span className="text-gray-500 dark:text-[#8b8b96]">
-                    Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.lucro)}</span>
-                  </span>
-                </div>
-              </div>
-
-              <div className="mb-2">
-                <p className="mb-1.5 text-base font-medium text-gray-700 dark:text-[#c8c8d0]">Categoria (Mercado Livre)</p>
-                <select
-                  value={categoriaML}
-                  onChange={(e) => {
-                    const nome = e.target.value;
-                    setCategoriaML(nome);
-                    const cat = CATEGORIAS_ML.find((c) => c.nome === nome);
-                    if (cat) {
-                      const pct = tipoAnuncioML === "premium" ? cat.premiumPct : cat.classicoPct;
-                      setComissaoMLPct(String(pct).replace(".", ","));
-                    }
-                  }}
-                  className="w-full rounded-lg border border-gray-300 dark:border-[#2c2c36] bg-gray-50 dark:bg-[#0e0e12] px-3 py-2 text-base text-gray-900 dark:text-white outline-none"
-                >
-                  {CATEGORIAS_ML.map((cat) => (
-                    <option key={cat.nome} value={cat.nome}>{cat.nome}</option>
-                  ))}
-                  <option value="outra">Outra (digitar manualmente)</option>
-                </select>
-              </div>
-
-              <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div>
-                  <p className="mb-1.5 text-base font-medium text-gray-700 dark:text-[#c8c8d0]">Tipo de anuncio</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTipoAnuncioML("classico");
-                        const catC = CATEGORIAS_ML.find((c) => c.nome === categoriaML);
-                        setComissaoMLPct(String(catC ? catC.classicoPct : COMISSAO_ML_CLASSICO_PCT).replace(".", ","));
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <p className="mb-1.5 text-base font-medium text-gray-700 dark:text-[#c8c8d0]">Categoria (Mercado Livre)</p>
+                    <select
+                      value={categoriaML}
+                      onChange={(e) => {
+                        const nome = e.target.value;
+                        setCategoriaML(nome);
+                        const cat = CATEGORIAS_ML.find((c) => c.nome === nome);
+                        if (cat) {
+                          const pct = tipoAnuncioML === "premium" ? cat.premiumPct : cat.classicoPct;
+                          setComissaoMLPct(String(pct).replace(".", ","));
+                        }
                       }}
-                      className={
-                        "rounded-lg border px-3 py-2 text-sm font-medium " +
-                        (tipoAnuncioML === "classico" ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
-                      }
+                      className="w-full rounded-lg border border-gray-300 dark:border-[#2c2c36] bg-gray-50 dark:bg-[#0e0e12] px-3 py-2 text-base text-gray-900 dark:text-white outline-none"
                     >
-                      Classico
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTipoAnuncioML("premium");
-                        const catP = CATEGORIAS_ML.find((c) => c.nome === categoriaML);
-                        setComissaoMLPct(String(catP ? catP.premiumPct : COMISSAO_ML_PREMIUM_PCT).replace(".", ","));
-                      }}
-                      className={
-                        "rounded-lg border px-3 py-2 text-sm font-medium " +
-                        (tipoAnuncioML === "premium" ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
-                      }
+                      {CATEGORIAS_ML.map((cat) => (
+                        <option key={cat.nome} value={cat.nome}>{cat.nome}</option>
+                      ))}
+                      <option value="outra">Outra (digitar manualmente)</option>
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div>
+                      <p className="mb-1.5 text-base font-medium text-gray-700 dark:text-[#c8c8d0]">Tipo de anuncio</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTipoAnuncioML("classico");
+                            const catC = CATEGORIAS_ML.find((c) => c.nome === categoriaML);
+                            setComissaoMLPct(String(catC ? catC.classicoPct : COMISSAO_ML_CLASSICO_PCT).replace(".", ","));
+                          }}
+                          className={
+                            "rounded-lg border px-3 py-2 text-sm font-medium " +
+                            (tipoAnuncioML === "classico" ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
+                          }
+                        >
+                          Classico
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTipoAnuncioML("premium");
+                            const catP = CATEGORIAS_ML.find((c) => c.nome === categoriaML);
+                            setComissaoMLPct(String(catP ? catP.premiumPct : COMISSAO_ML_PREMIUM_PCT).replace(".", ","));
+                          }}
+                          className={
+                            "rounded-lg border px-3 py-2 text-sm font-medium " +
+                            (tipoAnuncioML === "premium" ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
+                          }
+                        >
+                          Premium
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="mb-1.5 text-base font-medium text-gray-700 dark:text-[#c8c8d0]">Frete gratis pro comprador?</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setFreteGratisML(true)}
+                          className={
+                            "rounded-lg border px-3 py-2 text-sm font-medium " +
+                            (freteGratisML ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
+                          }
+                        >
+                          Sim
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFreteGratisML(false)}
+                          className={
+                            "rounded-lg border px-3 py-2 text-sm font-medium " +
+                            (!freteGratisML ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
+                          }
+                        >
+                          Nao
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Field label="Comissao ML (%)" value={comissaoMLPct} onChange={setComissaoMLPct} suffix="%" />
+                      <Field label="Ads ML (%)" value={adsMLPct} onChange={setAdsMLPct} suffix="%" />
+                    </div>
+                    <p className="mt-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66]">
+                      Comissao: taxa que o Mercado Livre cobra sobre o preco de venda (Classico ~{COMISSAO_ML_CLASSICO_PCT}%, Premium ~{COMISSAO_ML_PREMIUM_PCT}% - clique acima ou ajuste o numero manualmente). Ads: seu investimento em Mercado Ads sobre a venda.
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <Field label="Peso do produto" value={pesoProdutoKg} onChange={setPesoProdutoKg} suffix="kg" placeholder={(toNum(pesoUsado) / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} />
+                      <Field label="Comprimento" value={comprimentoCm} onChange={setComprimentoCm} suffix="cm" />
+                      <Field label="Largura" value={larguraCm} onChange={setLarguraCm} suffix="cm" />
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      <Field label="Altura" value={alturaCm} onChange={setAlturaCm} suffix="cm" />
+                      <div className="flex flex-col justify-end text-base text-gray-500 dark:text-[#8b8b96]">
+                        Taxa fixa cobrada: <span className="text-gray-900 dark:text-white">{formatBRL(resultadoML.fixa)}</span>
+                      </div>
+                    </div>
+                    <p className="mt-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66]">
+                      A taxa fixa do ML muda conforme voce oferece frete gratis ou nao, e tambem e por faixa de peso/preco (tabela oficial do ML, valida a partir de 24/08/2026). Se a caixa (C x L x A) resultar num peso cubado maior que o peso real do produto, o ML cobra pelo cubado - preencha as dimensoes pra ver a taxa correta.
+                    </p>
+                  </div>
+
+                  <div className="border-t border-gray-200 dark:border-[#23232b] pt-3">
+                    <p className="mb-1.5 text-base font-medium text-gray-700 dark:text-[#c8c8d0]">Voce envia por Mercado Envios Flex?</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setUsaFlexML(false)}
+                        className={
+                          "rounded-lg border px-3 py-2 text-sm font-medium " +
+                          (!usaFlexML ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
+                        }
+                      >
+                        Nao uso Flex
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setUsaFlexML(true)}
+                        className={
+                          "rounded-lg border px-3 py-2 text-sm font-medium " +
+                          (usaFlexML ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
+                        }
+                      >
+                        Uso Flex
+                      </button>
+                    </div>
+                    {usaFlexML && (
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <Field label="Custo do Flex" value={custoFlexML} onChange={setCustoFlexML} suffix="R$" />
+                        <Field label="Reembolso do Flex" value={reembolsoFlexML} onChange={setReembolsoFlexML} suffix="R$" />
+                      </div>
+                    )}
+                    <p className="mt-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66]">
+                      O Flex tem um custo de entrega que o ML repassa e reembolsa parte dele. Preencha os dois valores reais (confira no seu extrato) pra comparar quanto voce recebe liquido vendendo com Flex e sem Flex.
+                    </p>
+                  </div>
+
+                  <div className="border-t border-gray-200 dark:border-[#23232b] pt-3">
+                    <p className="mb-1.5 text-base font-medium text-gray-700 dark:text-[#c8c8d0]">Participa do programa de parceiros (afiliados)?</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setUsaAfiliadoML(false)}
+                        className={
+                          "rounded-lg border px-3 py-2 text-sm font-medium " +
+                          (!usaAfiliadoML ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
+                        }
                     >
-                      Premium
-                    </button>
+                        Nao uso afiliados
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setUsaAfiliadoML(true)}
+                        className={
+                          "rounded-lg border px-3 py-2 text-sm font-medium " +
+                          (usaAfiliadoML ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
+                        }
+                      >
+                        Uso afiliados
+                      </button>
+                    </div>
+                    {usaAfiliadoML && (
+                      <div className="mt-2">
+                        <Field label="Afiliado ML (%)" value={afiliadoMLPct} onChange={setAfiliadoMLPct} suffix="%" />
+                      </div>
+                    )}
+                    <p className="mt-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66]">
+                      Parceiros Mercado Livre: comissao paga a criadores/afiliados que divulgam seu produto - so entra na conta se voce marcar "Uso afiliados" acima.
+                    </p>
                   </div>
                 </div>
-                <div>
-                  <p className="mb-1.5 text-base font-medium text-gray-700 dark:text-[#c8c8d0]">Frete gratis pro comprador?</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setFreteGratisML(true)}
-                      className={
-                        "rounded-lg border px-3 py-2 text-sm font-medium " +
-                        (freteGratisML ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
-                      }
-                    >
-                      Sim
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFreteGratisML(false)}
-                      className={
-                        "rounded-lg border px-3 py-2 text-sm font-medium " +
-                        (!freteGratisML ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
-                      }
-                    >
-                      Nao
-                    </button>
-                  </div>
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="Comissao ML (%)" value={comissaoMLPct} onChange={setComissaoMLPct} suffix="%" />
-                <Field label="Ads ML (%)" value={adsMLPct} onChange={setAdsMLPct} suffix="%" />
-              </div>
-              <p className="mt-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66]">
-                Comissao: taxa que o Mercado Livre cobra sobre o preco de venda (Classico ~{COMISSAO_ML_CLASSICO_PCT}%, Premium ~{COMISSAO_ML_PREMIUM_PCT}% - clique acima ou ajuste o numero manualmente). Ads: seu investimento em Mercado Ads sobre a venda.
-              </p>
-              <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
-                <div>
-                  <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem Ads</p>
-                  <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semAds.preco)}</p>
-                  <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.semAds.lucro)}</span></p>
-                </div>
-                <div>
-                  <p className="text-base text-gray-500 dark:text-[#8b8b96]">Com Ads</p>
-                  <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.comAds.preco)}</p>
-                  <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.comAds.lucro)}</span></p>
-                </div>
-              </div>
+                <div className="flex flex-col gap-3 lg:sticky lg:top-6 lg:self-start">
+                  <div className="grid grid-cols-1 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3 sm:grid-cols-2">
+                    <div>
+                      <p className="text-base text-gray-500 dark:text-[#8b8b96]">Preco de venda</p>
+                      <p className="text-3xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.preco)}</p>
+                    </div>
+                    <div>
+                      <p className="text-base text-gray-500 dark:text-[#8b8b96]">Preco para anunciar (+30%)</p>
+                      <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">{formatBRL(resultadoML.preco * 1.3)}</p>
+                    </div>
+                    <p className="col-span-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66] sm:col-span-2">
+                      Anuncie pelo preco maior pra abrir espaco pra promocao/cupom na central de promocoes sem furar sua margem. O preco de venda real (o que voce recebe liquido) e sempre o da esquerda.
+                    </p>
+                    <div className="col-span-1 mt-1 flex gap-4 text-base sm:col-span-2">
+                      <span className="text-gray-500 dark:text-[#8b8b96]">
+                        Margem liquida <span className="text-green-600 dark:text-green-400">{fmtPct(resultadoML.margemPct)}</span>
+                      </span>
+                      <span className="text-gray-500 dark:text-[#8b8b96]">
+                        Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.lucro)}</span>
+                      </span>
+                    </div>
+                  </div>
 
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <Field label="Peso do produto" value={pesoProdutoKg} onChange={setPesoProdutoKg} suffix="kg" placeholder={(toNum(pesoUsado) / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} />
-                <Field label="Comprimento" value={comprimentoCm} onChange={setComprimentoCm} suffix="cm" />
-                <Field label="Largura" value={larguraCm} onChange={setLarguraCm} suffix="cm" />
-              </div>
-              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                <Field label="Altura" value={alturaCm} onChange={setAlturaCm} suffix="cm" />
-                <div className="flex flex-col justify-end text-base text-gray-500 dark:text-[#8b8b96]">
-                  Taxa fixa cobrada: <span className="text-gray-900 dark:text-white">{formatBRL(resultadoML.fixa)}</span>
-                </div>
-              </div>
-              <p className="mt-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66]">
-                A taxa fixa do ML muda conforme voce oferece frete gratis ou nao, e tambem e por faixa de peso/preco (tabela oficial do ML, valida a partir de 24/08/2026). Se a caixa (C x L x A) resultar num peso cubado maior que o peso real do produto, o ML cobra pelo cubado - preencha as dimensoes pra ver a taxa correta.
-              </p>
-              <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
-                <div>
-                  <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem frete gratis</p>
-                  <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semFreteGratis.preco)}</p>
-                  <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.semFreteGratis.lucro)}</span></p>
-                </div>
-                <div>
-                  <p className="text-base text-gray-500 dark:text-[#8b8b96]">Com frete gratis</p>
-                  <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.comFreteGratis.preco)}</p>
-                  <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.comFreteGratis.lucro)}</span></p>
-                </div>
-              </div>
+                  <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
+                    <div>
+                      <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem Ads</p>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semAds.preco)}</p>
+                      <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.semAds.lucro)}</span></p>
+                    </div>
+                    <div>
+                      <p className="text-base text-gray-500 dark:text-[#8b8b96]">Com Ads</p>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.comAds.preco)}</p>
+                      <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.comAds.lucro)}</span></p>
+                    </div>
+                  </div>
 
-              <div className="mt-3 border-t border-gray-200 dark:border-[#23232b] pt-3">
-                <p className="mb-1.5 text-base font-medium text-gray-700 dark:text-[#c8c8d0]">Voce envia por Mercado Envios Flex?</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setUsaFlexML(false)}
-                    className={
-                      "rounded-lg border px-3 py-2 text-sm font-medium " +
-                      (!usaFlexML ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
-                    }
-                  >
-                    Nao uso Flex
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setUsaFlexML(true)}
-                    className={
-                      "rounded-lg border px-3 py-2 text-sm font-medium " +
-                      (usaFlexML ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
-                    }
-                  >
-                    Uso Flex
-                  </button>
-                </div>
-                {usaFlexML && (
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <Field label="Custo do Flex" value={custoFlexML} onChange={setCustoFlexML} suffix="R$" />
-                    <Field label="Reembolso do Flex" value={reembolsoFlexML} onChange={setReembolsoFlexML} suffix="R$" />
+                  <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
+                    <div>
+                      <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem frete gratis</p>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semFreteGratis.preco)}</p>
+                      <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.semFreteGratis.lucro)}</span></p>
+                    </div>
+                    <div>
+                      <p className="text-base text-gray-500 dark:text-[#8b8b96]">Com frete gratis</p>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.comFreteGratis.preco)}</p>
+                      <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.comFreteGratis.lucro)}</span></p>
+                    </div>
                   </div>
-                )}
-                <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
-                  <div>
-                    <p className="text-base text-gray-500 dark:text-[#8b8b96]">Vendendo sem Flex</p>
-                    <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semFlex.preco)}</p>
-                    <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.semFlex.lucro)}</span></p>
-                  </div>
-                  <div>
-                    <p className="text-base text-gray-500 dark:text-[#8b8b96]">Vendendo com Flex</p>
-                    <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.comFlex.preco)}</p>
-                    <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.comFlex.lucro)}</span></p>
-                  </div>
-                </div>
-                <p className="mt-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66]">
-                  O Flex tem um custo de entrega que o ML repassa e reembolsa parte dele. Preencha os dois valores reais (confira no seu extrato) pra comparar quanto voce recebe liquido vendendo com Flex e sem Flex.
-                </p>
-              </div>
 
-              <div className="mt-3 border-t border-gray-200 dark:border-[#23232b] pt-3">
-                <p className="mb-1.5 text-base font-medium text-gray-700 dark:text-[#c8c8d0]">Participa do programa de parceiros (afiliados)?</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setUsaAfiliadoML(false)}
-                    className={
-                      "rounded-lg border px-3 py-2 text-sm font-medium " +
-                      (!usaAfiliadoML ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
-                    }
-                >
-                    Nao uso afiliados
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setUsaAfiliadoML(true)}
-                    className={
-                      "rounded-lg border px-3 py-2 text-sm font-medium " +
-                      (usaAfiliadoML ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
-                    }
-                  >
-                    Uso afiliados
-                  </button>
-                </div>
-                {usaAfiliadoML && (
-                  <div className="mt-2">
-                    <Field label="Afiliado ML (%)" value={afiliadoMLPct} onChange={setAfiliadoMLPct} suffix="%" />
+                  <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
+                    <div>
+                      <p className="text-base text-gray-500 dark:text-[#8b8b96]">Vendendo sem Flex</p>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semFlex.preco)}</p>
+                      <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.semFlex.lucro)}</span></p>
+                    </div>
+                    <div>
+                      <p className="text-base text-gray-500 dark:text-[#8b8b96]">Vendendo com Flex</p>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.comFlex.preco)}</p>
+                      <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.comFlex.lucro)}</span></p>
+                    </div>
                   </div>
-                )}
-                <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
-                  <div>
-                    <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem afiliados</p>
-                    <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semAfiliado.preco)}</p>
-                    <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.semAfiliado.lucro)}</span></p>
-                  </div>
-                  <div>
-                    <p className="text-base text-gray-500 dark:text-[#8b8b96]">Com afiliados</p>
-                    <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.comAfiliado.preco)}</p>
-                    <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.comAfiliado.lucro)}</span></p>
-                  </div>
-                </div>
-                <p className="mt-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66]">
-                  Parceiros Mercado Livre: comissao paga a criadores/afiliados que divulgam seu produto - so entra na conta se voce marcar "Uso afiliados" acima.
-                </p>
-              </div>
 
-              <div className="mt-3 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3 text-base">
-                <p className="mb-2 font-medium text-gray-700 dark:text-[#c8c8d0]">Detalhamento das taxas (sobre o preco de venda)</p>
-                <div className="flex flex-col gap-1">
-                  <LinhaTaxa label={`Comissao (${comissaoMLPct}%)`} valor={formatBRL(resultadoML.comissao)} />
-                  <LinhaTaxa label="Taxa fixa de envio" valor={formatBRL(resultadoML.fixa)} />
-                  <LinhaTaxa label={`Imposto (${impostoPct}%)`} valor={formatBRL(resultadoML.imposto)} />
-                  <LinhaTaxa label={`Ads (${adsMLPct}%)`} valor={formatBRL(resultadoML.ads)} />
-                  {usaAfiliadoML && <LinhaTaxa label={`Afiliado (${afiliadoMLPct}%)`} valor={formatBRL(resultadoML.afiliado)} />}
-                  <LinhaTaxa label="Custo do produto" valor={formatBRL(custoBaseProduto)} />
-                  {toNum(embalagemPrecificacao) > 0 && <LinhaTaxa label="Embalagem" valor={formatBRL(toNum(embalagemPrecificacao))} />}
-                  <div className="mt-1 border-t border-gray-200 dark:border-[#23232b] pt-1">
-                    <LinhaTaxa label="Lucro liquido" valor={formatBRL(resultadoML.lucro)} destaque />
+                  <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
+                    <div>
+                      <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem afiliados</p>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semAfiliado.preco)}</p>
+                      <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.semAfiliado.lucro)}</span></p>
+                    </div>
+                    <div>
+                      <p className="text-base text-gray-500 dark:text-[#8b8b96]">Com afiliados</p>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.comAfiliado.preco)}</p>
+                      <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.comAfiliado.lucro)}</span></p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3 text-base">
+                    <p className="mb-2 font-medium text-gray-700 dark:text-[#c8c8d0]">Detalhamento das taxas (sobre o preco de venda)</p>
+                    <div className="flex flex-col gap-1">
+                      <LinhaTaxa label={`Comissao (${comissaoMLPct}%)`} valor={formatBRL(resultadoML.comissao)} />
+                      <LinhaTaxa label="Taxa fixa de envio" valor={formatBRL(resultadoML.fixa)} />
+                      <LinhaTaxa label={`Imposto (${impostoPct}%)`} valor={formatBRL(resultadoML.imposto)} />
+                      <LinhaTaxa label={`Ads (${adsMLPct}%)`} valor={formatBRL(resultadoML.ads)} />
+                      {usaAfiliadoML && <LinhaTaxa label={`Afiliado (${afiliadoMLPct}%)`} valor={formatBRL(resultadoML.afiliado)} />}
+                      <LinhaTaxa label="Custo do produto" valor={formatBRL(custoBaseProduto)} />
+                      {toNum(embalagemPrecificacao) > 0 && <LinhaTaxa label="Embalagem" valor={formatBRL(toNum(embalagemPrecificacao))} />}
+                      <div className="mt-1 border-t border-gray-200 dark:border-[#23232b] pt-1">
+                        <LinhaTaxa label="Lucro liquido" valor={formatBRL(resultadoML.lucro)} destaque />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1310,150 +1324,158 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                 {"←"} Trocar plataforma
               </button>
 <Card icon="SH" title="Shopee" titleClassName="text-3xl font-black text-[#EE4D2D]" titleStyle={{ fontFamily: "'Roboto', sans-serif" }} subtitle="Comissao + taxa fixa automatica + ads + afiliado">
-              <div className="mb-3 grid grid-cols-1 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3 sm:grid-cols-2">
-                <div>
-                  <p className="text-base text-gray-500 dark:text-[#8b8b96]">Preco de venda</p>
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.preco)}</p>
-                </div>
-                <div>
-                  <p className="text-base text-gray-500 dark:text-[#8b8b96]">Preco para anunciar (+30%)</p>
-                  <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">{formatBRL(resultadoShopee.preco * 1.3)}</p>
-                </div>
-                <p className="col-span-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66] sm:col-span-2">
-                  Anuncie pelo preco maior pra abrir espaco pra promocao/cupom na central de promocoes sem furar sua margem. O preco de venda real (o que voce recebe liquido) e sempre o da esquerda.
-                </p>
-                <div className="col-span-1 mt-1 flex gap-4 text-base sm:col-span-2">
-                  <span className="text-gray-500 dark:text-[#8b8b96]">
-                    Margem liquida <span className="text-green-600 dark:text-green-400">{fmtPct(resultadoShopee.margemPct)}</span>
-                  </span>
-                  <span className="text-gray-500 dark:text-[#8b8b96]">
-                    Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoShopee.lucro)}</span>
-                  </span>
-                </div>
-              </div>
-
-              <div className="mb-2">
-                <p className="mb-1.5 text-base font-medium text-gray-700 dark:text-[#c8c8d0]">Participa do programa de afiliados?</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setUsaAfiliadoShopee(false)}
-                    className={
-                      "rounded-lg border px-3 py-2 text-sm font-medium " +
-                      (!usaAfiliadoShopee ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
-                    }
-                  >
-                    Nao uso afiliados
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setUsaAfiliadoShopee(true)}
-                    className={
-                      "rounded-lg border px-3 py-2 text-sm font-medium " +
-                      (usaAfiliadoShopee ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
-                    }
-                  >
-                    Uso afiliados
-                  </button>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="Ads Shopee (%)" value={adsShopeePct} onChange={setAdsShopeePct} suffix="%" />
-                {usaAfiliadoShopee && (
-                  <Field label="Afiliado (%)" value={afiliadoShopeePct} onChange={setAfiliadoShopeePct} suffix="%" />
-                )}
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
-                <div>
-                  <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem Ads</p>
-                  <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.semAds.preco)}</p>
-                  <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoShopee.semAds.lucro)}</span></p>
-                </div>
-                <div>
-                  <p className="text-base text-gray-500 dark:text-[#8b8b96]">Com Ads</p>
-                  <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.comAds.preco)}</p>
-                  <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoShopee.comAds.lucro)}</span></p>
-                </div>
-              </div>
-
-              <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
-                <div>
-                  <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem afiliados</p>
-                  <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.semAfiliado.preco)}</p>
-                  <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoShopee.semAfiliado.lucro)}</span></p>
-                </div>
-                <div>
-                  <p className="text-base text-gray-500 dark:text-[#8b8b96]">Com afiliados</p>
-                  <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.comAfiliado.preco)}</p>
-                  <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoShopee.comAfiliado.lucro)}</span></p>
-                </div>
-              </div>
-              <p className="mt-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66]">
-                Ads: seu investimento em Shopee Ads sobre a venda. Afiliado: comissao paga a criadores de conteudo/afiliados que divulgam seu produto - so entra na conta se voce marcar "Uso afiliados" acima.
-              </p>
-
-              <div className="mt-3 border-t border-gray-200 dark:border-[#23232b] pt-3">
-                <p className="mb-1.5 text-base font-medium text-gray-700 dark:text-[#c8c8d0]">Voce envia por Shopee Entrega Direta / Envio Flex (entrega propria)?</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setUsaFlexShopee(false)}
-                    className={
-                      "rounded-lg border px-3 py-2 text-sm font-medium " +
-                      (!usaFlexShopee ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
-                    }
-                  >
-                    Nao uso Flex
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setUsaFlexShopee(true)}
-                    className={
-                      "rounded-lg border px-3 py-2 text-sm font-medium " +
-                      (usaFlexShopee ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
-                    }
-                  >
-                    Uso Flex
-                  </button>
-                </div>
-                {usaFlexShopee && (
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <Field label="Custo do Flex" value={custoFlexShopee} onChange={setCustoFlexShopee} suffix="R$" />
-                    <Field label="Reembolso do Flex" value={reembolsoFlexShopee} onChange={setReembolsoFlexShopee} suffix="R$" />
-                  </div>
-                )}
-                <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+                <div className="flex flex-col gap-4">
                   <div>
-                    <p className="text-base text-gray-500 dark:text-[#8b8b96]">Vendendo sem Flex</p>
-                    <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.semFlex.preco)}</p>
-                    <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoShopee.semFlex.lucro)}</span></p>
+                    <p className="mb-1.5 text-base font-medium text-gray-700 dark:text-[#c8c8d0]">Participa do programa de afiliados?</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setUsaAfiliadoShopee(false)}
+                        className={
+                          "rounded-lg border px-3 py-2 text-sm font-medium " +
+                          (!usaAfiliadoShopee ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
+                        }
+                      >
+                        Nao uso afiliados
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setUsaAfiliadoShopee(true)}
+                        className={
+                          "rounded-lg border px-3 py-2 text-sm font-medium " +
+                          (usaAfiliadoShopee ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
+                        }
+                      >
+                        Uso afiliados
+                      </button>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <Field label="Ads Shopee (%)" value={adsShopeePct} onChange={setAdsShopeePct} suffix="%" />
+                      {usaAfiliadoShopee && (
+                        <Field label="Afiliado (%)" value={afiliadoShopeePct} onChange={setAfiliadoShopeePct} suffix="%" />
+                      )}
+                    </div>
+                    <p className="mt-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66]">
+                      Ads: seu investimento em Shopee Ads sobre a venda. Afiliado: comissao paga a criadores de conteudo/afiliados que divulgam seu produto - so entra na conta se voce marcar "Uso afiliados" acima.
+                    </p>
                   </div>
-                  <div>
-                    <p className="text-base text-gray-500 dark:text-[#8b8b96]">Vendendo com Flex</p>
-                    <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.comFlex.preco)}</p>
-                    <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoShopee.comFlex.lucro)}</span></p>
-                  </div>
-                </div>
-                <p className="mt-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66]">
-                  Na Shopee Entrega Direta (Envio Flex) voce mesmo faz a entrega (ou contrata um parceiro/motoboy), em vez de usar os Correios/transportadora da Shopee. Preencha o custo real dessa entrega e um eventual reembolso da Shopee (confira no seu extrato) pra comparar quanto voce recebe liquido vendendo com Flex e sem Flex.
-                </p>
-              </div>
 
-              <div className="mt-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3 text-base">
-                <p className="mb-2 font-medium text-gray-700 dark:text-[#c8c8d0]">Detalhamento das taxas (sobre o preco de venda)</p>
-                <div className="flex flex-col gap-1">
-                  <LinhaTaxa label={`Comissao (${fmtPct(comissaoShopeePct(resultadoShopee.preco))})`} valor={formatBRL(resultadoShopee.comissao)} />
-                  <LinhaTaxa label="Taxa fixa" valor={formatBRL(resultadoShopee.fixa)} />
-                  <LinhaTaxa label={`Imposto (${impostoPct}%)`} valor={formatBRL(resultadoShopee.imposto)} />
-                  <LinhaTaxa label={`Ads (${adsShopeePct}%)`} valor={formatBRL(resultadoShopee.ads)} />
-                  {usaAfiliadoShopee && <LinhaTaxa label={`Afiliado (${afiliadoShopeePct}%)`} valor={formatBRL(resultadoShopee.afiliado)} />}
-                  <LinhaTaxa label="Custo do produto" valor={formatBRL(custoBaseProduto)} />
-                  {toNum(embalagemPrecificacao) > 0 && <LinhaTaxa label="Embalagem" valor={formatBRL(toNum(embalagemPrecificacao))} />}
-                  <div className="mt-1 border-t border-gray-200 dark:border-[#23232b] pt-1">
-                    <LinhaTaxa label="Lucro liquido" valor={formatBRL(resultadoShopee.lucro)} destaque />
+                  <div className="border-t border-gray-200 dark:border-[#23232b] pt-3">
+                    <p className="mb-1.5 text-base font-medium text-gray-700 dark:text-[#c8c8d0]">Voce envia por Shopee Entrega Direta / Envio Flex (entrega propria)?</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setUsaFlexShopee(false)}
+                        className={
+                          "rounded-lg border px-3 py-2 text-sm font-medium " +
+                          (!usaFlexShopee ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
+                        }
+                      >
+                        Nao uso Flex
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setUsaFlexShopee(true)}
+                        className={
+                          "rounded-lg border px-3 py-2 text-sm font-medium " +
+                          (usaFlexShopee ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
+                        }
+                      >
+                        Uso Flex
+                      </button>
+                    </div>
+                    {usaFlexShopee && (
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <Field label="Custo do Flex" value={custoFlexShopee} onChange={setCustoFlexShopee} suffix="R$" />
+                        <Field label="Reembolso do Flex" value={reembolsoFlexShopee} onChange={setReembolsoFlexShopee} suffix="R$" />
+                      </div>
+                    )}
+                    <p className="mt-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66]">
+                      Na Shopee Entrega Direta (Envio Flex) voce mesmo faz a entrega (ou contrata um parceiro/motoboy), em vez de usar os Correios/transportadora da Shopee. Preencha o custo real dessa entrega e um eventual reembolso da Shopee (confira no seu extrato) pra comparar quanto voce recebe liquido vendendo com Flex e sem Flex.
+                    </p>
                   </div>
                 </div>
-                <p className="mt-2 text-sm text-gray-400 dark:text-[#5c5c66]">Regra oficial 2026: preco maior ou igual a R$80 paga 14% + taxa fixa por faixa. Preco menor que R$80 paga 20% + R$4 fixo.</p>
+
+                <div className="flex flex-col gap-3 lg:sticky lg:top-6 lg:self-start">
+                  <div className="grid grid-cols-1 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3 sm:grid-cols-2">
+                    <div>
+                      <p className="text-base text-gray-500 dark:text-[#8b8b96]">Preco de venda</p>
+                      <p className="text-3xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.preco)}</p>
+                    </div>
+                    <div>
+                      <p className="text-base text-gray-500 dark:text-[#8b8b96]">Preco para anunciar (+30%)</p>
+                      <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">{formatBRL(resultadoShopee.preco * 1.3)}</p>
+                    </div>
+                    <p className="col-span-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66] sm:col-span-2">
+                      Anuncie pelo preco maior pra abrir espaco pra promocao/cupom na central de promocoes sem furar sua margem. O preco de venda real (o que voce recebe liquido) e sempre o da esquerda.
+                    </p>
+                    <div className="col-span-1 mt-1 flex gap-4 text-base sm:col-span-2">
+                      <span className="text-gray-500 dark:text-[#8b8b96]">
+                        Margem liquida <span className="text-green-600 dark:text-green-400">{fmtPct(resultadoShopee.margemPct)}</span>
+                      </span>
+                      <span className="text-gray-500 dark:text-[#8b8b96]">
+                        Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoShopee.lucro)}</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
+                    <div>
+                      <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem Ads</p>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.semAds.preco)}</p>
+                      <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoShopee.semAds.lucro)}</span></p>
+                    </div>
+                    <div>
+                      <p className="text-base text-gray-500 dark:text-[#8b8b96]">Com Ads</p>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.comAds.preco)}</p>
+                      <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoShopee.comAds.lucro)}</span></p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
+                    <div>
+                      <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem afiliados</p>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.semAfiliado.preco)}</p>
+                      <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoShopee.semAfiliado.lucro)}</span></p>
+                    </div>
+                    <div>
+                      <p className="text-base text-gray-500 dark:text-[#8b8b96]">Com afiliados</p>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.comAfiliado.preco)}</p>
+                      <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoShopee.comAfiliado.lucro)}</span></p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
+                    <div>
+                      <p className="text-base text-gray-500 dark:text-[#8b8b96]">Vendendo sem Flex</p>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.semFlex.preco)}</p>
+                      <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoShopee.semFlex.lucro)}</span></p>
+                    </div>
+                    <div>
+                      <p className="text-base text-gray-500 dark:text-[#8b8b96]">Vendendo com Flex</p>
+                      <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.comFlex.preco)}</p>
+                      <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoShopee.comFlex.lucro)}</span></p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3 text-base">
+                    <p className="mb-2 font-medium text-gray-700 dark:text-[#c8c8d0]">Detalhamento das taxas (sobre o preco de venda)</p>
+                    <div className="flex flex-col gap-1">
+                      <LinhaTaxa label={`Comissao (${fmtPct(comissaoShopeePct(resultadoShopee.preco))})`} valor={formatBRL(resultadoShopee.comissao)} />
+                      <LinhaTaxa label="Taxa fixa" valor={formatBRL(resultadoShopee.fixa)} />
+                      <LinhaTaxa label={`Imposto (${impostoPct}%)`} valor={formatBRL(resultadoShopee.imposto)} />
+                      <LinhaTaxa label={`Ads (${adsShopeePct}%)`} valor={formatBRL(resultadoShopee.ads)} />
+                      {usaAfiliadoShopee && <LinhaTaxa label={`Afiliado (${afiliadoShopeePct}%)`} valor={formatBRL(resultadoShopee.afiliado)} />}
+                      <LinhaTaxa label="Custo do produto" valor={formatBRL(custoBaseProduto)} />
+                      {toNum(embalagemPrecificacao) > 0 && <LinhaTaxa label="Embalagem" valor={formatBRL(toNum(embalagemPrecificacao))} />}
+                      <div className="mt-1 border-t border-gray-200 dark:border-[#23232b] pt-1">
+                        <LinhaTaxa label="Lucro liquido" valor={formatBRL(resultadoShopee.lucro)} destaque />
+                      </div>
+                    </div>
+                    <p className="mt-2 text-sm text-gray-400 dark:text-[#5c5c66]">Regra oficial 2026: preco maior ou igual a R$80 paga 14% + taxa fixa por faixa. Preco menor que R$80 paga 20% + R$4 fixo.</p>
+                  </div>
+                </div>
               </div>
             </Card>
 </div>
