@@ -409,8 +409,7 @@ const [cardFocado, setCardFocado] = useState("");
             (function () {
               try {
                 var stored = localStorage.getItem("theme");
-                var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-                var isDark = stored ? stored === "dark" : prefersDark;
+                var isDark = stored ? stored === "dark" : true;
                 if (isDark) {
                   document.documentElement.classList.add("dark");
                 } else {
@@ -421,7 +420,6 @@ const [cardFocado, setCardFocado] = useState("");
           `,
         }}
       />
-      <ThemeToggle />
       <a
         href="/login"
         className="absolute right-4 top-6 z-20 rounded-lg border border-gray-300 dark:border-[#2c2c36] bg-white dark:bg-[#131318] px-5 py-2.5 text-sm font-semibold text-gray-700 dark:text-[#c8c8d0] transition-colors hover:border-amber-500 hover:text-amber-600 dark:hover:text-amber-400 sm:right-8"
@@ -429,10 +427,10 @@ const [cardFocado, setCardFocado] = useState("");
         Entrar
       </a>
       <header className="mb-6 flex items-center justify-center">
-        <img src="/logo-7x7.png" alt="7x7 Escala Ecommerce" className="h-16 w-auto sm:h-28" />
+        <img src="/logo-7x7.png" alt="7x7 Escala Ecommerce" className="h-16 w-auto sm:h-28 invert hue-rotate-180 dark:invert-0 dark:hue-rotate-0" />
       </header>
 
-      <div className="mb-6 flex gap-2">
+      <div className="mb-6 flex items-center gap-2">
         <button
           onClick={() => {
             setAba("precificacao");
@@ -459,6 +457,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
         >
           Custo Produto 3D
         </button>
+        <ThemeToggle />
       </div>
 
       <section className="relative mb-6 overflow-hidden rounded-2xl border border-gray-200 dark:border-[#1f1f26] bg-white dark:bg-[#0d0d11] px-6 py-14 text-center sm:px-10">
