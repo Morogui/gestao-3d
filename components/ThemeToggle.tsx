@@ -8,11 +8,19 @@ import { useEffect, useState } from "react";
 // A pagina inteira ja era desenhada com uma paleta escura fixa (bg quase
 // preto, cards cinza-escuro, texto branco/amber), entao o "modo escuro"
 // de hoje virou a variante `dark:` no Tailwind (darkMode: "class" no
-// tailwind.config.ts) e o "modo claro" e o estado novo/padrao.
+// tailwind.config.ts).
+//
+// Ajuste de 2026-08-27 (pedido do Guilherme): o padrao da pagina deve ser
+// SEMPRE escuro, independente da preferencia do sistema operacional do
+// visitante. So muda pra claro se a pessoa clicar no botao (e a escolha
+// fica salva em localStorage pras proximas visitas). Tambem foi movido pra
+// dentro do menu de abas (Precificacao Marketplace / Custo Produto 3D),
+// deixando de ser fixed no canto (onde sobrepunha o botao Entrar).
 //
 // Estrategia:
 // - Le a preferencia salva em localStorage("theme"): "light" | "dark".
-// - Se nao tiver nada salvo, usa prefers-color-scheme do sistema.
+// - Se nao tiver nada salvo, o padrao e escuro (nao depende mais de
+//   prefers-color-scheme do sistema).
 // - Aplica/remove a classe "dark" em document.documentElement.
 // - Ao clicar, alterna e persiste a escolha em localStorage.
 // - Um script inline no topo do JSX de app/painel/page.tsx ja aplica a
@@ -20,19 +28,16 @@ import { useEffect, useState } from "react";
 //   componente so mantem o estado em sincronia depois que o React monta
 //   e cuida do clique do usuario.
 export default function ThemeToggle() {
-  const [isDark, setIsDark] = useState(false);
+  const [isDark, setIsDark] = useState(true);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    let dark = false;
+    let dark = true;
     try {
       const stored = localStorage.getItem("theme");
-      const prefersDark =
-        typeof window.matchMedia === "function" &&
-        window.matchMedia("(prefers-color-scheme: dark)").matches;
-      dark = stored ? stored === "dark" : prefersDark;
+      dark = stored ? stored === "dark" : true;
     } catch {
-      dark = false;
+      dark = true;
     }
     setIsDark(dark);
     setMounted(true);
@@ -57,7 +62,7 @@ export default function ThemeToggle() {
       aria-label={isDark ? "Ativar modo claro" : "Ativar modo escuro"}
       title={isDark ? "Ativar modo claro" : "Ativar modo escuro"}
       suppressHydrationWarning
-      className="fixed right-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 shadow-sm transition-colors hover:border-amber-500 hover:text-amber-600 dark:border-[#2c2c36] dark:bg-[#131318] dark:text-[#c8c8d0] dark:hover:text-amber-400"
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 shadow-sm transition-colors hover:border-amber-500 hover:text-amber-600 dark:border-[#2c2c36] dark:bg-[#131318] dark:text-[#c8c8d0] dark:hover:text-amber-400"
     >
       <span className="relative block h-5 w-5">
         {/* Sol - visivel no modo escuro (clique para ir pro claro) */}
