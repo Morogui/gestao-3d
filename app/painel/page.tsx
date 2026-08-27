@@ -257,7 +257,12 @@ document.head.appendChild(link);
   const [afiliadoShopeePct, setAfiliadoShopeePct] = useState("0");
   const [usaAfiliadoShopee, setUsaAfiliadoShopee] = useState(false);
   const [usaFlexShopee, setUsaFlexShopee] = useState(false);
-const [cardFocado, setCardFocado] = useState("");
+  // Escolha de plataforma (Mercado Livre ou Shopee) - pedido do Guilherme em
+  // 2026-08-27: em vez de mostrar as duas plataformas lado a lado, abre uma
+  // janela perguntando qual plataforma o usuario quer, e so mostra aquela,
+  // em largura cheia, com todas as comparacoes sempre visiveis.
+  const [plataformaEscolhida, setPlataformaEscolhida] = useState<"ml" | "shopee" | null>(null);
+  const [modalPlataformaAberto, setModalPlataformaAberto] = useState(false);
   const [custoFlexShopee, setCustoFlexShopee] = useState("");
   const [reembolsoFlexShopee, setReembolsoFlexShopee] = useState("");
   const [afiliadoMLPct, setAfiliadoMLPct] = useState("0");
@@ -309,10 +314,12 @@ const [cardFocado, setCardFocado] = useState("");
   const flexLiquidoShopee = Math.max(0, toNum(custoFlexShopee) - toNum(reembolsoFlexShopee));
 
   const resultadoML = useMemo(() => {
-    function calcular(comFlex: boolean, comAfiliado: boolean) {
+    function calcular(comFlex: boolean, comAfiliado: boolean, comAds: boolean = true, comFreteGratis?: boolean) {
       const afiliadoPctAtivo = comAfiliado ? toNum(afiliadoMLPct) : 0;
+      const adsPctAtivo = comAds ? toNum(adsMLPct) : 0;
+      const freteGratisAtivo = comFreteGratis === undefined ? freteGratisML : comFreteGratis;
       const taxaFixaFn = (preco: number) =>
-        (freteGratisML ? taxaPesoML(pesoKgParaML, preco) : taxaFixaMLSemFreteGratis(preco)) +
+        (freteGratisAtivo ? taxaPesoML(pesoKgParaML, preco) : taxaFixaMLSemFreteGratis(preco)) +
         (comFlex ? flexLiquidoML : 0);
       const preco =
         modoPrecificacao === "preco"
@@ -320,7 +327,7 @@ const [cardFocado, setCardFocado] = useState("");
           : resolverPreco({
               custoTotal: custoParaPrecificacao,
               impostoPct: toNum(impostoPct),
-              adsPct: toNum(adsMLPct),
+              adsPct: adsPctAtivo,
               afiliadoPct: afiliadoPctAtivo,
               margemAlvoPct: margemAlvo,
               comissaoPct: () => toNum(comissaoMLPct),
@@ -329,18 +336,22 @@ const [cardFocado, setCardFocado] = useState("");
       const comissao = preco * (toNum(comissaoMLPct) / 100);
       const fixa = taxaFixaFn(preco);
       const imposto = preco * (toNum(impostoPct) / 100);
-      const ads = preco * (toNum(adsMLPct) / 100);
+      const ads = preco * (adsPctAtivo / 100);
       const afiliado = preco * (afiliadoPctAtivo / 100);
       const lucro = preco - comissao - fixa - imposto - ads - afiliado - custoParaPrecificacao;
       return { preco, comissao, fixa, imposto, ads, afiliado, lucro, margemPct: preco > 0 ? (lucro / preco) * 100 : 0 };
     }
 
-    const ativo = calcular(usaFlexML, usaAfiliadoML);
-    const semFlex = calcular(false, usaAfiliadoML);
-    const comFlex = calcular(true, usaAfiliadoML);
-    const semAfiliado = calcular(usaFlexML, false);
-    const comAfiliado = calcular(usaFlexML, true);
-    return { ...ativo, semFlex, comFlex, semAfiliado, comAfiliado };
+    const ativo = calcular(usaFlexML, usaAfiliadoML, true);
+    const semFlex = calcular(false, usaAfiliadoML, true);
+    const comFlex = calcular(true, usaAfiliadoML, true);
+    const semAfiliado = calcular(usaFlexML, false, true);
+    const comAfiliado = calcular(usaFlexML, true, true);
+    const semAds = calcular(usaFlexML, usaAfiliadoML, false);
+    const comAds = calcular(usaFlexML, usaAfiliadoML, true);
+    const semFreteGratis = calcular(usaFlexML, usaAfiliadoML, true, false);
+    const comFreteGratis = calcular(usaFlexML, usaAfiliadoML, true, true);
+    return { ...ativo, semFlex, comFlex, semAfiliado, comAfiliado, semAds, comAds, semFreteGratis, comFreteGratis };
   }, [
     custoParaPrecificacao,
     impostoPct,
@@ -358,8 +369,9 @@ const [cardFocado, setCardFocado] = useState("");
   ]);
 
   const resultadoShopee = useMemo(() => {
-    function calcular(comFlex: boolean, comAfiliado: boolean) {
+    function calcular(comFlex: boolean, comAfiliado: boolean, comAds: boolean = true) {
       const afiliadoPctAtivo = comAfiliado ? toNum(afiliadoShopeePct) : 0;
+      const adsPctAtivo = comAds ? toNum(adsShopeePct) : 0;
       const taxaFixaFn = (preco: number) => taxaFixaShopee(preco) + (comFlex ? flexLiquidoShopee : 0);
       const preco =
         modoPrecificacao === "preco"
@@ -367,7 +379,7 @@ const [cardFocado, setCardFocado] = useState("");
           : resolverPreco({
               custoTotal: custoParaPrecificacao,
               impostoPct: toNum(impostoPct),
-              adsPct: toNum(adsShopeePct),
+              adsPct: adsPctAtivo,
               afiliadoPct: afiliadoPctAtivo,
               margemAlvoPct: margemAlvo,
               comissaoPct: (p) => comissaoShopeePct(p),
@@ -376,18 +388,20 @@ const [cardFocado, setCardFocado] = useState("");
       const comissao = preco * (comissaoShopeePct(preco) / 100);
       const fixa = taxaFixaFn(preco);
       const imposto = preco * (toNum(impostoPct) / 100);
-      const ads = preco * (toNum(adsShopeePct) / 100);
+      const ads = preco * (adsPctAtivo / 100);
       const afiliado = preco * (afiliadoPctAtivo / 100);
       const lucro = preco - comissao - fixa - imposto - ads - afiliado - custoParaPrecificacao;
       return { preco, comissao, fixa, imposto, ads, afiliado, lucro, margemPct: preco > 0 ? (lucro / preco) * 100 : 0 };
     }
 
-    const ativo = calcular(usaFlexShopee, usaAfiliadoShopee);
-    const semFlex = calcular(false, usaAfiliadoShopee);
-    const comFlex = calcular(true, usaAfiliadoShopee);
-    const semAfiliado = calcular(usaFlexShopee, false);
-    const comAfiliado = calcular(usaFlexShopee, true);
-    return { ...ativo, semFlex, comFlex, semAfiliado, comAfiliado };
+    const ativo = calcular(usaFlexShopee, usaAfiliadoShopee, true);
+    const semFlex = calcular(false, usaAfiliadoShopee, true);
+    const comFlex = calcular(true, usaAfiliadoShopee, true);
+    const semAfiliado = calcular(usaFlexShopee, false, true);
+    const comAfiliado = calcular(usaFlexShopee, true, true);
+    const semAds = calcular(usaFlexShopee, usaAfiliadoShopee, false);
+    const comAds = calcular(usaFlexShopee, usaAfiliadoShopee, true);
+    return { ...ativo, semFlex, comFlex, semAfiliado, comAfiliado, semAds, comAds };
   }, [
     custoParaPrecificacao,
     impostoPct,
@@ -430,12 +444,78 @@ const [cardFocado, setCardFocado] = useState("");
         <img src="/logo-7x7.png" alt="7x7 Escala Ecommerce" className="h-16 w-auto sm:h-28 invert hue-rotate-180 dark:invert-0 dark:hue-rotate-0" />
       </header>
 
+      {modalPlataformaAberto && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 px-4"
+          onClick={() => setModalPlataformaAberto(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-[#23232b] bg-white dark:bg-[#131318] p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white">Qual plataforma voce quer precificar?</h3>
+            <p className="mt-1 text-base text-gray-500 dark:text-[#8b8b96]">
+              Escolha Mercado Livre ou Shopee pra ver o preco, a margem e todas as comparacoes (com/sem ads, com/sem afiliado, com/sem frete gratis).
+            </p>
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setPlataformaEscolhida("ml");
+                  setModalPlataformaAberto(false);
+                  setMostrarFerramenta(true);
+                  setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavior: "smooth" }), 50);
+                }}
+                className="rounded-xl border-2 border-gray-200 dark:border-[#23232b] p-5 text-left transition hover:border-[#FFE600]"
+              >
+                <span
+                  className="inline-block rounded-lg bg-[#1a1a1a] px-3 py-1 text-lg font-extrabold text-[#FFE600]"
+                  style={{ fontFamily: "'Montserrat', sans-serif" }}
+                >
+                  Mercado Livre
+                </span>
+                <p className="mt-2 text-sm text-gray-500 dark:text-[#8b8b96]">Comissao + taxa fixa por peso + imposto + ads</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPlataformaEscolhida("shopee");
+                  setModalPlataformaAberto(false);
+                  setMostrarFerramenta(true);
+                  setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavior: "smooth" }), 50);
+                }}
+                className="rounded-xl border-2 border-gray-200 dark:border-[#23232b] p-5 text-left transition hover:border-[#EE4D2D]"
+              >
+                <span
+                  className="inline-block rounded-lg bg-[#1a1a1a] px-3 py-1 text-lg font-black text-[#EE4D2D]"
+                  style={{ fontFamily: "'Roboto', sans-serif" }}
+                >
+                  Shopee
+                </span>
+                <p className="mt-2 text-sm text-gray-500 dark:text-[#8b8b96]">Comissao + taxa fixa automatica + ads + afiliado</p>
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setModalPlataformaAberto(false)}
+              className="mt-4 text-sm text-gray-400 dark:text-[#5c5c66] hover:text-gray-600 dark:hover:text-[#8b8b96]"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="mb-6 flex items-center gap-2">
         <button
           onClick={() => {
             setAba("precificacao");
-setMostrarFerramenta(true);
-setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavior: "smooth" }), 50);
+            if (plataformaEscolhida) {
+              setMostrarFerramenta(true);
+              setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavior: "smooth" }), 50);
+            } else {
+              setModalPlataformaAberto(true);
+            }
                     }}
           className={
             "rounded-lg px-5 py-2.5 text-base font-medium " +
@@ -556,10 +636,14 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
         <button
           onClick={() => {
             setAba("precificacao");
-            setMostrarFerramenta(true);
-            setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavior: "smooth" }), 50);
+            if (plataformaEscolhida) {
+              setMostrarFerramenta(true);
+              setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavior: "smooth" }), 50);
+            } else {
+              setModalPlataformaAberto(true);
+            }
           }}
-          className="mt-6 inline-flex items-center gap-2 rounded-full bg-black px-6 py-3 text-base font-semibold text-white transition hover:bz-black/80"
+          className="mt-6 inline-flex items-center gap-2 rounded-full bg-black px-6 py-3 text-base font-semibold text-white transition hover:bg-black/80"
         >
           Calcular minha precificação
           <span aria-hidden>{"→"}</span>
@@ -853,11 +937,14 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
           <div className="rounded-2xl border border-gray-200 dark:border-[#23232b] bg-white dark:bg-[#131318] p-5">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div className="max-w-[220px] flex-1">
-                <p className="mb-1 text-sm font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">
-                  Preencha primeiro - obrigatorio
-                </p>
+                <div className="mb-1.5 flex items-center gap-1.5">
+                  <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-black">
+                    Obrigatorio
+                  </span>
+                  <span className="text-sm text-gray-400 dark:text-[#5c5c66]">Preencha primeiro</span>
+                </div>
                 <Field
-                  label="Custo do produto (por peca)"
+                  label="Custo do produto"
                   value={custoProdutoManual}
                   onChange={setCustoProdutoManual}
                   suffix="R$"
@@ -925,13 +1012,29 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
             </p>
           </Card>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div
-onFocusCapture={() => setCardFocado("ml")}
-onClickCapture={() => setCardFocado("ml")}
-onMouseEnter={() => setCardFocado("ml")}
-className={"transition-opacity duration-200 " + (cardFocado === "shopee" ? "opacity-40" : "opacity-100")}
->
+          <div className="grid grid-cols-1 gap-4">
+            {!plataformaEscolhida && (
+              <div className="rounded-2xl border border-dashed border-gray-300 dark:border-[#2c2c36] bg-white dark:bg-[#131318] p-10 text-center">
+                <p className="text-base text-gray-500 dark:text-[#8b8b96]">Escolha uma plataforma pra ver sua precificacao, com todas as comparacoes (ads, afiliado, frete gratis).</p>
+                <button
+                  type="button"
+                  onClick={() => setModalPlataformaAberto(true)}
+                  className="mt-4 rounded-lg bg-amber-500 px-5 py-2.5 text-base font-semibold text-black transition hover:bg-amber-400"
+                >
+                  Escolher plataforma
+                </button>
+              </div>
+            )}
+
+            {plataformaEscolhida === "ml" && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setModalPlataformaAberto(true)}
+                className="mb-3 text-sm font-medium text-amber-600 dark:text-amber-400 hover:text-amber-500 dark:hover:text-amber-300"
+              >
+                {"←"} Trocar plataforma
+              </button>
 <Card icon="ML" title="Mercado Livre" titleClassName="text-3xl font-extrabold text-[#FFE600]" titleStyle={{ fontFamily: "'Montserrat', sans-serif" }} subtitle="Comissao + taxa fixa por peso + imposto + ads">
               <div className="mb-3 grid grid-cols-1 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3 sm:grid-cols-2">
                 <div>
@@ -1045,6 +1148,18 @@ className={"transition-opacity duration-200 " + (cardFocado === "shopee" ? "opac
               <p className="mt-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66]">
                 Comissao: taxa que o Mercado Livre cobra sobre o preco de venda (Classico ~{COMISSAO_ML_CLASSICO_PCT}%, Premium ~{COMISSAO_ML_PREMIUM_PCT}% - clique acima ou ajuste o numero manualmente). Ads: seu investimento em Mercado Ads sobre a venda.
               </p>
+              <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
+                <div>
+                  <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem Ads</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semAds.preco)}</p>
+                  <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.semAds.lucro)}</span></p>
+                </div>
+                <div>
+                  <p className="text-base text-gray-500 dark:text-[#8b8b96]">Com Ads</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.comAds.preco)}</p>
+                  <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.comAds.lucro)}</span></p>
+                </div>
+              </div>
 
               <div className="mt-3 grid grid-cols-3 gap-2">
                 <Field label="Peso do produto" value={pesoProdutoKg} onChange={setPesoProdutoKg} suffix="kg" placeholder={(toNum(pesoUsado) / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} />
@@ -1060,6 +1175,18 @@ className={"transition-opacity duration-200 " + (cardFocado === "shopee" ? "opac
               <p className="mt-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66]">
                 A taxa fixa do ML muda conforme voce oferece frete gratis ou nao, e tambem e por faixa de peso/preco (tabela oficial do ML, valida a partir de 24/08/2026). Se a caixa (C x L x A) resultar num peso cubado maior que o peso real do produto, o ML cobra pelo cubado - preencha as dimensoes pra ver a taxa correta.
               </p>
+              <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
+                <div>
+                  <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem frete gratis</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semFreteGratis.preco)}</p>
+                  <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.semFreteGratis.lucro)}</span></p>
+                </div>
+                <div>
+                  <p className="text-base text-gray-500 dark:text-[#8b8b96]">Com frete gratis</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.comFreteGratis.preco)}</p>
+                  <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.comFreteGratis.lucro)}</span></p>
+                </div>
+              </div>
 
               <div className="mt-3 border-t border-gray-200 dark:border-[#23232b] pt-3">
                 <p className="mb-1.5 text-base font-medium text-gray-700 dark:text-[#c8c8d0]">Voce envia por Mercado Envios Flex?</p>
@@ -1171,13 +1298,17 @@ className={"transition-opacity duration-200 " + (cardFocado === "shopee" ? "opac
               </div>
             </Card>
 </div>
+            )}
 
-            <div
-onFocusCapture={() => setCardFocado("shopee")}
-onClickCapture={() => setCardFocado("shopee")}
-onMouseEnter={() => setCardFocado("shopee")}
-className={"transition-opacity duration-200 " + (cardFocado === "ml" ? "opacity-40" : "opacity-100")}
->
+            {plataformaEscolhida === "shopee" && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setModalPlataformaAberto(true)}
+                className="mb-3 text-sm font-medium text-amber-600 dark:text-amber-400 hover:text-amber-500 dark:hover:text-amber-300"
+              >
+                {"←"} Trocar plataforma
+              </button>
 <Card icon="SH" title="Shopee" titleClassName="text-3xl font-black text-[#EE4D2D]" titleStyle={{ fontFamily: "'Roboto', sans-serif" }} subtitle="Comissao + taxa fixa automatica + ads + afiliado">
               <div className="mb-3 grid grid-cols-1 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3 sm:grid-cols-2">
                 <div>
@@ -1232,6 +1363,19 @@ className={"transition-opacity duration-200 " + (cardFocado === "ml" ? "opacity-
                   <Field label="Afiliado (%)" value={afiliadoShopeePct} onChange={setAfiliadoShopeePct} suffix="%" />
                 )}
               </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
+                <div>
+                  <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem Ads</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.semAds.preco)}</p>
+                  <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoShopee.semAds.lucro)}</span></p>
+                </div>
+                <div>
+                  <p className="text-base text-gray-500 dark:text-[#8b8b96]">Com Ads</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.comAds.preco)}</p>
+                  <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoShopee.comAds.lucro)}</span></p>
+                </div>
+              </div>
+
               <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
                 <div>
                   <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem afiliados</p>
@@ -1313,6 +1457,7 @@ className={"transition-opacity duration-200 " + (cardFocado === "ml" ? "opacity-
               </div>
             </Card>
 </div>
+            )}
           </div>
         </div>
       )}
