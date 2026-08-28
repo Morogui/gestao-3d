@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   taxaPesoML,
   taxaFixaMLSemFreteGratis,
@@ -198,7 +199,8 @@ function LinhaTaxa({ label, valor, destaque = false }: { label: string; valor: s
   );
 }
 
-export default function PainelPage() {
+export default function PainelPage({ plataformaInicial }: { plataformaInicial?: "ml" | "shopee" } = {}) {
+const router = useRouter();
 useEffect(() => {
 if (document.getElementById("fonts-marketplace")) return;
 const link = document.createElement("link");
@@ -208,8 +210,20 @@ link.href = "https://fonts.googleapis.com/css2?family=Montserrat:wght@800;900&fa
 document.head.appendChild(link);
 }, []);
 
+// Quando a pagina e acessada via rota dedicada (/mercadolivrecalculadora
+// ou /shopeecalculadora), pula o modal de escolha e ja mostra a
+// calculadora da plataforma certa, rolando ate ela - pedido do Guilherme
+// em 2026-08-27: escolher a plataforma no modal deve levar pra uma URL
+// propria de cada uma, em vez de so trocar o conteudo em /painel.
+useEffect(() => {
+if (plataformaInicial) {
+setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavior: "smooth" }), 50);
+}
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+
   const [aba, setAba] = useState<"custos" | "precificacao">("precificacao");
-  const [mostrarFerramenta, setMostrarFerramenta] = useState(false);
+  const [mostrarFerramenta, setMostrarFerramenta] = useState(!!plataformaInicial);
 
   // Impressora / energia
   const [impressora, setImpressora] = useState("Bambu A1");
@@ -261,7 +275,7 @@ document.head.appendChild(link);
   // 2026-08-27: em vez de mostrar as duas plataformas lado a lado, abre uma
   // janela perguntando qual plataforma o usuario quer, e so mostra aquela,
   // em largura cheia, com todas as comparacoes sempre visiveis.
-  const [plataformaEscolhida, setPlataformaEscolhida] = useState<"ml" | "shopee" | null>(null);
+  const [plataformaEscolhida, setPlataformaEscolhida] = useState<"ml" | "shopee" | null>(plataformaInicial ?? null);
   const [modalPlataformaAberto, setModalPlataformaAberto] = useState(false);
   const [custoFlexShopee, setCustoFlexShopee] = useState("");
   const [reembolsoFlexShopee, setReembolsoFlexShopee] = useState("");
@@ -461,10 +475,8 @@ document.head.appendChild(link);
               <button
                 type="button"
                 onClick={() => {
-                  setPlataformaEscolhida("ml");
                   setModalPlataformaAberto(false);
-                  setMostrarFerramenta(true);
-                  setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavior: "smooth" }), 50);
+                  router.push("/mercadolivrecalculadora");
                 }}
                 className="flex flex-col items-center justify-center gap-2.5 rounded-xl border-2 border-gray-200 dark:border-[#23232b] px-5 py-9 text-center transition hover:border-[#FFE600] hover:shadow-md"
               >
@@ -479,10 +491,8 @@ document.head.appendChild(link);
               <button
                 type="button"
                 onClick={() => {
-                  setPlataformaEscolhida("shopee");
                   setModalPlataformaAberto(false);
-                  setMostrarFerramenta(true);
-                  setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavior: "smooth" }), 50);
+                  router.push("/shopeecalculadora");
                 }}
                 className="flex flex-col items-center justify-center gap-2.5 rounded-xl border-2 border-gray-200 dark:border-[#23232b] px-5 py-9 text-center transition hover:border-[#EE4D2D] hover:shadow-md"
               >
@@ -1083,13 +1093,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                           onClick={() => {
                             setTipoAnuncioML("premium");
                             const catP = CATEGORIAS_ML.find((c) => c.nome === categoriaML);
-                            setComissaoMLPct(String(catP ? catP.premiumPct : COMISSAO_ML_PREMIUM_PCT).replace(".", ","));
-                          }}
-                          className={
-                            "rounded-lg border px-3 py-2 text-sm font-medium " +
-                            (tipoAnuncioML === "premium" ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
-                          }
-                        >
+                            setComissaoMLPct(String(catP ? catP.premiumPct : COMISSAO_ML_PREMIUM_PCT).replace(".", ","));   >
                           Premium
                         </button>
                       </div>
