@@ -1296,11 +1296,13 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Vendendo sem Flex</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semFlex.preco)}</p>
                       <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.semFlex.lucro)}</span></p>
+                      <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Margem <span className="text-green-600 dark:text-green-400">{fmtPct(resultadoML.semFlex.margemPct)}</span></p>
                     </div>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Vendendo com Flex</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.comFlex.preco)}</p>
                       <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoML.comFlex.lucro)}</span></p>
+                      <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Margem <span className="text-green-600 dark:text-green-400">{fmtPct(resultadoML.comFlex.margemPct)}</span></p>
                     </div>
                   </div>
 
@@ -1475,11 +1477,13 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Vendendo sem Flex</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.semFlex.preco)}</p>
                       <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoShopee.semFlex.lucro)}</span></p>
+                      <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Margem <span className="text-green-600 dark:text-green-400">{fmtPct(resultadoShopee.semFlex.margemPct)}</span></p>
                     </div>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Vendendo com Flex</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.comFlex.preco)}</p>
                       <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Lucro <span className="text-green-600 dark:text-green-400">{formatBRL(resultadoShopee.comFlex.lucro)}</span></p>
+                      <p className="text-sm text-gray-500 dark:text-[#8b8b96]">Margem <span className="text-green-600 dark:text-green-400">{fmtPct(resultadoShopee.comFlex.margemPct)}</span></p>
                     </div>
                   </div>
 
