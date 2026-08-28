@@ -455,7 +455,9 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
         Entrar
       </a>
       <header className="mb-6 flex items-center justify-center">
-        <img src="/logo-7x7.png" alt="7x7 Escala Ecommerce" className="h-16 w-auto sm:h-28 invert hue-rotate-180 dark:invert-0 dark:hue-rotate-0" />
+        <a href="/painel">
+          <img src="/logo-7x7.png" alt="7x7 Escala Ecommerce" className="h-16 w-auto sm:h-28 cursor-pointer invert hue-rotate-180 dark:invert-0 dark:hue-rotate-0" />
+        </a>
       </header>
 
       {modalPlataformaAberto && (
@@ -948,6 +950,14 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
 
       {aba === "precificacao" && (
         <div className="flex flex-col gap-4">
+          {plataformaEscolhida && (
+            <p
+              className={`text-center text-2xl font-extrabold uppercase tracking-wide ${plataformaEscolhida === "ml" ? "text-[#FFE600]" : "text-[#EE4D2D]"}`}
+              style={{ fontFamily: plataformaEscolhida === "ml" ? "'Montserrat', sans-serif" : "'Roboto', sans-serif" }}
+            >
+              {plataformaEscolhida === "ml" ? "Mercado Livre" : "Shopee"}
+            </p>
+          )}
           <div className="rounded-2xl border border-gray-200 dark:border-[#23232b] bg-white dark:bg-[#131318] p-5">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div className="max-w-[220px] flex-1">
