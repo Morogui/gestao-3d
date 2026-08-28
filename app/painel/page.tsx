@@ -551,6 +551,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
       </div>
 
       {!plataformaInicial && (
+        <>
       <section className="relative mb-6 overflow-hidden rounded-2xl border border-gray-200 dark:border-[#1f1f26] bg-white dark:bg-[#0d0d11] px-6 py-14 text-center sm:px-10">
         {/* Mockups ML/Shopee no fundo do hero — pedido do Guilherme em
             2026-08-26: no mobile os dois blocos borrados de 420x280px
@@ -767,6 +768,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
           </div>
         </div>
       </section>
+        </>
       )}
 
 
