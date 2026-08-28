@@ -1093,7 +1093,13 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                           onClick={() => {
                             setTipoAnuncioML("premium");
                             const catP = CATEGORIAS_ML.find((c) => c.nome === categoriaML);
-                            setComissaoMLPct(String(catP ? catP.premiumPct : COMISSAO_ML_PREMIUM_PCT).replace(".", ","));   >
+                            setComissaoMLPct(String(catP ? catP.premiumPct : COMISSAO_ML_PREMIUM_PCT).replace(".", ","));
+                          }}
+                          className={
+                            "rounded-lg border px-3 py-2 text-sm font-medium " +
+                            (tipoAnuncioML === "premium" ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
+                          }
+                        >
                           Premium
                         </button>
                       </div>
