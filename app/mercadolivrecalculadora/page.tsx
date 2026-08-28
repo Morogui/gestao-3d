@@ -1,6 +1,5 @@
-import PainelPage from "../painel/page";
+import { PainelPage } from "../painel/page";
 
 export default function MercadoLivreCalculadoraPage() {
   return <PainelPage plataformaInicial="ml" />;
 }
-
