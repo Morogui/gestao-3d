@@ -12,7 +12,7 @@ import TabsNav from "@/components/TabsNav";
 // as duas marcas/produtos na mesma tela (bug reportado pelo Guilherme em
 // 2026-08-25). Esse componente decide, com base na rota atual, se mostra
 // o "chrome" do sistema interno ou renderiza a página sozinha.
-const PUBLIC_LAYOUT_PATHS = ["/", "/painel", "/login"];
+const PUBLIC_LAYOUT_PATHS = ["/", "/painel", "/login", "/mercadolivrecalculadora", "/shopeecalculadora"];
 
 function isPublicLayoutPath(pathname: string): boolean {
   return PUBLIC_LAYOUT_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
