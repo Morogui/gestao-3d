@@ -29,6 +29,7 @@ interface SkuPlacaRow {
   tempo_placa_horas: string;
   descontinuada: boolean;
   estoque: string;
+  sku_principal: string | null;
 }
 
 interface Componente {
@@ -44,6 +45,7 @@ interface Componente {
   tempoPlacaHoras: number;
   descontinuada: boolean;
   estoque: number;
+  skuPrincipal: string | null;
 }
 
 interface ProdutoRow {
@@ -66,7 +68,17 @@ export async function GET() {
       sp.sku, sp.placa_id, sp.pecas_por_unidade,
       pl.nome AS placa_nome, pl.numero AS placa_numero, pl.papel, pl.grupo_composto,
       pl.tier, pl.tipo, pl.peso_placa_gramas, pl.tempo_placa_horas, pl.descontinuada,
-      COALESCE(e.quantidade_pecas, 0) AS estoque
+      COALESCE(e.quantidade_pecas, 0) AS estoque,
+    (
+      SELECT sp2.sku
+      FROM sku_placa sp2
+      WHERE sp2.placa_id = sp.placa_id
+        AND sp2.pecas_por_unidade = 1
+        AND sp2.sku <> sp.sku
+        AND (SELECT COUNT(*) FROM sku_placa sp3 WHERE sp3.sku = sp2.sku) = 1
+      ORDER BY sp2.sku ASC
+      LIMIT 1
+    ) AS sku_principal
     FROM sku_placa sp
     JOIN placas pl ON pl.id = sp.placa_id
     LEFT JOIN estoque_placas e ON e.placa_id = pl.id
@@ -90,6 +102,7 @@ export async function GET() {
       tempoPlacaHoras: Number(r.tempo_placa_horas),
       descontinuada: r.descontinuada,
       estoque: Number(r.estoque),
+      skuPrincipal: r.sku_principal ?? null,
     });
     porSku.set(r.sku, item);
   }
