@@ -1,6 +1,5 @@
-import PainelPage from "../painel/page";
+import { PainelPage } from "../painel/page";
 
 export default function ShopeeCalculadoraPage() {
   return <PainelPage plataformaInicial="shopee" />;
 }
-
