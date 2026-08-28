@@ -199,7 +199,7 @@ function LinhaTaxa({ label, valor, destaque = false }: { label: string; valor: s
   );
 }
 
-export default function PainelPage({ plataformaInicial }: { plataformaInicial?: "ml" | "shopee" } = {}) {
+export default function PainelPage({ plataformaInicial }: { plataformaInicial?: "ml" | "shopee" }) {
 const router = useRouter();
 useEffect(() => {
 if (document.getElementById("fonts-marketplace")) return;
