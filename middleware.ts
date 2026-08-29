@@ -103,8 +103,21 @@ async function hasValidSession(req: NextRequest): Promise<boolean> {
 }
 
 export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
   const host = req.headers.get("host") ?? "";
-  if (host.endsWith(".vercel.app") && host !== DOMINIO_CANONICO) {
+  // Corrigido em 2026-08-29: bug real encontrado pelo Guilherme (aba
+  // Vendas zerada mesmo com vendas no dia) — o cron da Vercel bate no
+  // host interno do deploy (tipo
+  // gestao-3d-7ek20c7i7-morolar.vercel.app), não no domínio canônico, e
+  // cron NUNCA segue redirect (308). Como o bloco abaixo redirecionava
+  // QUALQUER host ".vercel.app" diferente do canônico antes mesmo de
+  // olhar pra isPublicPath, o /api/pedidos/sincronizar do cron (que
+  // roda de 1 em 1 minuto) tomava 308 e nunca chegava no handler —
+  // silenciosamente, sem erro nenhum nos logs (só o próprio 308). Rotas
+  // públicas (cron, webhooks, callbacks OAuth) não dependem de cookie
+  // nem de host, então agora pulam esse redirect e vão direto pro
+  // handler.
+  if (!isPublicPath(pathname) && host.endsWith(".vercel.app") && host !== DOMINIO_CANONICO) {
     const url = req.nextUrl.clone();
     url.host = DOMINIO_CANONICO;
     url.protocol = "https";
@@ -112,7 +125,6 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url, 308);
   }
 
-  const { pathname } = req.nextUrl;
   if (!isPublicPath(pathname) && !(await hasValidSession(req))) {
     // Rotas de API sem sessão recebem 401 (é uma chamada fetch de dentro
     // da página, não uma navegação — redirecionar pro HTML de /login não
