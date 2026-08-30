@@ -1266,6 +1266,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
+                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só Ads — Flex {usaFlexML ? "ligado" : "desligado"} e afiliados {usaAfiliadoML ? "ligado" : "desligado"} (como configurado acima)</p>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem Ads</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semAds.preco)}</p>
@@ -1279,6 +1280,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
+                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só frete grátis — Ads sempre contado, Flex {usaFlexML ? "ligado" : "desligado"} e afiliados {usaAfiliadoML ? "ligado" : "desligado"} (como configurado acima)</p>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem frete gratis</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semFreteGratis.preco)}</p>
@@ -1292,6 +1294,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
+                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só Flex — Ads sempre contado, afiliados {usaAfiliadoML ? "ligado" : "desligado"} (como configurado acima)</p>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Vendendo sem Flex</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semFlex.preco)}</p>
@@ -1307,6 +1310,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
+                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só afiliados — Ads sempre contado, Flex {usaFlexML ? "ligado" : "desligado"} (como configurado acima)</p>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem afiliados</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semAfiliado.preco)}</p>
@@ -1447,6 +1451,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
+                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só Ads — Flex {usaFlexShopee ? "ligado" : "desligado"} e afiliados {usaAfiliadoShopee ? "ligado" : "desligado"} (como configurado acima)</p>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem Ads</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.semAds.preco)}</p>
@@ -1460,6 +1465,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
+                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só afiliados — Ads sempre contado, Flex {usaFlexShopee ? "ligado" : "desligado"} (como configurado acima)</p>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem afiliados</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.semAfiliado.preco)}</p>
@@ -1473,6 +1479,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
+                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só Flex — Ads sempre contado, afiliados {usaAfiliadoShopee ? "ligado" : "desligado"} (como configurado acima)</p>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Vendendo sem Flex</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.semFlex.preco)}</p>
