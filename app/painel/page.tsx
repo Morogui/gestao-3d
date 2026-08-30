@@ -267,7 +267,9 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
   const [pesoProdutoKg, setPesoProdutoKg] = useState("");
   const [comissaoMLPct, setComissaoMLPct] = useState(String(COMISSAO_ML_CLASSICO_PCT).replace(".", ","));
   const [adsMLPct, setAdsMLPct] = useState("5");
+const [usaAdsML, setUsaAdsML] = useState(true);
   const [adsShopeePct, setAdsShopeePct] = useState("10");
+const [usaAdsShopee, setUsaAdsShopee] = useState(true);
   const [afiliadoShopeePct, setAfiliadoShopeePct] = useState("0");
   const [usaAfiliadoShopee, setUsaAfiliadoShopee] = useState(false);
   const [usaFlexShopee, setUsaFlexShopee] = useState(false);
@@ -356,20 +358,21 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
       return { preco, comissao, fixa, imposto, ads, afiliado, lucro, margemPct: preco > 0 ? (lucro / preco) * 100 : 0 };
     }
 
-    const ativo = calcular(usaFlexML, usaAfiliadoML, true);
-    const semFlex = calcular(false, usaAfiliadoML, true);
-    const comFlex = calcular(true, usaAfiliadoML, true);
-    const semAfiliado = calcular(usaFlexML, false, true);
-    const comAfiliado = calcular(usaFlexML, true, true);
+    const ativo = calcular(usaFlexML, usaAfiliadoML, usaAdsML);
+    const semFlex = calcular(false, usaAfiliadoML, usaAdsML);
+    const comFlex = calcular(true, usaAfiliadoML, usaAdsML);
+    const semAfiliado = calcular(usaFlexML, false, usaAdsML);
+    const comAfiliado = calcular(usaFlexML, true, usaAdsML);
     const semAds = calcular(usaFlexML, usaAfiliadoML, false);
     const comAds = calcular(usaFlexML, usaAfiliadoML, true);
-    const semFreteGratis = calcular(usaFlexML, usaAfiliadoML, true, false);
-    const comFreteGratis = calcular(usaFlexML, usaAfiliadoML, true, true);
+    const semFreteGratis = calcular(usaFlexML, usaAfiliadoML, usaAdsML, false);
+    const comFreteGratis = calcular(usaFlexML, usaAfiliadoML, usaAdsML, true);
     return { ...ativo, semFlex, comFlex, semAfiliado, comAfiliado, semAds, comAds, semFreteGratis, comFreteGratis };
   }, [
     custoParaPrecificacao,
     impostoPct,
     adsMLPct,
+    usaAdsML,
     margemAlvo,
     comissaoMLPct,
     pesoKgParaML,
@@ -408,11 +411,11 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
       return { preco, comissao, fixa, imposto, ads, afiliado, lucro, margemPct: preco > 0 ? (lucro / preco) * 100 : 0 };
     }
 
-    const ativo = calcular(usaFlexShopee, usaAfiliadoShopee, true);
-    const semFlex = calcular(false, usaAfiliadoShopee, true);
-    const comFlex = calcular(true, usaAfiliadoShopee, true);
-    const semAfiliado = calcular(usaFlexShopee, false, true);
-    const comAfiliado = calcular(usaFlexShopee, true, true);
+    const ativo = calcular(usaFlexShopee, usaAfiliadoShopee, usaAdsShopee);
+    const semFlex = calcular(false, usaAfiliadoShopee, usaAdsShopee);
+    const comFlex = calcular(true, usaAfiliadoShopee, usaAdsShopee);
+    const semAfiliado = calcular(usaFlexShopee, false, usaAdsShopee);
+    const comAfiliado = calcular(usaFlexShopee, true, usaAdsShopee);
     const semAds = calcular(usaFlexShopee, usaAfiliadoShopee, false);
     const comAds = calcular(usaFlexShopee, usaAfiliadoShopee, true);
     return { ...ativo, semFlex, comFlex, semAfiliado, comAfiliado, semAds, comAds };
@@ -420,6 +423,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
     custoParaPrecificacao,
     impostoPct,
     adsShopeePct,
+    usaAdsShopee,
     afiliadoShopeePct,
     margemAlvo,
     usaAfiliadoShopee,
@@ -1153,7 +1157,32 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                     <p className="mt-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66]">
                       Comissao: taxa que o Mercado Livre cobra sobre o preco de venda (Classico ~{COMISSAO_ML_CLASSICO_PCT}%, Premium ~{COMISSAO_ML_PREMIUM_PCT}% - clique acima ou ajuste o numero manualmente). Ads: seu investimento em Mercado Ads sobre a venda.
                     </p>
-                  </div>
+                  <div>
+<p className="mb-1.5 text-base font-medium text-gray-700 dark:text-[#c8c8d0]">Voce paga Ads (Mercado Ads) nessa venda?</p>
+<div className="grid grid-cols-2 gap-2">
+<button
+type="button"
+onClick={() => setUsaAdsML(true)}
+className={
+"rounded-lg border px-3 py-2 text-sm font-medium " +
+(usaAdsML ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
+}
+>
+Uso Ads
+</button>
+<button
+type="button"
+onClick={() => setUsaAdsML(false)}
+className={
+"rounded-lg border px-3 py-2 text-sm font-medium " +
+(!usaAdsML ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
+}
+>
+Nao uso Ads
+</button>
+</div>
+</div>
+</div>
 
                   <div>
                     <div className="grid grid-cols-3 gap-2">
@@ -1280,7 +1309,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
-                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só frete grátis — Ads sempre contado, Flex {usaFlexML ? "ligado" : "desligado"} e afiliados {usaAfiliadoML ? "ligado" : "desligado"} (como configurado acima)</p>
+                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só frete grátis — Ads {usaAdsML ? "ligado" : "desligado"}, Flex {usaFlexML ? "ligado" : "desligado"} e afiliados {usaAfiliadoML ? "ligado" : "desligado"} (como configurado acima)</p>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem frete gratis</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semFreteGratis.preco)}</p>
@@ -1294,7 +1323,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
-                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só Flex — Ads sempre contado, afiliados {usaAfiliadoML ? "ligado" : "desligado"} (como configurado acima)</p>
+                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só Flex — Ads {usaAdsML ? "ligado" : "desligado"}, afiliados {usaAfiliadoML ? "ligado" : "desligado"} (como configurado acima)</p>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Vendendo sem Flex</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semFlex.preco)}</p>
@@ -1310,7 +1339,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
-                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só afiliados — Ads sempre contado, Flex {usaFlexML ? "ligado" : "desligado"} (como configurado acima)</p>
+                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só afiliados — Ads {usaAdsML ? "ligado" : "desligado"}, Flex {usaFlexML ? "ligado" : "desligado"} (como configurado acima)</p>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem afiliados</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semAfiliado.preco)}</p>
@@ -1329,7 +1358,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                       <LinhaTaxa label={`Comissao (${comissaoMLPct}%)`} valor={formatBRL(resultadoML.comissao)} />
                       <LinhaTaxa label="Taxa fixa de envio" valor={formatBRL(resultadoML.fixa)} />
                       <LinhaTaxa label={`Imposto (${impostoPct}%)`} valor={formatBRL(resultadoML.imposto)} />
-                      <LinhaTaxa label={`Ads (${adsMLPct}%)`} valor={formatBRL(resultadoML.ads)} />
+                      {usaAdsML && <LinhaTaxa label={`Ads (${adsMLPct}%)`} valor={formatBRL(resultadoML.ads)} />}
                       {usaAfiliadoML && <LinhaTaxa label={`Afiliado (${afiliadoMLPct}%)`} valor={formatBRL(resultadoML.afiliado)} />}
                       <LinhaTaxa label="Custo do produto" valor={formatBRL(custoBaseProduto)} />
                       {toNum(embalagemPrecificacao) > 0 && <LinhaTaxa label="Embalagem" valor={formatBRL(toNum(embalagemPrecificacao))} />}
@@ -1389,7 +1418,32 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                     <p className="mt-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66]">
                       Ads: seu investimento em Shopee Ads sobre a venda. Afiliado: comissao paga a criadores de conteudo/afiliados que divulgam seu produto - so entra na conta se voce marcar "Uso afiliados" acima.
                     </p>
-                  </div>
+                  <div className="mt-3">
+<p className="mb-1.5 text-base font-medium text-gray-700 dark:text-[#c8c8d0]">Voce paga Ads (Shopee Ads) nessa venda?</p>
+<div className="grid grid-cols-2 gap-2">
+<button
+type="button"
+onClick={() => setUsaAdsShopee(true)}
+className={
+"rounded-lg border px-3 py-2 text-sm font-medium " +
+(usaAdsShopee ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
+}
+>
+Uso Ads
+</button>
+<button
+type="button"
+onClick={() => setUsaAdsShopee(false)}
+className={
+"rounded-lg border px-3 py-2 text-sm font-medium " +
+(!usaAdsShopee ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
+}
+>
+Nao uso Ads
+</button>
+</div>
+</div>
+</div>
 
                   <div className="border-t border-gray-200 dark:border-[#23232b] pt-3">
                     <p className="mb-1.5 text-base font-medium text-gray-700 dark:text-[#c8c8d0]">Voce envia por Shopee Entrega Direta / Envio Flex (entrega propria)?</p>
@@ -1465,7 +1519,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
-                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só afiliados — Ads sempre contado, Flex {usaFlexShopee ? "ligado" : "desligado"} (como configurado acima)</p>
+                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só afiliados — Ads {usaAdsShopee ? "ligado" : "desligado"}, Flex {usaFlexShopee ? "ligado" : "desligado"} (como configurado acima)</p>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem afiliados</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.semAfiliado.preco)}</p>
@@ -1479,7 +1533,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
-                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só Flex — Ads sempre contado, afiliados {usaAfiliadoShopee ? "ligado" : "desligado"} (como configurado acima)</p>
+                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só Flex — Ads {usaAdsShopee ? "ligado" : "desligado"}, afiliados {usaAfiliadoShopee ? "ligado" : "desligado"} (como configurado acima)</p>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Vendendo sem Flex</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.semFlex.preco)}</p>
@@ -1500,7 +1554,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                       <LinhaTaxa label={`Comissao (${fmtPct(comissaoShopeePct(resultadoShopee.preco))})`} valor={formatBRL(resultadoShopee.comissao)} />
                       <LinhaTaxa label="Taxa fixa" valor={formatBRL(resultadoShopee.fixa)} />
                       <LinhaTaxa label={`Imposto (${impostoPct}%)`} valor={formatBRL(resultadoShopee.imposto)} />
-                      <LinhaTaxa label={`Ads (${adsShopeePct}%)`} valor={formatBRL(resultadoShopee.ads)} />
+                      {usaAdsShopee && <LinhaTaxa label={`Ads (${adsShopeePct}%)`} valor={formatBRL(resultadoShopee.ads)} />}
                       {usaAfiliadoShopee && <LinhaTaxa label={`Afiliado (${afiliadoShopeePct}%)`} valor={formatBRL(resultadoShopee.afiliado)} />}
                       <LinhaTaxa label="Custo do produto" valor={formatBRL(custoBaseProduto)} />
                       {toNum(embalagemPrecificacao) > 0 && <LinhaTaxa label="Embalagem" valor={formatBRL(toNum(embalagemPrecificacao))} />}
