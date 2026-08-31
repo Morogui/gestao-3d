@@ -11,6 +11,7 @@ type ProdutoRow = {
   peso_placa_g: string;
   tempo_placa_h: string;
   pecas_na_placa: string;
+  pecas_na_placa_a2l: string | null;
 };
 
 function toProdutoInput(row: ProdutoRow): ProdutoInput {
@@ -21,6 +22,10 @@ function toProdutoInput(row: ProdutoRow): ProdutoInput {
     pesoPlacaG: Number(row.peso_placa_g),
     tempoPlacaH: Number(row.tempo_placa_h),
     pecasNaPlaca: Number(row.pecas_na_placa),
+    pecasNaPlacaA2l:
+      row.pecas_na_placa_a2l === null || row.pecas_na_placa_a2l === undefined
+        ? null
+        : Number(row.pecas_na_placa_a2l),
   };
 }
 
@@ -33,6 +38,10 @@ function toProdutoInput(row: ProdutoRow): ProdutoInput {
 // placa correspondente automaticamente, usando esses mesmos dados).
 async function garantirColunaPlacaId() {
   await sql`ALTER TABLE produtos ADD COLUMN IF NOT EXISTS placa_id integer REFERENCES placas(id)`;
+}
+
+async function garantirColunaA2l() {
+  await sql`ALTER TABLE produtos ADD COLUMN IF NOT EXISTS pecas_na_placa_a2l NUMERIC`;
 }
 
 async function sincronizarPlaca(params: {
@@ -108,12 +117,13 @@ export async function PUT(
   }
 
   const body = await request.json();
-  const { nome, sku, pesoPlacaG, tempoPlacaH, pecasNaPlaca } = body as Omit<
+  const { nome, sku, pesoPlacaG, tempoPlacaH, pecasNaPlaca, pecasNaPlacaA2l } = body as Omit<
     ProdutoInput,
     "id"
   >;
 
   await garantirColunaPlacaId();
+  await garantirColunaA2l();
 
   const antigoRows = (await sql`
     SELECT sku, placa_id FROM produtos WHERE id = ${id}
@@ -128,9 +138,10 @@ export async function PUT(
         sku = ${sku || null},
         peso_placa_g = ${pesoPlacaG},
         tempo_placa_h = ${tempoPlacaH},
-        pecas_na_placa = ${pecasNaPlaca}
+        pecas_na_placa = ${pecasNaPlaca},
+        pecas_na_placa_a2l = ${pecasNaPlacaA2l || null}
     WHERE id = ${id}
-    RETURNING id, nome, sku, peso_placa_g, tempo_placa_h, pecas_na_placa
+    RETURNING id, nome, sku, peso_placa_g, tempo_placa_h, pecas_na_placa, pecas_na_placa_a2l
   `) as ProdutoRow[];
 
   if (rows.length === 0) {
