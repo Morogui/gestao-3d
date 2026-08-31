@@ -13,11 +13,12 @@ export const dynamic = "force-dynamic";
 // 50), já com o nome da máquina e da placa pra exibir na tela sem round
 // trips extras.
 export async function GET() {
-  await garantirColunaMaterial();
+  await garantirColunas();
   const rows = await sql`
     SELECT
       pr.id, pr.machine_id, pr.placa_id, pr.quantidade_placas, pr.status,
       pr.iniciado_em, pr.concluido_em, pr.gramas_desperdicadas, pr.material,
+      pr.pecas_por_placa_usada,
       m.nome AS machine_nome,
       pl.nome AS placa_nome, pl.pecas_por_placa,
       COALESCE(fp.count, 0) AS falhas_peca_count
@@ -42,25 +43,50 @@ export async function GET() {
 // sentido pras 3 cores com opção PETG — ver CORES_COM_PETG em
 // lib/placas.ts); null = PLA (comportamento de sempre pras demais
 // cores/produções antigas).
-async function garantirColunaMaterial() {
+//
+// pecas_por_placa_usada adicionada em 2026-08-31 — pedido do Guilherme:
+// a impressora A2L cabe uma quantidade DIFERENTE de peças por placa do
+// que as outras impressoras (mesma placa/design, mesa menor). O
+// cadastro de placas.pecas_por_placa é um valor ÚNICO e global (usado
+// por todas as impressoras) — sobrescrevê-lo a partir de uma produção
+// da A2L quebraria a conta das demais impressoras. Em vez disso, essa
+// coluna guarda um SNAPSHOT da quantidade real informada pelo operador
+// NA HORA de carregar essa produção específica (só perguntado/editável
+// no formulário quando a máquina é a A2L — ver CarregarPlacaForm em
+// app/producao/page.tsx); null = usa o valor padrão da placa (todas as
+// outras impressoras, comportamento de sempre).
+async function garantirColunas() {
   await sql`ALTER TABLE producoes ADD COLUMN IF NOT EXISTS material TEXT`;
+  await sql`ALTER TABLE producoes ADD COLUMN IF NOT EXISTS pecas_por_placa_usada NUMERIC`;
 }
 
 // Inicia uma nova produção (carregar uma placa em uma máquina).
 export async function POST(request: NextRequest) {
-  await garantirColunaMaterial();
+  await garantirColunas();
 
   const body = await request.json();
-  const { machineId, placaId, quantidadePlacas, material } = body as {
+  const { machineId, placaId, quantidadePlacas, material, pecasPorPlacaUsada } = body as {
     machineId: number;
     placaId: number;
     quantidadePlacas: number;
     material?: "PLA" | "PETG";
+    pecasPorPlacaUsada?: number | null;
   };
 
   if (!machineId || !placaId || !quantidadePlacas || quantidadePlacas <= 0) {
     return NextResponse.json(
       { error: "machineId, placaId e quantidadePlacas (> 0) são obrigatórios" },
+      { status: 400 }
+    );
+  }
+
+  if (
+    pecasPorPlacaUsada !== null &&
+    pecasPorPlacaUsada !== undefined &&
+    (!Number.isFinite(pecasPorPlacaUsada) || pecasPorPlacaUsada < 0)
+  ) {
+    return NextResponse.json(
+      { error: "pecasPorPlacaUsada precisa ser um número >= 0 (ou null)" },
       { status: 400 }
     );
   }
@@ -96,9 +122,9 @@ export async function POST(request: NextRequest) {
   }
 
   const rows = await sql`
-    INSERT INTO producoes (machine_id, placa_id, quantidade_placas, status, material)
-    VALUES (${machineId}, ${placaId}, ${quantidadePlacas}, 'em_andamento', ${materialNormalizado})
-    RETURNING id, machine_id, placa_id, quantidade_placas, status, iniciado_em, concluido_em, material
+    INSERT INTO producoes (machine_id, placa_id, quantidade_placas, status, material, pecas_por_placa_usada)
+    VALUES (${machineId}, ${placaId}, ${quantidadePlacas}, 'em_andamento', ${materialNormalizado}, ${pecasPorPlacaUsada ?? null})
+    RETURNING id, machine_id, placa_id, quantidade_placas, status, iniciado_em, concluido_em, material, pecas_por_placa_usada
   `;
 
   return NextResponse.json(rows[0], { status: 201 });
