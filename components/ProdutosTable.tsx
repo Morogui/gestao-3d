@@ -41,6 +41,7 @@ export default function ProdutosTable({
             <th className="px-4 py-3 text-right">Tempo (h)</th>
             <th className="px-4 py-3 text-right">Peças/placa</th>
             <th className="px-4 py-3 text-right">Custo unitário</th>
+            <th className="px-4 py-3 text-right">Custo unitário (A2L)</th>
             <th className="px-4 py-3"></th>
           </tr>
         </thead>
@@ -77,6 +78,16 @@ export default function ProdutosTable({
                 <td className="px-4 py-3 text-right">{produto.pecasNaPlaca}</td>
                 <td className="px-4 py-3 text-right font-semibold text-gray-900">
                   {formatBRL(custo.custoUnitario)}
+                </td>
+                <td className="px-4 py-3 text-right text-gray-700">
+                  {produto.pecasNaPlacaA2l
+                    ? formatBRL(
+                        calcularCusto(
+                          { ...produto, pecasNaPlaca: produto.pecasNaPlacaA2l },
+                          params
+                        ).custoUnitario
+                      )
+                    : "—"}
                 </td>
                 <td className="px-4 py-3 text-right whitespace-nowrap">
                   <button
