@@ -513,7 +513,7 @@ export default function ProducaoPage() {
   // com o cadastro atual da placa (saída extra, pra placas "Mista").
   function detalheProducao(p: ProducaoRow) {
     const quantidadePlacas = Number(p.quantidade_placas);
-    const pecasPorPlaca = Number(p.pecas_por_placa);
+    const pecasPorPlaca = Number(p.pecas_por_placa_usada) > 0 ? Number(p.pecas_por_placa_usada) : Number(p.pecas_por_placa);
     const falhas = Number(p.falhas_peca_count ?? 0);
     const pecasProduzidas = Math.max(0, quantidadePlacas * pecasPorPlaca - falhas);
     const placaCadastro = placaPorId.get(p.placa_id);
@@ -813,14 +813,21 @@ export default function ProducaoPage() {
     placaId: number,
     machineId: number,
     quantidadePlacas: number,
-    material: "PLA" | "PETG"
+    material: "PLA" | "PETG",
+    pecasPorPlacaUsada?: number
   ) {
     setCarregando((prev) => ({ ...prev, [machineId]: true }));
     try {
       const res = await fetch("/api/producoes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ machineId, placaId, quantidadePlacas, material }),
+        body: JSON.stringify({
+          machineId,
+          placaId,
+          quantidadePlacas,
+          material,
+          pecasPorPlacaUsada: pecasPorPlacaUsada ?? null,
+        }),
       });
       if (!res.ok) {
         const dados = await res.json().catch(() => null);
@@ -1348,8 +1355,8 @@ async function corrigirTempo() {
               pertoDoFechamento={pertoDoFechamento}
               aberturaHora={janela.aberturaHora}
               carregando={Boolean(carregando[machine.id])}
-              onIniciar={(placaId, qtd, material) =>
-                iniciarProducao(placaId, machine.id, qtd, material)
+              onIniciar={(placaId, qtd, material, pecasPorPlacaUsada) =>
+                iniciarProducao(placaId, machine.id, qtd, material, pecasPorPlacaUsada)
               }
               onConcluir={(id) => concluirProducao(id, machine.id)}
               onCancelar={(id) => cancelarProducao(id, machine.id)}
@@ -1983,7 +1990,7 @@ function PrinterCard({
   pertoDoFechamento: boolean;
   aberturaHora: number;
   carregando: boolean;
-  onIniciar: (placaId: number, quantidadePlacas: number, material: "PLA" | "PETG") => void;
+  onIniciar: (placaId: number, quantidadePlacas: number, material: "PLA" | "PETG", pecasPorPlacaUsada?: number) => void;
   onConcluir: (id: number) => void;
   onCancelar: (id: number) => void;
   onFalhaPlaca: (id: number, gramas: number) => void;
@@ -2291,6 +2298,7 @@ function PrinterCard({
          </div>
       ) : (
          <CarregarPlacaForm
+          machine={machine}
           filaPrioridade={filaPrioridade}
           placaPorId={placaPorId}
           pertoDoFechamento={pertoDoFechamento}
@@ -2304,6 +2312,7 @@ function PrinterCard({
 }
 
 function CarregarPlacaForm({
+  machine,
   filaPrioridade,
   placaPorId,
   pertoDoFechamento,
@@ -2311,12 +2320,13 @@ function CarregarPlacaForm({
   carregando,
   onIniciar,
 }: {
+  machine: MachineRow;
   filaPrioridade: FilaPrioridadeItem[];
   placaPorId: Map<number, PlacaRow>;
   pertoDoFechamento: boolean;
   aberturaHora: number;
   carregando: boolean;
-  onIniciar: (placaId: number, quantidadePlacas: number, material: "PLA" | "PETG") => void;
+  onIniciar: (placaId: number, quantidadePlacas: number, material: "PLA" | "PETG", pecasPorPlacaUsada?: number) => void;
 }) {
   const [placaId, setPlacaId] = useState<number | "">(filaPrioridade[0]?.placa.id ?? "");
   const [quantidade, setQuantidade] = useState(1);
@@ -2324,40 +2334,28 @@ function CarregarPlacaForm({
   const [resultados, setResultados] = useState<SkuResult[]>([]);
   const [placaSelecionadaNome, setPlacaSelecionadaNome] = useState<string | null>(null);
   const [buscando, setBuscando] = useState(false);
-  // Material da placa carregada — só pergunta pras 3 cores que têm PETG
-  // em estoque separado (ver CORES_COM_PETG em lib/placas.ts). Pedido do
-  // Guilherme em 2026-07-29: "na hora da producao perguntar em qual
-  // material esta usando, deixar uma tag clicavel". Sempre reseta pra
-  // PLA quando troca de placa, pra nunca "vazar" a escolha de uma placa
-  // pra outra sem querer.
   const [material, setMaterial] = useState<"PLA" | "PETG">("PLA");
   useEffect(() => {
     setMaterial("PLA");
   }, [placaId]);
 
-  // Removida a sugestão automática de "carregar Nx pra virar a noite" —
-  // pedido do Guilherme em 2026-07-24: na impressora dele só dá pra
-  // carregar 1 placa de cada vez (não enfileira repetição sozinha à
-  // noite), então uma sugestão de quantidade > 1 não reflete a realidade
-  // do equipamento e só criava confusão/risco de erro. Ele prefere sempre
-  // decidir manualmente qual placa carregar a cada troca — por isso
-  // quantidade agora fica sempre em 1 por padrão (input abaixo continua
-  // editável manualmente se algum dia fizer sentido). A coluna "Qtd p/
-  // virar a noite" na fila de prioridade (informativa, ajuda a decidir
-  // qual placa escolher) e o critério de desempate noturno continuam
-  // existindo — só essa sugestão de auto-preencher a quantidade foi
-  // removida.
+  // A2L cabe uma quantidade DIFERENTE de peças por placa do que as
+  // outras impressoras (mesa menor) — pedido do Guilherme em 2026-08-31:
+  // "sempre que colocar uma placa para imprimir nela [A2L], registrar a
+  // quantidade que vai na placa, para lançar no estoque corretamente".
+  // Detecta pelo nome da máquina (ex: "A2L - 6") pra não exigir nenhum
+  // cadastro extra — só as outras impressoras continuam usando direto o
+  // pecasPorPlaca padrão da placa, sem pedir nada aqui.
+  const isA2L = /a2l/i.test(machine.nome);
+  const [pecasOverride, setPecasOverride] = useState("");
+  useEffect(() => {
+    if (isA2L) {
+      const placa = placaId ? placaPorId.get(placaId) : undefined;
+      setPecasOverride(placa ? String(placa.pecasPorPlaca) : "");
+    }
+  }, [placaId, isA2L, placaPorId]);
 
   useEffect(() => {
-    // Pedido do Guilherme em 2026-07-29: "quando escolhido, deve ficar
-    // marcado no buscar qual sku foi selecionado" — agora o próprio campo
-    // de busca fica preenchido com o SKU escolhido (ver onClick do
-    // resultado abaixo) em vez de voltar vazio pro placeholder. Por isso
-    // esse efeito precisa ignorar o próprio valor que ELE MESMO acabou de
-    // colocar no campo (buscaSku === placaSelecionadaNome): sem essa
-    // checagem, toda seleção dispararia uma busca nova pelo texto do
-    // resultado escolhido e reabriria a lista por baixo, como se o
-    // usuário tivesse digitado aquilo.
     if (buscaSku.trim().length < 2 || buscaSku === placaSelecionadaNome) {
       setResultados([]);
       return;
@@ -2374,19 +2372,9 @@ function CarregarPlacaForm({
     return () => clearTimeout(timeout);
   }, [buscaSku, placaSelecionadaNome]);
 
-  // Tempo médio de impressão da placa escolhida — pedido do Guilherme em
-  // 2026-07-24: mostrar como observação na hora de carregar, pra dar uma
-  // noção de quando ela deve terminar (mesmo campo tempoPlacaHoras já
-  // usado no cálculo de "Qtd p/ virar a noite" da fila de prioridade).
   const placaSelecionada = placaId ? placaPorId.get(placaId) : undefined;
   const corBase = placaSelecionada ? corFilamentoDaPlaca(placaSelecionada.nome) : null;
   const temOpcaoPetg = corBase !== null && CORES_COM_PETG.includes(corBase);
-  // Mesmo aviso de saída extra do card "Rodando" (ver ImpressoraCard
-  // acima) — pedido do Guilherme em 2026-07-31: o card só mostrava o
-  // crédito próprio da placa (ex: "3 pç/placa"), escondendo que uma placa
-  // "Mista" também credita peças em OUTRA placa (o Gancho Compartilhado)
-  // quando a produção conclui. Mostrado aqui também, ANTES de carregar,
-  // pra já avisar o operador na hora de escolher a placa, não só depois.
   const placaExtraSelecionada = placaSelecionada?.saidaExtraPlacaId
     ? placaPorId.get(placaSelecionada.saidaExtraPlacaId)
     : undefined;
@@ -2417,10 +2405,6 @@ function CarregarPlacaForm({
                 <button
                   onClick={() => {
                     setPlacaId(r.placa_id);
-                    // Pedido do Guilherme: manter o SKU escolhido MARCADO
-                    // no próprio campo de busca, em vez de limpar de volta
-                    // pro placeholder — antes fazia setBuscaSku("") e só
-                    // mostrava o nome numa linha azul separada embaixo.
                     setBuscaSku(`${r.sku} → ${r.placa_nome}`);
                     setPlacaSelecionadaNome(`${r.sku} → ${r.placa_nome}`);
                     setResultados([]);
@@ -2476,6 +2460,24 @@ function CarregarPlacaForm({
         </p>
       )}
 
+      {isA2L && placaSelecionada && (
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">
+            Peças reais nessa placa (A2L)
+          </label>
+          <input
+            type="number"
+            min={0}
+            value={pecasOverride}
+            onChange={(e) => setPecasOverride(e.target.value)}
+            className="w-24 rounded border border-gray-300 px-2 py-1.5 text-xs"
+          />
+          <p className="mt-1 text-xs text-amber-700">
+            A A2L cabe uma quantidade diferente de peças por placa do que as outras impressoras (mesa menor). Confirme quantas peças REALMENTE saem nessa placa antes de carregar — o padrão de {placaSelecionada.pecasPorPlaca} pç/placa (cadastro geral) veio pré-preenchido, mas edite se for diferente na A2L, pra dar baixa certa no estoque.
+          </p>
+        </div>
+      )}
+
       {temOpcaoPetg && (
         <div className="flex items-center gap-2 rounded border border-sky-200 bg-sky-50 px-2 py-1.5">
           <span className="text-xs font-medium text-sky-800">Material:</span>
@@ -2516,7 +2518,11 @@ function CarregarPlacaForm({
         />
         <button
           disabled={carregando || !placaId}
-          onClick={() => placaId && onIniciar(placaId, quantidade, material)}
+          onClick={() => {
+            if (!placaId) return;
+            const override = isA2L && pecasOverride.trim() !== "" ? Number(pecasOverride) : undefined;
+            onIniciar(placaId, quantidade, material, override);
+          }}
           className="flex-1 rounded bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
         >
           {carregando ? "Carregando..." : "Carregar máquina"}
