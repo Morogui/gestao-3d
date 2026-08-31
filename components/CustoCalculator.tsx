@@ -59,6 +59,7 @@ const EMPTY_FORM: Omit<ProdutoInput, "id"> = {
   pesoPlacaG: 0,
   tempoPlacaH: 0,
   pecasNaPlaca: 1,
+  pecasNaPlacaA2l: null,
 };
 
 export default function CustoCalculator() {
@@ -296,6 +297,12 @@ export default function CustoCalculator() {
               onChange={(v) => updateForm("pecasNaPlaca", v)}
               step={1}
             />
+            <NumberField
+              label="Peças na placa (A2L, se diferente)"
+              value={form.pecasNaPlacaA2l ?? 0}
+              onChange={(v) => updateForm("pecasNaPlacaA2l", v || null)}
+              step={1}
+            />
             <div className="flex gap-3 sm:col-span-2">
               <button
                 type="submit"
@@ -334,6 +341,12 @@ export default function CustoCalculator() {
                 value={formatBRL(preview.custoUnitario)}
                 bold
               />
+              {Boolean(form.pecasNaPlacaA2l) && form.pecasNaPlacaA2l! > 0 && (
+                <Row
+                  label="Custo unitário (A2L)"
+                  value={formatBRL(calcularCusto({ ...form, pecasNaPlaca: form.pecasNaPlacaA2l! }, params).custoUnitario)}
+                />
+              )}
             </dl>
           </div>
         </form>
