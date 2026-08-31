@@ -45,6 +45,13 @@ export interface ProdutoInput {
   pecasNaPlaca: number;
   /** id da placa de produção vinculada (null/undefined = ainda não vinculado) */
   placaId?: number | null;
+  /** quantas peças saem em uma placa quando impressa na impressora A2L —
+   * ela cabe uma quantidade diferente das demais impressoras (mesa
+   * menor). null/undefined/0 = ainda não informado (esse produto nunca
+   * roda na A2L, ou o valor é o mesmo de pecasNaPlaca) — nesse caso o
+   * custo unitário na A2L não é exibido em lugar nenhum. Pedido do
+   * Guilherme em 2026-08-31. */
+  pecasNaPlacaA2l?: number | null;
 }
 
 export interface CustoBreakdown {
