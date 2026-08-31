@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getValidMLAccessToken } from "@/lib/ml-auth";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const auth = await getValidMLAccessToken();
   if (!auth) {
