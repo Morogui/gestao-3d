@@ -47,6 +47,7 @@ export interface ProducaoRow {
   machine_nome: string;
   placa_nome: string;
   pecas_por_placa: string;
+  pecas_por_placa_usada: string | null;
   gramas_desperdicadas: string | null;
   falhas_peca_count: string;
   // Material escolhido pelo operador ao carregar a máquina — só existe
