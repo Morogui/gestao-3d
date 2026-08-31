@@ -286,6 +286,7 @@ const [usaAdsShopee, setUsaAdsShopee] = useState(true);
   const [tipoAnuncioML, setTipoAnuncioML] = useState<"classico" | "premium">("classico");
   const [categoriaML, setCategoriaML] = useState("Casa, Moveis e Decoracao");
   const [freteGratisML, setFreteGratisML] = useState(true);
+const [descontoReputacaoMLPct, setDescontoReputacaoMLPct] = useState("0");
   const [usaFlexML, setUsaFlexML] = useState(false);
   const [custoFlexML, setCustoFlexML] = useState("");
   const [reembolsoFlexML, setReembolsoFlexML] = useState("");
@@ -335,7 +336,7 @@ const [usaAdsShopee, setUsaAdsShopee] = useState(true);
       const adsPctAtivo = comAds ? toNum(adsMLPct) : 0;
       const freteGratisAtivo = comFreteGratis === undefined ? freteGratisML : comFreteGratis;
       const taxaFixaFn = (preco: number) =>
-        (freteGratisAtivo ? taxaPesoML(pesoKgParaML, preco) : taxaFixaMLSemFreteGratis(preco)) +
+        (freteGratisAtivo ? taxaPesoML(pesoKgParaML, preco) * (1 - toNum(descontoReputacaoMLPct) / 100) : taxaFixaMLSemFreteGratis(preco)) +
         (comFlex ? flexLiquidoML : 0);
       const preco =
         modoPrecificacao === "preco"
@@ -377,6 +378,7 @@ const [usaAdsShopee, setUsaAdsShopee] = useState(true);
     comissaoMLPct,
     pesoKgParaML,
     freteGratisML,
+    descontoReputacaoMLPct,
     usaFlexML,
     flexLiquidoML,
     usaAfiliadoML,
@@ -1147,6 +1149,13 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                         </button>
                       </div>
                     </div>
+
+<div>
+<Field label="Desconto de reputacao no frete (%)" value={descontoReputacaoMLPct} onChange={setDescontoReputacaoMLPct} suffix="%" />
+<p className="mt-1 text-sm leading-relaxed text-gray-400 dark:text-[#5c5c66]">
+Se voce e MercadoLider (Platinum/Ouro/Gold) o ML pode te dar um desconto por reputacao sobre a tarifa de envio (aparece como "Nos cobrimos X% pela sua reputacao" na Central de Vendedores). A tabela oficial que usamos aqui e a de reputacao verde/sem reputacao (sem desconto) - preencha o % daqui se seu extrato mostrar desconto, pra bater com o valor real que voce paga.
+</p>
+</div>
                   </div>
 
                   <div>
@@ -1356,7 +1365,7 @@ Nao uso Ads
                     <p className="mb-2 font-medium text-gray-700 dark:text-[#c8c8d0]">Detalhamento das taxas (sobre o preco de venda)</p>
                     <div className="flex flex-col gap-1">
                       <LinhaTaxa label={`Comissao (${comissaoMLPct}%)`} valor={formatBRL(resultadoML.comissao)} />
-                      <LinhaTaxa label="Taxa fixa de envio" valor={formatBRL(resultadoML.fixa)} />
+                      <LinhaTaxa label={toNum(descontoReputacaoMLPct) > 0 ? `Taxa fixa de envio (-${descontoReputacaoMLPct}% reputacao)` : "Taxa fixa de envio"} valor={formatBRL(resultadoML.fixa)} />
                       <LinhaTaxa label={`Imposto (${impostoPct}%)`} valor={formatBRL(resultadoML.imposto)} />
                       {usaAdsML && <LinhaTaxa label={`Ads (${adsMLPct}%)`} valor={formatBRL(resultadoML.ads)} />}
                       {usaAfiliadoML && <LinhaTaxa label={`Afiliado (${afiliadoMLPct}%)`} valor={formatBRL(resultadoML.afiliado)} />}
