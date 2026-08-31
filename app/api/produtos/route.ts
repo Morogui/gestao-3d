@@ -12,6 +12,7 @@ type ProdutoRow = {
   tempo_placa_h: string;
   pecas_na_placa: string;
   placa_id: number | null;
+  pecas_na_placa_a2l: string | null;
 };
 
 function toProdutoInput(row: ProdutoRow): ProdutoInput {
@@ -23,6 +24,10 @@ function toProdutoInput(row: ProdutoRow): ProdutoInput {
     tempoPlacaH: Number(row.tempo_placa_h),
     pecasNaPlaca: Number(row.pecas_na_placa),
     placaId: row.placa_id,
+    pecasNaPlacaA2l:
+      row.pecas_na_placa_a2l === null || row.pecas_na_placa_a2l === undefined
+        ? null
+        : Number(row.pecas_na_placa_a2l),
   };
 }
 
@@ -39,6 +44,11 @@ function toProdutoInput(row: ProdutoRow): ProdutoInput {
 // que o Guilherme ja preenche na aba Custo — sem cadastro duplicado.
 async function garantirColunaPlacaId() {
   await sql`ALTER TABLE produtos ADD COLUMN IF NOT EXISTS placa_id integer REFERENCES placas(id)`;
+}
+
+// Coluna adicionada em 2026-08-31 - ver nota em lib/custo.ts (ProdutoInput.pecasNaPlacaA2l).
+async function garantirColunaA2l() {
+  await sql`ALTER TABLE produtos ADD COLUMN IF NOT EXISTS pecas_na_placa_a2l NUMERIC`;
 }
 
 async function criarPlacaParaProduto(params: {
@@ -79,8 +89,9 @@ async function criarPlacaParaProduto(params: {
 
 export async function GET() {
   await garantirColunaPlacaId();
+  await garantirColunaA2l();
   const rows = (await sql`
-    SELECT id, nome, sku, peso_placa_g, tempo_placa_h, pecas_na_placa, placa_id
+    SELECT id, nome, sku, peso_placa_g, tempo_placa_h, pecas_na_placa, placa_id, pecas_na_placa_a2l
     FROM produtos
     ORDER BY nome ASC
   `) as ProdutoRow[];
@@ -89,7 +100,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { nome, sku, pesoPlacaG, tempoPlacaH, pecasNaPlaca } = body as Omit<
+  const { nome, sku, pesoPlacaG, tempoPlacaH, pecasNaPlaca, pecasNaPlacaA2l } = body as Omit<
     ProdutoInput,
     "id"
   >;
@@ -99,11 +110,12 @@ export async function POST(request: NextRequest) {
   }
 
   await garantirColunaPlacaId();
+  await garantirColunaA2l();
 
   const rows = (await sql`
-    INSERT INTO produtos (nome, sku, peso_placa_g, tempo_placa_h, pecas_na_placa)
-    VALUES (${nome}, ${sku || null}, ${pesoPlacaG}, ${tempoPlacaH}, ${pecasNaPlaca})
-    RETURNING id, nome, sku, peso_placa_g, tempo_placa_h, pecas_na_placa
+    INSERT INTO produtos (nome, sku, peso_placa_g, tempo_placa_h, pecas_na_placa, pecas_na_placa_a2l)
+    VALUES (${nome}, ${sku || null}, ${pesoPlacaG}, ${tempoPlacaH}, ${pecasNaPlaca}, ${pecasNaPlacaA2l || null})
+    RETURNING id, nome, sku, peso_placa_g, tempo_placa_h, pecas_na_placa, pecas_na_placa_a2l
   `) as ProdutoRow[];
 
   const placaId = await criarPlacaParaProduto({
