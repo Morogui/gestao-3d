@@ -5,9 +5,11 @@ import { corFilamentoDaPlaca, corPetgDe, CORES_COM_PETG, CorFilamento } from "@/
 export const dynamic = "force-dynamic";
 
 // Coluna adicionada em 2026-07-29 — ver mesma nota em
-// /api/producoes/route.ts.
-async function garantirColunaMaterial() {
+// /api/producoes/route.ts. pecas_por_placa_usada adicionada em
+// 2026-08-31 — ver mesma nota em /api/producoes/route.ts.
+async function garantirColunas() {
   await sql`ALTER TABLE producoes ADD COLUMN IF NOT EXISTS material TEXT`;
+  await sql`ALTER TABLE producoes ADD COLUMN IF NOT EXISTS pecas_por_placa_usada NUMERIC`;
 }
 
 // Resolve qual entrada de estoque (cor "normal" ou a variante "-petg")
@@ -51,15 +53,6 @@ async function descontarFilamento(cor: string | null, gramas: number) {
 // Credita peças no estoque_placas de uma placa — 2026-08-21: passou a
 // usar o mesmo padrão de upsert (INSERT ... ON CONFLICT DO NOTHING antes
 // do UPDATE) já usado em ajustarFilamentoPorPecas/POST /api/estoque.
-// Motivo: nem toda placa tem uma linha em estoque_placas ainda na hora
-// de concluir a primeira produção dela (o mesmo bug já resolvido pro
-// ajuste manual em 2026-07-XX "Suporte Secador de Cabelo Preto" —
-// UPDATE sem linha nenhuma pra atualizar falha em silêncio, sem erro,
-// sem afetar nada). Foi exatamente o que aconteceu com REGUA BOLO 3X10
-// (placa 89): 3 produções concluídas com sucesso (status/concluido_em
-// gravados certinho) mas o crédito de peças nunca apareceu no estoque
-// porque a linha em estoque_placas nunca tinha sido criada. Backfill do
-// saldo real dessa placa específica feito à parte, direto no banco.
 async function creditarPecas(placaId: number, pecas: number) {
   if (!Number.isFinite(pecas) || pecas === 0) return;
   await sql`
@@ -85,7 +78,7 @@ export async function PATCH(
   if (!Number.isInteger(id)) {
     return NextResponse.json({ error: "id inválido" }, { status: 400 });
   }
-  await garantirColunaMaterial();
+  await garantirColunas();
 
   const body = await request.json();
   const { status, gramasDesperdicadas } = body as {
@@ -119,11 +112,6 @@ export async function PATCH(
       );
     }
 
-    // Baixa do estoque de filamento por cor — 2026-07-27: numa falha de
-    // placa inteira o gasto real é o que o operador informou em
-    // gramasDesperdicadas (pode ser menor que o peso total da placa, se
-    // a impressão falhou no meio do caminho). 2026-07-29: usa a variante
-    // PETG do estoque se foi o material escolhido ao carregar a máquina.
     if (gramasDesperdicadas && gramasDesperdicadas > 0) {
       const placaRows = (await sql`
         SELECT nome FROM placas WHERE id = ${rows[0].placa_id}
@@ -141,8 +129,13 @@ export async function PATCH(
       UPDATE producoes
       SET status = 'concluida', concluido_em = now()
       WHERE id = ${id} AND status = 'em_andamento'
-      RETURNING placa_id, quantidade_placas, material
-    `) as { placa_id: number; quantidade_placas: string; material: string | null }[];
+      RETURNING placa_id, quantidade_placas, material, pecas_por_placa_usada
+    `) as {
+      placa_id: number;
+      quantidade_placas: string;
+      material: string | null;
+      pecas_por_placa_usada: string | null;
+    }[];
 
     if (rows.length === 0) {
       return NextResponse.json(
@@ -151,7 +144,12 @@ export async function PATCH(
       );
     }
 
-    const { placa_id: placaId, quantidade_placas: quantidadePlacas, material } = rows[0];
+    const {
+      placa_id: placaId,
+      quantidade_placas: quantidadePlacas,
+      material,
+      pecas_por_placa_usada: pecasPorPlacaUsada,
+    } = rows[0];
     const placaRows = (await sql`
       SELECT nome, pecas_por_placa, saida_extra_placa_id, saida_extra_pecas, peso_placa_gramas
       FROM placas WHERE id = ${placaId}
@@ -162,7 +160,21 @@ export async function PATCH(
       saida_extra_pecas: string | null;
       peso_placa_gramas: string | null;
     }[];
-    const pecasPorPlaca = Number(placaRows[0]?.pecas_por_placa ?? 0);
+    const pecasPorPlacaCadastro = Number(placaRows[0]?.pecas_por_placa ?? 0);
+    // pecas_por_placa_usada (snapshot informado na hora de carregar essa
+    // produção — hoje só perguntado/editável pra máquina A2L, ver
+    // CarregarPlacaForm em app/producao/page.tsx) tem prioridade sobre o
+    // cadastro padrão da placa quando presente e > 0. Pedido do Guilherme
+    // em 2026-08-31: a A2L cabe uma quantidade diferente de peças por
+    // placa do que as outras impressoras (mesa menor), então usar sempre
+    // o cadastro padrão daria baixa errada de estoque nas produções
+    // feitas nela.
+    const pecasPorPlaca =
+      pecasPorPlacaUsada !== null &&
+      pecasPorPlacaUsada !== undefined &&
+      Number(pecasPorPlacaUsada) > 0
+        ? Number(pecasPorPlacaUsada)
+        : pecasPorPlacaCadastro;
     const saidaExtraPlacaId = placaRows[0]?.saida_extra_placa_id ?? null;
     const saidaExtraPecas = placaRows[0]?.saida_extra_pecas
       ? Number(placaRows[0].saida_extra_pecas)
@@ -171,9 +183,6 @@ export async function PATCH(
       ? Number(placaRows[0].peso_placa_gramas)
       : null;
 
-    // Peças perdidas em falhas pontuais (a impressão continuou, só essas
-    // peças específicas foram descartadas) são descontadas do total
-    // creditado no estoque.
     const falhaRows = (await sql`
       SELECT count(*)::int AS total FROM falhas_peca WHERE producao_id = ${id}
     `) as { total: number }[];
@@ -186,25 +195,12 @@ export async function PATCH(
 
     await creditarPecas(placaId, pecasProduzidas);
 
-    // Placa "mista" (ex: Suporte Carro - Mista): cada impressão também
-    // rende peças de uma OUTRA placa (saida_extra_placa_id), além da
-    // sua própria. Credita esse extra também — sem descontar falhas
-    // pontuais aqui, porque falhas_peca não distingue qual tipo de peça
-    // (do papel principal ou da saída extra) foi perdida na placa mista;
-    // simplificação aceitável dado o baixo volume desse caso (pedido
-    // 2026-07-24).
     let pecasExtraProduzidas = 0;
     if (saidaExtraPlacaId && saidaExtraPecas > 0) {
       pecasExtraProduzidas = Number(quantidadePlacas) * saidaExtraPecas;
       await creditarPecas(saidaExtraPlacaId, pecasExtraProduzidas);
     }
 
-    // Baixa do estoque de filamento por cor — pedido do Guilherme em
-    // 2026-07-27: "toda sku vendida tem cor... quando for produzida, dar
-    // baixa do meu estoque de filamento por cor". Usa o peso da PLACA
-    // (não da peça) × quantidade de placas impressas — o peso gasto na
-    // impressora não muda se uma peça específica depois é rejeitada por
-    // falha (falhas_peca), então não descontamos pecasComFalha aqui.
     let gramasFilamentoDescontadas = 0;
     if (pesoPlacaGramas) {
       gramasFilamentoDescontadas = Number(quantidadePlacas) * pesoPlacaGramas;
