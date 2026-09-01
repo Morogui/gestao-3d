@@ -814,7 +814,8 @@ export default function ProducaoPage() {
     machineId: number,
     quantidadePlacas: number,
     material: "PLA" | "PETG",
-    pecasPorPlacaUsada?: number
+    pecasPorPlacaUsada?: number,
+    ganchosPorPlacaUsada?: number
   ) {
     setCarregando((prev) => ({ ...prev, [machineId]: true }));
     try {
@@ -827,6 +828,7 @@ export default function ProducaoPage() {
           quantidadePlacas,
           material,
           pecasPorPlacaUsada: pecasPorPlacaUsada ?? null,
+          ganchosPorPlacaUsada: ganchosPorPlacaUsada ?? null,
         }),
       });
       if (!res.ok) {
@@ -1358,8 +1360,8 @@ async function corrigirTempo() {
               pertoDoFechamento={pertoDoFechamento}
               aberturaHora={janela.aberturaHora}
               carregando={Boolean(carregando[machine.id])}
-              onIniciar={(placaId, qtd, material, pecasPorPlacaUsada) =>
-                iniciarProducao(placaId, machine.id, qtd, material, pecasPorPlacaUsada)
+              onIniciar={(placaId, qtd, material, pecasPorPlacaUsada, ganchosPorPlacaUsada) =>
+                iniciarProducao(placaId, machine.id, qtd, material, pecasPorPlacaUsada, ganchosPorPlacaUsada)
               }
               onConcluir={(id) => concluirProducao(id, machine.id)}
               onCancelar={(id) => cancelarProducao(id, machine.id)}
@@ -1993,7 +1995,7 @@ function PrinterCard({
   pertoDoFechamento: boolean;
   aberturaHora: number;
   carregando: boolean;
-  onIniciar: (placaId: number, quantidadePlacas: number, material: "PLA" | "PETG", pecasPorPlacaUsada?: number) => void;
+  onIniciar: (placaId: number, quantidadePlacas: number, material: "PLA" | "PETG", pecasPorPlacaUsada?: number, ganchosPorPlacaUsada?: number) => void;
   onConcluir: (id: number) => void;
   onCancelar: (id: number) => void;
   onFalhaPlaca: (id: number, gramas: number) => void;
@@ -2329,7 +2331,7 @@ function CarregarPlacaForm({
   pertoDoFechamento: boolean;
   aberturaHora: number;
   carregando: boolean;
-  onIniciar: (placaId: number, quantidadePlacas: number, material: "PLA" | "PETG", pecasPorPlacaUsada?: number) => void;
+  onIniciar: (placaId: number, quantidadePlacas: number, material: "PLA" | "PETG", pecasPorPlacaUsada?: number, ganchosPorPlacaUsada?: number) => void;
 }) {
   const [placaId, setPlacaId] = useState<number | "">(filaPrioridade[0]?.placa.id ?? "");
   const [quantidade, setQuantidade] = useState(1);
@@ -2355,6 +2357,19 @@ function CarregarPlacaForm({
     if (isA2L) {
       const placa = placaId ? placaPorId.get(placaId) : undefined;
       setPecasOverride(placa ? String(placa.pecasPorPlaca) : "");
+    }
+  }, [placaId, isA2L, placaPorId]);
+
+  // ganchosOverride (pedido do Guilherme em 2026-09-01): em placas mistas
+  // (corpo + gancho), a A2L também cabe uma quantidade diferente de
+  // ganchos por placa — igual já acontecia com pecasOverride pro corpo.
+  const [ganchosOverride, setGanchosOverride] = useState("");
+  useEffect(() => {
+    if (isA2L) {
+      const placa = placaId ? placaPorId.get(placaId) : undefined;
+      setGanchosOverride(
+        placa?.saidaExtraPecas ? String(placa.saidaExtraPecas) : ""
+      );
     }
   }, [placaId, isA2L, placaPorId]);
 
@@ -2456,17 +2471,25 @@ function CarregarPlacaForm({
         </p>
       )}
 
-      {placaExtraSelecionada && placaSelecionada?.saidaExtraPecas && (
+      {isA2L && placaExtraSelecionada && placaSelecionada?.saidaExtraPecas ? (
         <p className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800">
-          Ao concluir, também credita {placaSelecionada.saidaExtraPecas * quantidade} pç em{" "}
-          <span className="font-medium">{placaExtraSelecionada.nome}</span> (saída extra)
+          Ao concluir, também credita {(Number(ganchosOverride) || 0) * quantidade} pç em{" "}
+          <span className="font-medium">{placaExtraSelecionada.nome}</span> (saída extra — editável abaixo)
         </p>
+      ) : (
+        placaExtraSelecionada &&
+        placaSelecionada?.saidaExtraPecas && (
+          <p className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800">
+            Ao concluir, também credita {placaSelecionada.saidaExtraPecas * quantidade} pç em{" "}
+            <span className="font-medium">{placaExtraSelecionada.nome}</span> (saída extra)
+          </p>
+        )
       )}
 
       {isA2L && placaSelecionada && (
         <div>
           <label className="mb-1 block text-xs font-medium text-gray-500">
-            Peças reais nessa placa (A2L)
+            {placaExtraSelecionada ? "Corpos reais nessa placa (A2L)" : "Peças reais nessa placa (A2L)"}
           </label>
           <input
             type="number"
@@ -2477,6 +2500,25 @@ function CarregarPlacaForm({
           />
           <p className="mt-1 text-xs text-amber-700">
             A A2L cabe uma quantidade diferente de peças por placa do que as outras impressoras (mesa menor). Confirme quantas peças REALMENTE saem nessa placa antes de carregar — o padrão de {placaSelecionada.pecasPorPlaca} pç/placa (cadastro geral) veio pré-preenchido, mas edite se for diferente na A2L, pra dar baixa certa no estoque.
+          </p>
+        </div>
+      )}
+
+      {isA2L && placaExtraSelecionada && (
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">
+            Ganchos reais nessa placa (A2L)
+          </label>
+          <input
+            type="number"
+            min={0}
+            value={ganchosOverride}
+            onChange={(e) => setGanchosOverride(e.target.value)}
+            className="w-24 rounded border border-gray-300 px-2 py-1.5 text-xs"
+          />
+          <p className="mt-1 text-xs text-amber-700">
+            Placa mista: além do corpo, essa placa também gera{" "}
+            <span className="font-medium">{placaExtraSelecionada.nome}</span>. A A2L pode caber uma proporção diferente de ganchos por placa (mesa menor) — confirme quantos ganchos REALMENTE saem nessa placa antes de carregar, pra creditar certo no estoque ao concluir.
           </p>
         </div>
       )}
@@ -2524,7 +2566,11 @@ function CarregarPlacaForm({
           onClick={() => {
             if (!placaId) return;
             const override = isA2L && pecasOverride.trim() !== "" ? Number(pecasOverride) : undefined;
-            onIniciar(placaId, quantidade, material, override);
+            const ganchosOverrideVal =
+              isA2L && placaExtraSelecionada && ganchosOverride.trim() !== ""
+                ? Number(ganchosOverride)
+                : undefined;
+            onIniciar(placaId, quantidade, material, override, ganchosOverrideVal);
           }}
           className="flex-1 rounded bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
         >
