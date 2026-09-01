@@ -25,7 +25,17 @@ import type { NextRequest } from "next/server";
 // checagem só entra em ação pra hosts terminados em ".vercel.app".
 const DOMINIO_CANONICO = "gestao-3d-ecru.vercel.app";
 
-const PUBLIC_PATHS = ["/", "/painel", "/login", "/logo-7x7.png"];
+// "/mercadolivrecalculadora" e "/shopeecalculadora" adicionadas em
+// 2026-09-01 — pedido do Guilherme: a calculadora de precificação
+// (Precificação Marketplace, escolha Mercado Livre/Shopee no modal do
+// /painel) é uma ferramenta pública, igual o resto do /painel — não
+// busca nenhum dado do negócio via API, só calcula em cima do que a
+// pessoa digita. As duas rotas renderizam o MESMO componente de
+// /painel (ver app/mercadolivrecalculadora/page.tsx e
+// app/shopeecalculadora/page.tsx), então ficarem de fora dessa lista
+// era um esquecimento: o modal levava pra uma URL que exigia login,
+// mesmo o conteúdo sendo idêntico ao que já está liberado em /painel.
+const PUBLIC_PATHS = ["/", "/painel", "/mercadolivrecalculadora", "/shopeecalculadora", "/login", "/logo-7x7.png"];
 
 // Rotas de API que precisam continuar acessíveis SEM sessão porque quem
 // chama nunca vai ter o cookie g3d_session: cron da própria Vercel
