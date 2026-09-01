@@ -857,7 +857,8 @@ async function concluirProducao(id: number, machineId: number) {
             const tempoMs = producaoAtual.iniciado_em ? Date.now() - new Date(producaoAtual.iniciado_em).getTime() : 0;
       const maquinaAtual = machines.find((m) => m.id === machineId);
       const isA2LConclusao = maquinaAtual ? /a2l/i.test(maquinaAtual.nome) : false;
-      if (!placaCadastro?.dadosConfirmados || isA2LConclusao) {
+      const dadosJaConfirmados = isA2LConclusao ? placaCadastro?.dadosConfirmadosA2l : placaCadastro?.dadosConfirmados;
+      if (!dadosJaConfirmados) {
             setResumoProducao({
                       producaoId: id,
         placaNome: producaoAtual.placa_nome,
