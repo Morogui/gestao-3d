@@ -55,6 +55,13 @@ async function sincronizarPlaca(params: {
 }): Promise<number> {
   const { placaId, nome, skuAntigo, skuNovo, pesoPlacaG, tempoPlacaH, pecasNaPlaca } = params;
 
+  if (!placaId && skuNovo) {
+    const existentes = (await sql`SELECT id FROM placas WHERE sku_ou_kit = ${skuNovo} LIMIT 1`) as { id: number }[];
+    if (existentes.length > 0) {
+      return existentes[0].id;
+    }
+  }
+
   if (!placaId) {
     const [{ proximo }] = (await sql`
       SELECT COALESCE(MAX(numero), 0) + 1 AS proximo FROM placas
