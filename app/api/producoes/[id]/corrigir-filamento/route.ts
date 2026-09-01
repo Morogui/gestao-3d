@@ -39,6 +39,8 @@ async function garantirTabela() {
     await sql`
     ALTER TABLE placas ADD COLUMN IF NOT EXISTS dados_confirmados BOOLEAN NOT NULL DEFAULT false
     `;
+    await sql`ALTER TABLE placas ADD COLUMN IF NOT EXISTS dados_confirmados_a2l BOOLEAN NOT NULL DEFAULT false`;
+    await sql`ALTER TABLE placas ADD COLUMN IF NOT EXISTS peso_placa_gramas_a2l NUMERIC`;
   }
 
 export async function POST(
@@ -61,13 +63,16 @@ export async function POST(
         }
 
     const producaoRows = (await sql`
-                              SELECT placa_id, quantidade_placas, material, status
-                              FROM producoes WHERE id = ${id}
+                              SELECT po.placa_id, po.quantidade_placas, po.material, po.status, m.nome AS machine_nome
+                              FROM producoes po
+                              JOIN machines m ON m.id = po.machine_id
+                              WHERE po.id = ${id}
                             `) as {
           placa_id: number;
           quantidade_placas: string;
           material: string | null;
           status: string;
+          machine_nome: string;
         }[];
     if (producaoRows.length === 0) {
           return NextResponse.json(
@@ -76,6 +81,7 @@ export async function POST(
                 );
         }
     const producao = producaoRows[0];
+  const isA2L = /a2l/i.test(producao.machine_nome);
     if (producao.status !== "concluida") {
           return NextResponse.json(
                   { error: "so e possivel corrigir producoes concluidas" },
@@ -84,14 +90,16 @@ export async function POST(
         }
 
     const placaRows = (await sql`
-                           SELECT nome, peso_placa_gramas FROM placas WHERE id = ${producao.placa_id}
-                         `) as { nome: string; peso_placa_gramas: number | null }[];
+                           SELECT nome, peso_placa_gramas, peso_placa_gramas_a2l FROM placas WHERE id = ${producao.placa_id}
+                         `) as { nome: string; peso_placa_gramas: number | null; peso_placa_gramas_a2l: number | null }[];
     if (placaRows.length === 0) {
           return NextResponse.json({ error: "placa nao encontrada" }, { status: 404 });
         }
     const placa = placaRows[0];
     const quantidadePlacas = Number(producao.quantidade_placas);
-    const pesoAtual = placa.peso_placa_gramas ? Number(placa.peso_placa_gramas) : 0;
+    const pesoAtual = isA2L
+    ? (placa.peso_placa_gramas_a2l ? Number(placa.peso_placa_gramas_a2l) : 0)
+    : (placa.peso_placa_gramas ? Number(placa.peso_placa_gramas) : 0);
     const gramasAntigas = quantidadePlacas * pesoAtual;
     const delta = gramasCorretas - gramasAntigas;
 
@@ -114,10 +122,17 @@ export async function POST(
 
     const pesoPlacaNovo =
       quantidadePlacas > 0 ? gramasCorretas / quantidadePlacas : gramasCorretas;
+    if (isA2L) {
+    await sql`
+      UPDATE placas SET peso_placa_gramas_a2l = ${pesoPlacaNovo}, dados_confirmados_a2l = true
+      WHERE id = ${producao.placa_id}
+    `;
+  } else {
     await sql`
       UPDATE placas SET peso_placa_gramas = ${pesoPlacaNovo}, dados_confirmados = true
       WHERE id = ${producao.placa_id}
     `;
+  }
 
     await sql`
       INSERT INTO correcoes_filamento
