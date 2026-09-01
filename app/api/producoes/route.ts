@@ -18,7 +18,7 @@ export async function GET() {
     SELECT
       pr.id, pr.machine_id, pr.placa_id, pr.quantidade_placas, pr.status,
       pr.iniciado_em, pr.concluido_em, pr.gramas_desperdicadas, pr.material,
-      pr.pecas_por_placa_usada,
+      pr.pecas_por_placa_usada, pr.ganchos_por_placa_usada,
       m.nome AS machine_nome,
       pl.nome AS placa_nome, pl.pecas_por_placa,
       COALESCE(fp.count, 0) AS falhas_peca_count
@@ -58,6 +58,7 @@ export async function GET() {
 async function garantirColunas() {
   await sql`ALTER TABLE producoes ADD COLUMN IF NOT EXISTS material TEXT`;
   await sql`ALTER TABLE producoes ADD COLUMN IF NOT EXISTS pecas_por_placa_usada NUMERIC`;
+  await sql`ALTER TABLE producoes ADD COLUMN IF NOT EXISTS ganchos_por_placa_usada NUMERIC`;
 }
 
 // Inicia uma nova produção (carregar uma placa em uma máquina).
@@ -65,12 +66,13 @@ export async function POST(request: NextRequest) {
   await garantirColunas();
 
   const body = await request.json();
-  const { machineId, placaId, quantidadePlacas, material, pecasPorPlacaUsada } = body as {
+  const { machineId, placaId, quantidadePlacas, material, pecasPorPlacaUsada, ganchosPorPlacaUsada } = body as {
     machineId: number;
     placaId: number;
     quantidadePlacas: number;
     material?: "PLA" | "PETG";
     pecasPorPlacaUsada?: number | null;
+    ganchosPorPlacaUsada?: number | null;
   };
 
   if (!machineId || !placaId || !quantidadePlacas || quantidadePlacas <= 0) {
@@ -87,6 +89,22 @@ export async function POST(request: NextRequest) {
   ) {
     return NextResponse.json(
       { error: "pecasPorPlacaUsada precisa ser um número >= 0 (ou null)" },
+      { status: 400 }
+    );
+  }
+
+  // ganchos_por_placa_usada — pedido do Guilherme em 2026-09-01: placas
+  // mistas (corpo + gancho) geram DOIS produtos por impressão, e a A2L
+  // cabe uma proporção diferente de ganchos por placa que as outras
+  // impressoras. Esse campo é o análogo, pro lado do "gancho" (saída
+  // extra), do pecasPorPlacaUsada acima (que cobre o "corpo" principal).
+  if (
+    ganchosPorPlacaUsada !== null &&
+    ganchosPorPlacaUsada !== undefined &&
+    (!Number.isFinite(ganchosPorPlacaUsada) || ganchosPorPlacaUsada < 0)
+  ) {
+    return NextResponse.json(
+      { error: "ganchosPorPlacaUsada precisa ser um número >= 0 (ou null)" },
       { status: 400 }
     );
   }
@@ -122,9 +140,9 @@ export async function POST(request: NextRequest) {
   }
 
   const rows = await sql`
-    INSERT INTO producoes (machine_id, placa_id, quantidade_placas, status, material, pecas_por_placa_usada)
-    VALUES (${machineId}, ${placaId}, ${quantidadePlacas}, 'em_andamento', ${materialNormalizado}, ${pecasPorPlacaUsada ?? null})
-    RETURNING id, machine_id, placa_id, quantidade_placas, status, iniciado_em, concluido_em, material, pecas_por_placa_usada
+    INSERT INTO producoes (machine_id, placa_id, quantidade_placas, status, material, pecas_por_placa_usada, ganchos_por_placa_usada)
+    VALUES (${machineId}, ${placaId}, ${quantidadePlacas}, 'em_andamento', ${materialNormalizado}, ${pecasPorPlacaUsada ?? null}, ${ganchosPorPlacaUsada ?? null})
+    RETURNING id, machine_id, placa_id, quantidade_placas, status, iniciado_em, concluido_em, material, pecas_por_placa_usada, ganchos_por_placa_usada
   `;
 
   return NextResponse.json(rows[0], { status: 201 });
