@@ -24,6 +24,8 @@ async function garantirTabela() {
   await sql`
   ALTER TABLE placas ADD COLUMN IF NOT EXISTS dados_confirmados BOOLEAN NOT NULL DEFAULT false
   `;
+  await sql`ALTER TABLE placas ADD COLUMN IF NOT EXISTS dados_confirmados_a2l BOOLEAN NOT NULL DEFAULT false`;
+  await sql`ALTER TABLE placas ADD COLUMN IF NOT EXISTS pecas_por_placa_a2l NUMERIC`;
 }
 export async function POST(
   request: NextRequest,
@@ -43,9 +45,11 @@ export async function POST(
       );
   }
   const producaoRows = (await sql`
-  SELECT placa_id, quantidade_placas, status
-  FROM producoes WHERE id = ${id}
-  `) as { placa_id: number; quantidade_placas: string; status: string }[];
+  SELECT po.placa_id, po.quantidade_placas, po.status, m.nome AS machine_nome
+  FROM producoes po
+  JOIN machines m ON m.id = po.machine_id
+  WHERE po.id = ${id}
+  `) as { placa_id: number; quantidade_placas: string; status: string; machine_nome: string }[];
   if (producaoRows.length === 0) {
     return NextResponse.json(
       { error: "producao nao encontrada" },
@@ -53,6 +57,7 @@ export async function POST(
       );
   }
   const producao = producaoRows[0];
+  const isA2L = /a2l/i.test(producao.machine_nome);
   if (producao.status !== "concluida") {
     return NextResponse.json(
       { error: "so e possivel corrigir producoes concluidas" },
@@ -60,22 +65,31 @@ export async function POST(
       );
   }
   const placaRows = (await sql`
-  SELECT pecas_por_placa FROM placas WHERE id = ${producao.placa_id}
-  `) as { pecas_por_placa: number | null }[];
+  SELECT pecas_por_placa, pecas_por_placa_a2l FROM placas WHERE id = ${producao.placa_id}
+  `) as { pecas_por_placa: number | null; pecas_por_placa_a2l: number | null }[];
   if (placaRows.length === 0) {
     return NextResponse.json({ error: "placa nao encontrada" }, { status: 404 });
   }
   const placa = placaRows[0];
   const quantidadePlacas = Number(producao.quantidade_placas);
-  const pecasAtual = placa.pecas_por_placa ? Number(placa.pecas_por_placa) : 0;
+  const pecasAtual = isA2L
+    ? (placa.pecas_por_placa_a2l ? Number(placa.pecas_por_placa_a2l) : 0)
+    : (placa.pecas_por_placa ? Number(placa.pecas_por_placa) : 0);
   const pecasAntigas = quantidadePlacas * pecasAtual;
   const delta = pecasCorretas - pecasAntigas;
   const pecasPlacaNovo =
     quantidadePlacas > 0 ? pecasCorretas / quantidadePlacas : pecasCorretas;
-  await sql`
+  if (isA2L) {
+    await sql`
+  UPDATE placas SET pecas_por_placa_a2l = ${pecasPlacaNovo}, dados_confirmados_a2l = true
+  WHERE id = ${producao.placa_id}
+  `;
+  } else {
+    await sql`
   UPDATE placas SET pecas_por_placa = ${pecasPlacaNovo}, dados_confirmados = true
   WHERE id = ${producao.placa_id}
   `;
+  }
   await sql`
   INSERT INTO correcoes_pecas
   (producao_id, placa_id, pecas_antigas, pecas_novas, delta_pecas)
