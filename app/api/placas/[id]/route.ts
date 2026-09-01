@@ -40,6 +40,10 @@ export async function PATCH(
                     tipo,
                     grupoComposto,
                     tier,
+          pecasPorPlacaA2l,
+          tempoPlacaHorasA2l,
+          pesoPlacaGramasA2l,
+          dadosConfirmadosA2l,
     } = body as {
           pesoPlacaGramas?: number | null;
           saidaExtraPlacaId?: number | null;
@@ -52,6 +56,10 @@ export async function PATCH(
                     tipo?: string | null;
                     grupoComposto?: string | null;
                     tier?: string | null;
+          pecasPorPlacaA2l?: number | null;
+          tempoPlacaHorasA2l?: number | null;
+          pesoPlacaGramasA2l?: number | null;
+          dadosConfirmadosA2l?: boolean | null;
     };
 
   if (
@@ -137,6 +145,10 @@ export async function PATCH(
         const temTipo = tipo !== undefined;
         const temGrupoComposto = grupoComposto !== undefined;
         const temTier = tier !== undefined;
+    const temPecasPorPlacaA2l = pecasPorPlacaA2l !== undefined;
+    const temTempoPlacaHorasA2l = tempoPlacaHorasA2l !== undefined;
+    const temPesoPlacaGramasA2l = pesoPlacaGramasA2l !== undefined;
+    const temDadosConfirmadosA2l = dadosConfirmadosA2l !== undefined;
 
   const rows = (await sql`
       UPDATE placas
@@ -151,10 +163,14 @@ export async function PATCH(
                                                     dados_confirmados = CASE WHEN ${temDadosConfirmados} THEN ${dadosConfirmados ?? false} ELSE dados_confirmados END,
                                                                     tipo = CASE WHEN ${temTipo} THEN ${tipo ?? null} ELSE tipo END,
                                                                                     grupo_composto = CASE WHEN ${temGrupoComposto} THEN ${grupoComposto ?? null} ELSE grupo_composto END,
-                                                                                                    tier = CASE WHEN ${temTier} THEN ${tier ?? null} ELSE tier END
+                                                                                                    tier = CASE WHEN ${temTier} THEN ${tier ?? null} ELSE tier END,
+                pecas_por_placa_a2l = CASE WHEN ${temPecasPorPlacaA2l} THEN ${pecasPorPlacaA2l ?? null} ELSE pecas_por_placa_a2l END,
+                tempo_placa_horas_a2l = CASE WHEN ${temTempoPlacaHorasA2l} THEN ${tempoPlacaHorasA2l ?? null} ELSE tempo_placa_horas_a2l END,
+                peso_placa_gramas_a2l = CASE WHEN ${temPesoPlacaGramasA2l} THEN ${pesoPlacaGramasA2l ?? null} ELSE peso_placa_gramas_a2l END,
+                dados_confirmados_a2l = CASE WHEN ${temDadosConfirmadosA2l} THEN ${dadosConfirmadosA2l ?? false} ELSE dados_confirmados_a2l END
                                                         WHERE id = ${id}
                                                             RETURNING id, peso_placa_gramas, saida_extra_placa_id, saida_extra_pecas, papel, pecas_por_placa, descontinuada, frases_correspondencia, dados_confirmados, tipo, grupo_composto, tier
-                                                              `) as {
+                                                              , pecas_por_placa_a2l, tempo_placa_horas_a2l, peso_placa_gramas_a2l, dados_confirmados_a2l`) as {
         id: number;
         peso_placa_gramas: string | null;
         saida_extra_placa_id: number | null;
@@ -167,6 +183,10 @@ export async function PATCH(
       tipo: string;
       grupo_composto: string | null;
       tier: string;
+      pecas_por_placa_a2l: string | null;
+      tempo_placa_horas_a2l: string | null;
+      peso_placa_gramas_a2l: string | null;
+      dados_confirmados_a2l: boolean;
   }[];
 
   if (rows.length === 0) {
