@@ -1171,7 +1171,7 @@ Se voce e MercadoLider (Platinum/Ouro/Gold) o ML pode te dar um desconto por rep
 <div className="grid grid-cols-2 gap-2">
 <button
 type="button"
-onClick={() => setUsaAdsML(true)}
+onClick={() => { setUsaAdsML(true); setUsaAfiliadoML(false); }}
 className={
 "rounded-lg border px-3 py-2 text-sm font-medium " +
 (usaAdsML ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
@@ -1260,7 +1260,7 @@ Nao uso Ads
                       </button>
                       <button
                         type="button"
-                        onClick={() => setUsaAfiliadoML(true)}
+                        onClick={() => { setUsaAfiliadoML(true); setUsaAdsML(false); }}
                         className={
                           "rounded-lg border px-3 py-2 text-sm font-medium " +
                           (usaAfiliadoML ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
@@ -1409,7 +1409,7 @@ Nao uso Ads
                       </button>
                       <button
                         type="button"
-                        onClick={() => setUsaAfiliadoShopee(true)}
+                        onClick={() => { setUsaAfiliadoShopee(true); setUsaAdsShopee(false); }}
                         className={
                           "rounded-lg border px-3 py-2 text-sm font-medium " +
                           (usaAfiliadoShopee ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
@@ -1432,7 +1432,7 @@ Nao uso Ads
 <div className="grid grid-cols-2 gap-2">
 <button
 type="button"
-onClick={() => setUsaAdsShopee(true)}
+onClick={() => { setUsaAdsShopee(true); setUsaAfiliadoShopee(false); }}
 className={
 "rounded-lg border px-3 py-2 text-sm font-medium " +
 (usaAdsShopee ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
