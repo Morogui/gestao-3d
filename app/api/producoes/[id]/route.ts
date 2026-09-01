@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 async function garantirColunas() {
   await sql`ALTER TABLE producoes ADD COLUMN IF NOT EXISTS material TEXT`;
   await sql`ALTER TABLE producoes ADD COLUMN IF NOT EXISTS pecas_por_placa_usada NUMERIC`;
+  await sql`ALTER TABLE producoes ADD COLUMN IF NOT EXISTS ganchos_por_placa_usada NUMERIC`;
 }
 
 // Resolve qual entrada de estoque (cor "normal" ou a variante "-petg")
@@ -129,12 +130,13 @@ export async function PATCH(
       UPDATE producoes
       SET status = 'concluida', concluido_em = now()
       WHERE id = ${id} AND status = 'em_andamento'
-      RETURNING placa_id, quantidade_placas, material, pecas_por_placa_usada
+      RETURNING placa_id, quantidade_placas, material, pecas_por_placa_usada, ganchos_por_placa_usada
     `) as {
       placa_id: number;
       quantidade_placas: string;
       material: string | null;
       pecas_por_placa_usada: string | null;
+      ganchos_por_placa_usada: string | null;
     }[];
 
     if (rows.length === 0) {
@@ -149,6 +151,7 @@ export async function PATCH(
       quantidade_placas: quantidadePlacas,
       material,
       pecas_por_placa_usada: pecasPorPlacaUsada,
+      ganchos_por_placa_usada: ganchosPorPlacaUsada,
     } = rows[0];
     const placaRows = (await sql`
       SELECT nome, pecas_por_placa, saida_extra_placa_id, saida_extra_pecas, peso_placa_gramas
@@ -195,9 +198,21 @@ export async function PATCH(
 
     await creditarPecas(placaId, pecasProduzidas);
 
+    // ganchosPorPlacaUsada (pedido do Guilherme em 2026-09-01): em placas
+    // mistas (corpo + gancho), a quantidade de ganchos por placa também
+    // pode variar por máquina (principalmente na A2L, mesa menor) — igual
+    // já acontecia com pecasPorPlacaUsada pro corpo. Se o operador
+    // informou esse valor ao carregar, ele tem prioridade sobre o
+    // saida_extra_pecas fixo do cadastro da placa.
+    const ganchosPorPlacaEfetivo =
+      ganchosPorPlacaUsada !== null &&
+      ganchosPorPlacaUsada !== undefined &&
+      Number(ganchosPorPlacaUsada) >= 0
+        ? Number(ganchosPorPlacaUsada)
+        : saidaExtraPecas;
     let pecasExtraProduzidas = 0;
-    if (saidaExtraPlacaId && saidaExtraPecas > 0) {
-      pecasExtraProduzidas = Number(quantidadePlacas) * saidaExtraPecas;
+    if (saidaExtraPlacaId && ganchosPorPlacaEfetivo > 0) {
+      pecasExtraProduzidas = Number(quantidadePlacas) * ganchosPorPlacaEfetivo;
       await creditarPecas(saidaExtraPlacaId, pecasExtraProduzidas);
     }
 
