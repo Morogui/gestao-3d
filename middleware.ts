@@ -35,8 +35,7 @@ const DOMINIO_CANONICO = "gestao-3d-ecru.vercel.app";
 // app/shopeecalculadora/page.tsx), então ficarem de fora dessa lista
 // era um esquecimento: o modal levava pra uma URL que exigia login,
 // mesmo o conteúdo sendo idêntico ao que já está liberado em /painel.
-const PUBLIC_PATHS = ["/", "/painel", "/mercadolivrecalculadora", "/shopeecalculadora", "/login", "/logo-7x7.png"];
-
+const PUBLIC_PATHS = ["/", "/painel", "/mercadolivrecalculadora", "/shopeecalculadora", "/logo-7x7.png", "/robots.txt", "/sitemap.xml"];
 // Rotas de API que precisam continuar acessíveis SEM sessão porque quem
 // chama nunca vai ter o cookie g3d_session: cron da própria Vercel
 // (vercel.json), webhooks chamados pelos servidores do Telegram/Mercado
