@@ -33,7 +33,7 @@ function palavrasSignificativas(s: string): string[] {
 
 // Pedido do Guilherme em 2026-08-18: avisar quando o SKU digitado no
 // Custo parece divergir do SKU real usado nas vendas (ex: "REGUA BOLO
-// 5X10" cadastrado, mas a venda real usa "REGUA 5X10") — nesses casos
+// 5X10" cadastrado, mas a venda real usa "REGUA 5X10") â nesses casos
 // o vinculo automatico cria a placa, mas a venda continua aparecendo
 // como nao identificada na Producao porque o SKU nao bate exatamente.
 function acharDivergenciaSku(
@@ -70,10 +70,10 @@ export default function CustoCalculator() {
   const [loading, setLoading] = useState(true);
   const [salvandoParams, setSalvandoParams] = useState(false);
   const [paramsSalvos, setParamsSalvos] = useState(true);
-  // Busca de produtos cadastrados — pedido do Guilherme em 2026-08-04,
+  // Busca de produtos cadastrados â pedido do Guilherme em 2026-08-04,
   // olhando a tabela crescer (46+ produtos): "Deve ter um campo para
   // buscar os produtos cadastrados". Filtra por nome OU SKU, sem
-  // acento/maiúscula (mesmo padrão de normalização usado em
+  // acento/maiÃºscula (mesmo padrÃ£o de normalizaÃ§Ã£o usado em
   // lib/demanda.ts) pra achar mesmo digitando diferente do cadastro.
   const [busca, setBusca] = useState("");
   const [naoIdentificados, setNaoIdentificados] = useState<
@@ -109,7 +109,7 @@ export default function CustoCalculator() {
         });
         setNaoIdentificados(unicas);
       } catch {
-        // silencioso — e so um alerta visual, nao deve travar a tela
+        // silencioso â e so um alerta visual, nao deve travar a tela
       }
     })();
   }, []);
@@ -203,17 +203,17 @@ export default function CustoCalculator() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Parâmetros globais */}
+      {/* ParÃ¢metros globais */}
       <section className="rounded-lg border border-gray-200 bg-white p-5">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-900">
-            Parâmetros de custo
+            ParÃ¢metros de custo
           </h2>
           <div className="flex items-center gap-2">
             {paramsSalvos ? (
               <span className="text-xs text-gray-400">Salvo</span>
             ) : (
-              <span className="text-xs text-amber-600">Alterações não salvas</span>
+              <span className="text-xs text-amber-600">AlteraÃ§Ãµes nÃ£o salvas</span>
             )}
             <button
               type="button"
@@ -221,7 +221,7 @@ export default function CustoCalculator() {
               disabled={salvandoParams || paramsSalvos}
               className="rounded-md bg-gray-900 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
             >
-              {salvandoParams ? "Salvando..." : "Salvar parâmetros"}
+              {salvandoParams ? "Salvando..." : "Salvar parÃ¢metros"}
             </button>
           </div>
         </div>
@@ -247,13 +247,13 @@ export default function CustoCalculator() {
             step={0.01}
           />
           <NumberField
-            label="Manutenção (R$/h)"
+            label="ManutenÃ§Ã£o (R$/h)"
             value={params.manutencaoHora}
             onChange={(v) => updateParam("manutencaoHora", v)}
             step={0.01}
           />
           <NumberField
-            label="Falha de impressão (%)"
+            label="Falha de impressÃ£o (%)"
             value={params.falhaImpressao * 100}
             onChange={(v) => updateParam("falhaImpressao", v / 100)}
             step={0.1}
@@ -261,7 +261,7 @@ export default function CustoCalculator() {
         </div>
       </section>
 
-      {/* Formulário do produto + preview */}
+      {/* FormulÃ¡rio do produto + preview */}
       <section className="rounded-lg border border-gray-200 bg-white p-5">
         <h2 className="mb-4 text-sm font-semibold text-gray-900">
           {editingId ? "Editar produto" : "Novo produto"}
@@ -269,7 +269,7 @@ export default function CustoCalculator() {
         <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <TextField
-              label="Nome / código do produto"
+              label="Nome / cÃ³digo do produto"
               value={form.nome}
               onChange={(v) => updateForm("nome", v)}
               required
@@ -285,20 +285,19 @@ export default function CustoCalculator() {
               onChange={(v) => updateForm("pesoPlacaG", v)}
               step={0.1}
             />
-            <NumberField
+            <TimeField
               label="Tempo da placa (h)"
-              value={form.tempoPlacaH}
+              totalHoras={form.tempoPlacaH}
               onChange={(v) => updateForm("tempoPlacaH", v)}
-              step={0.1}
             />
             <NumberField
-              label="Peças na placa"
+              label="PeÃ§as na placa"
               value={form.pecasNaPlaca}
               onChange={(v) => updateForm("pecasNaPlaca", v)}
               step={1}
             />
             <NumberField
-              label="Peças na placa (A2L, se diferente)"
+              label="PeÃ§as na placa (A2L, se diferente)"
               value={form.pecasNaPlacaA2l ?? 0}
               onChange={(v) => updateForm("pecasNaPlacaA2l", v || null)}
               step={1}
@@ -308,7 +307,7 @@ export default function CustoCalculator() {
                 type="submit"
                 className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
               >
-                {editingId ? "Salvar alterações" : "Adicionar produto"}
+                {editingId ? "Salvar alteraÃ§Ãµes" : "Adicionar produto"}
               </button>
               {editingId && (
                 <button
@@ -322,28 +321,28 @@ export default function CustoCalculator() {
             </div>
           </div>
 
-          {/* Preview do cálculo */}
+          {/* Preview do cÃ¡lculo */}
           <div className="rounded-md bg-gray-50 p-4 text-sm">
             <h3 className="mb-3 font-semibold text-gray-900">
-              Prévia do cálculo
+              PrÃ©via do cÃ¡lculo
             </h3>
             <dl className="space-y-1.5">
               <Row label="Custo filamento" value={formatBRL(preview.custoFilamento)} />
               <Row label="Custo energia" value={formatBRL(preview.custoEnergia)} />
-              <Row label="Custo manutenção" value={formatBRL(preview.custoManutencao)} />
+              <Row label="Custo manutenÃ§Ã£o" value={formatBRL(preview.custoManutencao)} />
               <Row label="Custo da placa" value={formatBRL(preview.custoPlaca)} bold />
               <Row
                 label="Custo da placa c/ falha"
                 value={formatBRL(preview.custoPlacaComFalha)}
               />
               <Row
-                label="Custo unitário (por peça)"
+                label="Custo unitÃ¡rio (por peÃ§a)"
                 value={formatBRL(preview.custoUnitario)}
                 bold
               />
               {Boolean(form.pecasNaPlacaA2l) && form.pecasNaPlacaA2l! > 0 && (
                 <Row
-                  label="Custo unitário (A2L)"
+                  label="Custo unitÃ¡rio (A2L)"
                   value={formatBRL(calcularCusto({ ...form, pecasNaPlaca: form.pecasNaPlacaA2l! }, params).custoUnitario)}
                 />
               )}
@@ -371,7 +370,7 @@ export default function CustoCalculator() {
               className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-7 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
             <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400">
-              🔍
+              ð
             </span>
             {busca && (
               <button
@@ -380,7 +379,7 @@ export default function CustoCalculator() {
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 title="Limpar busca"
               >
-                ✕
+                â
               </button>
             )}
           </div>
@@ -433,6 +432,7 @@ function TextField({
         value={value}
         required={required}
         onChange={(e) => onChange(e.target.value)}
+        onFocus={(e) => e.target.select()}
         className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
       />
     </label>
@@ -459,8 +459,74 @@ function NumberField({
         step={step}
         min={0}
         onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+        onFocus={(e) => e.target.select()}
         className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
       />
+    </label>
+  );
+}
+
+// Pedido do Guilherme em 2026-09-04: preencher "Tempo da placa" direto
+// em horas + minutos, em vez de precisar converter pra hora decimal na
+// cabeÃ§a (ex: 6h27min = 6,46). O valor continua guardado como hora
+// decimal (tempoPlacaH) porque e o que calcularCusto() espera â este
+// campo sÃ³ troca a forma de digitar, convertendo pros dois lados.
+// TambÃ©m corrige o mesmo incÃ´modo do NumberField: o campo sempre
+// aparece com "0" e o Guilherme tinha que selecionar e apagar antes de
+// digitar o valor certo â o onFocus com select() resolve isso em
+// qualquer um dos dois campos (nao sÃ³ nesse).
+function TimeField({
+  label,
+  totalHoras,
+  onChange,
+}: {
+  label: string;
+  totalHoras: number;
+  onChange: (value: number) => void;
+}) {
+  const base = Number.isFinite(totalHoras) ? totalHoras : 0;
+  const horas = Math.floor(base);
+  const minutos = Math.min(59, Math.max(0, Math.round((base - horas) * 60)));
+
+  function onChangeHoras(novasHoras: number) {
+    onChange(Math.max(0, novasHoras) + minutos / 60);
+  }
+
+  function onChangeMinutos(novosMinutos: number) {
+    const clamped = Math.min(59, Math.max(0, novosMinutos));
+    onChange(horas + clamped / 60);
+  }
+
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs font-medium text-gray-600">{label}</span>
+      <div className="flex items-center gap-1.5">
+        <div className="flex flex-1 items-center gap-1">
+          <input
+            type="number"
+            value={horas}
+            step={1}
+            min={0}
+            onChange={(e) => onChangeHoras(parseInt(e.target.value, 10) || 0)}
+            onFocus={(e) => e.target.select()}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <span className="text-xs text-gray-400">h</span>
+        </div>
+        <div className="flex flex-1 items-center gap-1">
+          <input
+            type="number"
+            value={minutos}
+            step={1}
+            min={0}
+            max={59}
+            onChange={(e) => onChangeMinutos(parseInt(e.target.value, 10) || 0)}
+            onFocus={(e) => e.target.select()}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <span className="text-xs text-gray-400">min</span>
+        </div>
+      </div>
     </label>
   );
 }
