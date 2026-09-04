@@ -8,33 +8,45 @@
 // Pontos ainda pendentes de confirmacao do Guilherme (ficam com valor
 // default editavel na config, mas nao sao um calculo "fechado" ainda):
 // - % de comissao de afiliados na Shopee (se ele participar do programa)
-// - custo real de embalagem/caixa
 // - aliquota exata de imposto (confirmar com a contadora, CF Contabil)
 // - reembolso e custo real do Mercado Envios Flex: Guilherme confirmou
 //   que o ML reembolsa uma parte e ele tem um custo real que paga pelo
 //   Flex, diferente do que a auditoria anterior (8 pedidos) sugeria.
 //   Ele esta levantando os valores exatos -- default R$0 editavel.
+//
+// Embalagem (04/09/2026): deixou de ser um valor unico global e virou
+// um campo por produto (ver precificacao_produtos.embalagem_custo em
+// app/api/precificacao/produtos/route.ts) -- por isso calcularML e
+// calcularShopee abaixo recebem o custo de embalagem como parametro em
+// vez de ler config.embalagemCusto. O campo embalagemCusto continua
+// existindo no ConfigPrecificacao so por compatibilidade com registros
+// antigos no banco; nao e mais editado nem lido na tela.
+//
+// Margem desejada (04/09/2026): tambem deixou de ser um valor global e
+// virou um campo por produto (precificacao_produtos.margem_desejada_pct),
+// pre-preenchido com a margem real do preco anunciado no momento --
+// ver app/api/precificacao/produtos/route.ts.
 
 export interface ConfigPrecificacao {
-  impostoPct: number;
-  adsPctML: number;
-  adsPctShopee: number;
-  afiliadoPctShopee: number;
-  embalagemCusto: number;
-  margemDesejadaPct: number;
-  reembolsoFlexML: number;
-  custoFlexML: number;
+    impostoPct: number;
+    adsPctML: number;
+    adsPctShopee: number;
+    afiliadoPctShopee: number;
+    embalagemCusto: number;
+    margemDesejadaPct: number;
+    reembolsoFlexML: number;
+    custoFlexML: number;
 }
 
 export const DEFAULT_CONFIG_PRECIFICACAO: ConfigPrecificacao = {
-  impostoPct: 6,
-  adsPctML: 5,
-  adsPctShopee: 10,
-  afiliadoPctShopee: 0,
-  embalagemCusto: 1.1,
-  margemDesejadaPct: 20,
-  reembolsoFlexML: 0,
-  custoFlexML: 0,
+    impostoPct: 6,
+    adsPctML: 5,
+    adsPctShopee: 10,
+    afiliadoPctShopee: 0,
+    embalagemCusto: 1.1,
+    margemDesejadaPct: 20,
+    reembolsoFlexML: 0,
+    custoFlexML: 0,
 };
 
 // Comissao do anuncio Classico no Mercado Livre. Confirmada em 19/08/2026
@@ -56,21 +68,20 @@ export interface CategoriaML {
 }
 
 export const CATEGORIAS_ML: CategoriaML[] = [
-    { nome: "Casa, Moveis e Decoracao", classicoPct: 11.5, premiumPct: 16.5 },
-    { nome: "Acessorios para Veiculos", classicoPct: 11.5, premiumPct: 16.5 },
-    { nome: "Celulares e Informatica", classicoPct: 12, premiumPct: 17 },
-    { nome: "Eletronicos, Audio e Video", classicoPct: 12, premiumPct: 17 },
-    { nome: "Eletrodomesticos", classicoPct: 12.5, premiumPct: 17.5 },
-    { nome: "Ferramentas e Construcao", classicoPct: 12.5, premiumPct: 17.5 },
-    { nome: "Esporte e Fitness", classicoPct: 13, premiumPct: 18 },
-    { nome: "Bebes", classicoPct: 13, premiumPct: 18 },
-    { nome: "Papelaria, Arte e Armarinho", classicoPct: 13, premiumPct: 18 },
-    { nome: "Brinquedos e Hobbies", classicoPct: 13.5, premiumPct: 18.5 },
-    { nome: "Beleza e Cuidado Pessoal", classicoPct: 13.5, premiumPct: 18.5 },
-    { nome: "Saude", classicoPct: 13.5, premiumPct: 18.5 },
-    { nome: "Calcados, Roupas e Bolsas", classicoPct: 14, premiumPct: 19 },
-];
-
+  { nome: "Casa, Moveis e Decoracao", classicoPct: 11.5, premiumPct: 16.5 },
+  { nome: "Acessorios para Veiculos", classicoPct: 11.5, premiumPct: 16.5 },
+  { nome: "Celulares e Informatica", classicoPct: 12, premiumPct: 17 },
+  { nome: "Eletronicos, Audio e Video", classicoPct: 12, premiumPct: 17 },
+  { nome: "Eletrodomesticos", classicoPct: 12.5, premiumPct: 17.5 },
+  { nome: "Ferramentas e Construcao", classicoPct: 12.5, premiumPct: 17.5 },
+  { nome: "Esporte e Fitness", classicoPct: 13, premiumPct: 18 },
+  { nome: "Bebes", classicoPct: 13, premiumPct: 18 },
+  { nome: "Papelaria, Arte e Armarinho", classicoPct: 13, premiumPct: 18 },
+  { nome: "Brinquedos e Hobbies", classicoPct: 13.5, premiumPct: 18.5 },
+  { nome: "Beleza e Cuidado Pessoal", classicoPct: 13.5, premiumPct: 18.5 },
+  { nome: "Saude", classicoPct: 13.5, premiumPct: 18.5 },
+  { nome: "Calcados, Roupas e Bolsas", classicoPct: 14, premiumPct: 19 },
+  ];
 
 // Comissao do anuncio Premium no Mercado Livre. Faixa tipica de mercado
 // (Classico ~10-14%, Premium ~15-19%) -- o ML nao expoe uma tabela
@@ -86,11 +97,11 @@ export const COMISSAO_ML_PREMIUM_PCT = 16.5;
 // confirme no seu extrato antes de fechar preco (nao e uma tabela
 // auditada como a de frete gratis abaixo).
 export function taxaFixaMLSemFreteGratis(preco: number): number {
-  if (preco < 12.5) return 0;
-  if (preco < 29) return 6.25;
-  if (preco < 50) return 6.5;
-  if (preco < 79) return 6.75;
-  return 0;
+    if (preco < 12.5) return 0;
+    if (preco < 29) return 6.25;
+    if (preco < 50) return 6.5;
+    if (preco < 79) return 6.75;
+    return 0;
 }
 
 // Tarifa de Envios do Mercado Livre por peso x faixa de preco -- tabela
@@ -141,118 +152,121 @@ const FAIXAS_PESO_ML: { ateKg: number; valores: number[] }[] = [
   { ateKg: 125, valores: [8.55, 12.85, 14.05, 120.15, 138.95, 156.95, 174.85, 188.85] },
   { ateKg: 150, valores: [8.65, 12.85, 14.25, 127.45, 147.05, 166.55, 185.55, 200.35] },
   { ateKg: Infinity, valores: [8.75, 12.85, 14.45, 167.05, 193.35, 218.45, 243.45, 262.85] },
-];
+  ];
 
 export function taxaPesoML(pesoKg: number, preco: number = 0): number {
-  const peso = pesoKg && pesoKg > 0 ? pesoKg : 0.3;
-  const faixaPeso = FAIXAS_PESO_ML.find((f) => peso <= f.ateKg) ?? FAIXAS_PESO_ML[FAIXAS_PESO_ML.length - 1];
-  let colPreco = FAIXAS_PRECO_ML.findIndex((max) => preco <= max);
-  if (colPreco === -1) colPreco = FAIXAS_PRECO_ML.length - 1;
-  const valor = faixaPeso.valores[colPreco];
-  // "Os produtos de menos de R$19 pagam no maximo metade do preco do produto."
-  return preco > 0 && preco < 19 ? Math.min(valor, preco / 2) : valor;
+    const peso = pesoKg && pesoKg > 0 ? pesoKg : 0.3;
+    const faixaPeso = FAIXAS_PESO_ML.find((f) => peso <= f.ateKg) ?? FAIXAS_PESO_ML[FAIXAS_PESO_ML.length - 1];
+    let colPreco = FAIXAS_PRECO_ML.findIndex((max) => preco <= max);
+    if (colPreco === -1) colPreco = FAIXAS_PRECO_ML.length - 1;
+    const valor = faixaPeso.valores[colPreco];
+    // "Os produtos de menos de R$19 pagam no maximo metade do preco do produto."
+    return preco > 0 && preco < 19 ? Math.min(valor, preco / 2) : valor;
 }
 
 // Comissao + tarifa fixa da Shopee. Confirmada igual a regra oficial 2026
 // (lida direto da formula da planilha PRECIFICACAO CERTA, aba SHOPEE).
 export function comissaoShopeePct(preco: number): number {
-  return preco < 80 ? 20 : 14;
+    return preco < 80 ? 20 : 14;
 }
 
 export function taxaFixaShopee(preco: number): number {
-  if (preco < 80) return 4;
-  if (preco < 100) return 16;
-  if (preco < 200) return 20;
-  return 26;
+    if (preco < 80) return 4;
+    if (preco < 100) return 16;
+    if (preco < 200) return 20;
+    return 26;
 }
 
 export interface ResultadoPlataforma {
-  preco: number;
-  comissao: number;
-  taxaFixa: number;
-  imposto: number;
-  ads: number;
-  afiliado: number;
-  embalagem: number;
-  flexCusto: number;
-  custoProducao: number;
-  lucro: number;
-  margemPct: number;
+    preco: number;
+    comissao: number;
+    taxaFixa: number;
+    imposto: number;
+    ads: number;
+    afiliado: number;
+    embalagem: number;
+    flexCusto: number;
+    custoProducao: number;
+    lucro: number;
+    margemPct: number;
 }
 
 export function calcularML(
-  preco: number,
-  pesoKg: number,
-  custoProducao: number,
-  config: ConfigPrecificacao,
-  enviadoPorFlex: boolean = false
-): ResultadoPlataforma {
-  const comissao = preco * (COMISSAO_ML_CLASSICO_PCT / 100);
-  const taxaFixa = taxaPesoML(pesoKg, preco);
-  const imposto = preco * (config.impostoPct / 100);
-  const ads = preco * (config.adsPctML / 100);
-  const embalagem = config.embalagemCusto;
-  const flexCusto = enviadoPorFlex
-    ? Math.max(0, config.custoFlexML - config.reembolsoFlexML)
-    : 0;
-  const lucro =
-    preco - comissao - taxaFixa - imposto - ads - embalagem - flexCusto - custoProducao;
-  const margemPct = preco > 0 ? (lucro / preco) * 100 : 0;
-  return {
-    preco,
-    comissao,
-    taxaFixa,
-    imposto,
-    ads,
-    afiliado: 0,
-    embalagem,
-    flexCusto,
-    custoProducao,
-    lucro,
-    margemPct,
-  };
+    preco: number,
+    pesoKg: number,
+    custoProducao: number,
+    embalagemCusto: number,
+    config: ConfigPrecificacao,
+    enviadoPorFlex: boolean = false
+  ): ResultadoPlataforma {
+    const comissao = preco * (COMISSAO_ML_CLASSICO_PCT / 100);
+    const taxaFixa = taxaPesoML(pesoKg, preco);
+    const imposto = preco * (config.impostoPct / 100);
+    const ads = preco * (config.adsPctML / 100);
+    const embalagem = embalagemCusto;
+    const flexCusto = enviadoPorFlex
+      ? Math.max(0, config.custoFlexML - config.reembolsoFlexML)
+          : 0;
+    const lucro =
+          preco - comissao - taxaFixa - imposto - ads - embalagem - flexCusto - custoProducao;
+    const margemPct = preco > 0 ? (lucro / preco) * 100 : 0;
+    return {
+          preco,
+          comissao,
+          taxaFixa,
+          imposto,
+          ads,
+          afiliado: 0,
+          embalagem,
+          flexCusto,
+          custoProducao,
+          lucro,
+          margemPct,
+    };
 }
 
 export function calcularShopee(
-  preco: number,
-  custoProducao: number,
-  config: ConfigPrecificacao
-): ResultadoPlataforma {
-  const comissao = preco * (comissaoShopeePct(preco) / 100);
-  const taxaFixa = taxaFixaShopee(preco);
-  const imposto = preco * (config.impostoPct / 100);
-  const ads = preco * (config.adsPctShopee / 100);
-  const afiliado = preco * (config.afiliadoPctShopee / 100);
-  const embalagem = config.embalagemCusto;
-  const lucro =
-    preco -
-    comissao -
-    taxaFixa -
-    imposto -
-    ads -
-    afiliado -
-    embalagem -
-    custoProducao;
-  const margemPct = preco > 0 ? (lucro / preco) * 100 : 0;
-  return {
-    preco,
-    comissao,
-    taxaFixa,
-    imposto,
-    ads,
-    afiliado,
-    embalagem,
-    flexCusto: 0,
-    custoProducao,
-    lucro,
-    margemPct,
-  };
+    preco: number,
+    custoProducao: number,
+    embalagemCusto: number,
+    config: ConfigPrecificacao
+  ): ResultadoPlataforma {
+    const comissao = preco * (comissaoShopeePct(preco) / 100);
+    const taxaFixa = taxaFixaShopee(preco);
+    const imposto = preco * (config.impostoPct / 100);
+    const ads = preco * (config.adsPctShopee / 100);
+    const afiliado = preco * (config.afiliadoPctShopee / 100);
+    const embalagem = embalagemCusto;
+    const lucro =
+          preco -
+          comissao -
+          taxaFixa -
+          imposto -
+          ads -
+          afiliado -
+          embalagem -
+          custoProducao;
+    const margemPct = preco > 0 ? (lucro / preco) * 100 : 0;
+    return {
+          preco,
+          comissao,
+          taxaFixa,
+          imposto,
+          ads,
+          afiliado,
+          embalagem,
+          flexCusto: 0,
+          custoProducao,
+          lucro,
+          margemPct,
+    };
 }
 
 export function formatBRL(value: number): string {
-  if (Number.isNaN(value) || !Number.isFinite(value)) return "R$ 0,00";
-  return value.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
+    if (Number.isNaN(value) || !Number.isFinite(value)) return "R$ 0,00";
+    return value.toLocaleString("pt-BR", {
+          style: "currency",
+          currency: "BRL",
+    });
 }
+
