@@ -11,6 +11,19 @@ interface MLVariacao {
   sku: string;
   price: number | null;
 }
+import { NextResponse } from "next/server";
+import { getValidMLAccessToken } from "@/lib/ml-auth";
+import { getValidShopeeAccessToken } from "@/lib/shopee-auth";
+import { signAuthenticatedRequest } from "@/lib/shopee";
+import { ML_API_BASE } from "@/lib/mercadolivre";
+
+export const dynamic = "force-dynamic";
+
+interface MLVariacao {
+  id: number;
+  sku: string;
+  price: number | null;
+}
 interface MLPrecoItem {
   itemId: string;
   title: string;
@@ -23,12 +36,13 @@ async function buscarTodosItemIds(userId: string, accessToken: string): Promise<
   const ids: string[] = [];
   let offset = 0;
   const limit = 100;
-  while (true) {
-    const r = await fetch(`${ML_API_BASE}/users/${userId}/items/search?status=active&limit=${limit}&offset=${offset}`, { headers: { Authorization: `Bearer ${accessToken}` } });
-    const j = await r.json();
-    const results: string[] = j.results || [];
+  for (;;) {
+    const resp = await fetch(`${ML_API_BASE}/users/${userId}/items/search?status=active&limit=${limit}&offset=${offset}`, { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" });
+    if (!resp.ok) break;
+    const data = await resp.json();
+    const results: string[] = data?.results ?? [];
     ids.push(...results);
-    const total = j.paging?.total ?? 0;
+    const total: number = data?.paging?.total ?? results.length;
     offset += limit;
     if (results.length === 0 || offset >= total || offset >= 1000) break;
   }
@@ -43,26 +57,32 @@ async function buscarPrecosML(): Promise<{ connected: boolean; itens: MLPrecoIte
   const itens: MLPrecoItem[] = [];
   for (let i = 0; i < ids.length; i += 20) {
     const batch = ids.slice(i, i + 20);
-    const r = await fetch(`${ML_API_BASE}/items?ids=${batch.join(",")}&attributes=id,title,seller_custom_field,price,variations`, { headers: { Authorization: `Bearer ${accessToken}` } });
-    const arr = await r.json();
-    for (const entry of arr) {
-      if (entry.code !== 200) continue;
-      const body = entry.body;
-      const variacoes: MLVariacao[] = (body.variations || []).map((v: any) => {
-        const skuAttr = (v.attribute_combinations || []).find((a: any) => a.id === "SELLER_SKU");
-        return {
-          id: v.id,
-          sku: v.seller_custom_field ?? skuAttr?.value_name ?? "",
-          price: v.price ?? null,
-        };
-      });
-      itens.push({
-        itemId: body.id,
-        title: body.title,
-        sku: body.seller_custom_field ?? "",
-        price: body.price ?? null,
-        variacoes,
-      });
+    try {
+      const resp = await fetch(`${ML_API_BASE}/items?ids=${batch.join(",")}&attributes=id,title,seller_custom_field,price,variations`, { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      for (const entry of data ?? []) {
+        if (entry?.code !== 200 || !entry.body?.id) continue;
+        const body = entry.body;
+        const variacoesRaw: any[] = body.variations ?? [];
+        const variacoes: MLVariacao[] = variacoesRaw.map((v) => {
+          const skuAttr = (v.attribute_combinations ?? []).find((a: any) => a.id === "SELLER_SKU");
+          return {
+            id: v.id,
+            sku: v.seller_custom_field ?? skuAttr?.value_name ?? "",
+            price: v.price ?? null,
+          };
+        });
+        itens.push({
+          itemId: body.id,
+          title: body.title ?? "",
+          sku: body.seller_custom_field ?? "",
+          price: body.price ?? null,
+          variacoes,
+        });
+      }
+    } catch (err) {
+      console.error("[precos-atuais] erro ao buscar lote ML:", err);
     }
   }
   return { connected: true, itens };
@@ -81,31 +101,43 @@ async function buscarPrecosShopee(): Promise<{ connected: boolean; itens: Shopee
   const { accessToken, shopId } = sessao;
   const itemIds: number[] = [];
   let offset = 0;
+  let more = true;
   let guard = 0;
-  while (guard < 20) {
+  while (more && guard < 20) {
     guard++;
-    const { url, headers } = signAuthenticatedRequest(`/api/v2/product/get_item_list?offset=${offset}&page_size=100&item_status=NORMAL`, accessToken, shopId);
-    const r = await fetch(url, { headers });
-    const j = await r.json();
-    const items = j.response?.item || [];
-    for (const it of items) itemIds.push(it.item_id);
-    if (!j.response?.has_next_page) break;
+    const url = new URL(signAuthenticatedRequest("/api/v2/product/get_item_list", accessToken, shopId));
+    url.searchParams.set("offset", String(offset));
+    url.searchParams.set("page_size", "100");
+    url.searchParams.set("item_status", "NORMAL");
+    const resp = await fetch(url.toString(), { cache: "no-store" });
+    if (!resp.ok) break;
+    const data = await resp.json();
+    const list: { item_id: number }[] = data?.response?.item ?? [];
+    for (const it of list) if (it.item_id) itemIds.push(it.item_id);
+    more = Boolean(data?.response?.has_next_page);
     offset += 100;
   }
   const itens: ShopeePrecoItem[] = [];
   for (let i = 0; i < itemIds.length; i += 50) {
     const batch = itemIds.slice(i, i + 50);
-    const { url, headers } = signAuthenticatedRequest(`/api/v2/product/get_item_base_info?item_id_list=${batch.join(",")}`, accessToken, shopId);
-    const r = await fetch(url, { headers });
-    const j = await r.json();
-    const list = j.response?.item_list || [];
-    for (const item of list) {
-      itens.push({
-        itemId: item.item_id,
-        sku: item.item_sku ?? "",
-        title: item.item_name ?? "",
-        price: item?.price_info?.[0]?.current_price ?? null,
-      });
+    try {
+      const url = new URL(signAuthenticatedRequest("/api/v2/product/get_item_base_info", accessToken, shopId));
+      url.searchParams.set("item_id_list", batch.join(","));
+      const resp = await fetch(url.toString(), { cache: "no-store" });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const list: any[] = data?.response?.item_list ?? [];
+      for (const item of list) {
+        const price = item?.price_info?.[0]?.current_price ?? null;
+        itens.push({
+          itemId: item.item_id,
+          sku: item.item_sku ?? "",
+          title: item.item_name ?? "",
+          price,
+        });
+      }
+    } catch (err) {
+      console.error("[precos-atuais] erro ao buscar lote Shopee:", err);
     }
   }
   return { connected: true, itens };
@@ -114,4 +146,4 @@ async function buscarPrecosShopee(): Promise<{ connected: boolean; itens: Shopee
 export async function GET() {
   const [ml, shopee] = await Promise.all([buscarPrecosML(), buscarPrecosShopee()]);
   return NextResponse.json({ ml, shopee });
-}
+}t
