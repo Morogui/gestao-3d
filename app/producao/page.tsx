@@ -2344,6 +2344,19 @@ function CarregarPlacaForm({
     setMaterial("PLA");
   }, [placaId]);
 
+  // Resincroniza a sugestao automatica com a fila de prioridade sempre que ela
+  // mudar -- sem isso, quando outra impressora carrega a placa que estava no topo
+  // da fila e ela sai da lista (demanda ja coberta), esse <select> fica apontando
+  // pra uma placa que nao existe mais nas opcoes e aparece em branco ate dar F5.
+  // So resincroniza quando a selecao atual nao veio de uma busca manual por SKU
+  // (furar a fila) e nao esta mais valida na fila atual. Pedido do Guilherme em
+  // 2026-09-04.
+  useEffect(() => {
+    if (placaSelecionadaNome) return;
+    if (placaId && filaPrioridade.some((item) => item.placa.id === placaId)) return;
+    setPlacaId(filaPrioridade[0]?.placa.id ?? "");
+  }, [filaPrioridade, placaId, placaSelecionadaNome]);
+
   // A2L cabe uma quantidade DIFERENTE de peças por placa do que as
   // outras impressoras (mesa menor) — pedido do Guilherme em 2026-08-31:
   // "sempre que colocar uma placa para imprimir nela [A2L], registrar a
