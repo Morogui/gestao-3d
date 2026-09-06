@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ConfigPrecificacao,
   DEFAULT_CONFIG_PRECIFICACAO,
@@ -51,6 +51,21 @@ export default function PrecificacaoPage() {
   // ja existia antes do botao de inativar). Desmarcando, some da lista
   // o que estiver marcado como inativo na plataforma da aba atual.
   const [mostrarInativos, setMostrarInativos] = useState(true);
+
+  // 06/09/2026 -- ref sempre sincronizado com o produtos state mais
+  // recente. Corrige uma race condition: os controles que chamam
+  // setTimeout(onSalvar, 0) logo depois de onChangeLocal (checkbox
+  // Flex, botoes Inativar/Reativar) capturavam o onSalvar de ANTES da
+  // mudanca -- a closure antiga apontava pro produtos state de antes
+  // do toggle, entao o PUT sempre reenviava o valor anterior, sem a
+  // mudanca que o usuario acabou de clicar. Lendo do ref (sempre
+  // atualizado pelo efeito abaixo) em vez do array direto, o valor
+  // salvo passa a ser sempre o mais recente, nao importa quando o
+  // setTimeout dispara.
+  const produtosRef = useRef<ProdutoPrecificacao[]>(produtos);
+  useEffect(() => {
+    produtosRef.current = produtos;
+  }, [produtos]);
 
   async function carregarTudo() {
     const [configRes, produtosRes] = await Promise.all([
@@ -455,7 +470,7 @@ export default function PrecificacaoPage() {
                       updateProdutoLocal(produto.id, patch),
                     onSalvar: () =>
                       salvarProduto(
-                        produtos.find((p) => p.id === produto.id)!
+                        produtosRef.current.find((p) => p.id === produto.id)!
                       ),
                   })
                 )
