@@ -12,15 +12,15 @@ export const dynamic = "force-dynamic";
 
 async function ensureTable() {
   await sql`
-  CREATE TABLE IF NOT EXISTS precificacao_produtos (
-  id SERIAL PRIMARY KEY,
-  produto_id INTEGER REFERENCES produtos(id) ON DELETE CASCADE,
-  peso_envio_kg NUMERIC,
-  preco_venda_ml NUMERIC,
-  preco_venda_shopee NUMERIC,
-  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE(produto_id)
-  )
+    CREATE TABLE IF NOT EXISTS precificacao_produtos (
+      id SERIAL PRIMARY KEY,
+      produto_id INTEGER REFERENCES produtos(id) ON DELETE CASCADE,
+      peso_envio_kg NUMERIC,
+      preco_venda_ml NUMERIC,
+      preco_venda_shopee NUMERIC,
+      atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE(produto_id)
+    )
   `;
   await sql`ALTER TABLE precificacao_produtos ADD COLUMN IF NOT EXISTS enviado_por_flex_ml BOOLEAN NOT NULL DEFAULT false`;
   // 04/09/2026 -- embalagem e margem desejada deixaram de ser um valor
@@ -29,17 +29,23 @@ async function ensureTable() {
   // / a margem real do preco atual.
   await sql`ALTER TABLE precificacao_produtos ADD COLUMN IF NOT EXISTS embalagem_custo NUMERIC`;
   await sql`ALTER TABLE precificacao_produtos ADD COLUMN IF NOT EXISTS margem_desejada_pct NUMERIC`;
-  // 04/09/2026 -- Guilherme apontou que vÃ¡rias placas do catÃ¡logo sÃ£o
+  // 04/09/2026 -- Guilherme apontou que várias placas do catálogo são
   // "componentes" (corpo/gancho separados) ou representam um kit de
-  // 1/2/3 peÃ§as (ex: Coelho, Ganchos Bonito) numa Ãºnica linha. O custo
-  // calculado a partir da placa (custoUnitario) Ã© o custo de 1 peÃ§a
+  // 1/2/3 peças (ex: Coelho, Ganchos Bonito) numa única linha. O custo
+  // calculado a partir da placa (custoUnitario) é o custo de 1 peça
   // isolada -- mas o SKU real vendido pode ser um conjunto (corpo +
-  // gancho, ou kit de N peÃ§as), cujo custo real Ã© a soma/combinaÃ§Ã£o
-  // das peÃ§as que compÃµem esse conjunto, nÃ£o o valor de uma peÃ§a sÃ³.
-  // Como isso varia caso a caso (nÃ£o dÃ¡ pra inferir automaticamente),
-  // vira um override manual editÃ¡vel na prÃ³pria tela, igual ao peso
-  // de envio: null = usa o valor calculado da placa (peÃ§a Ãºnica).
+  // gancho, ou kit de N peças), cujo custo real é a soma/combinação
+  // das peças que compõem esse conjunto, não o valor de uma peça só.
+  // Como isso varia caso a caso (não dá pra inferir automaticamente),
+  // vira um override manual editável na própria tela, igual ao peso
+  // de envio: null = usa o valor calculado da placa (peça única).
   await sql`ALTER TABLE precificacao_produtos ADD COLUMN IF NOT EXISTS custo_producao_manual NUMERIC`;
+  // 06/09/2026 -- Guilherme pediu uma forma de marcar um produto como
+  // "não vendido" numa plataforma especifica (ML ou Shopee), pra
+  // diferenciar de "vendido mas sem preço cadastrado ainda". Default
+  // true (ativo) pra nao esconder nada que ja existia antes disso.
+  await sql`ALTER TABLE precificacao_produtos ADD COLUMN IF NOT EXISTS ativo_ml BOOLEAN NOT NULL DEFAULT true`;
+  await sql`ALTER TABLE precificacao_produtos ADD COLUMN IF NOT EXISTS ativo_shopee BOOLEAN NOT NULL DEFAULT true`;
 }
 
 type ProdutoRow = {
@@ -60,6 +66,8 @@ type OverrideRow = {
   embalagem_custo: string | null;
   margem_desejada_pct: string | null;
   custo_producao_manual: string | null;
+  ativo_ml: boolean | null;
+  ativo_shopee: boolean | null;
 };
 
 type ParametrosRow = {
@@ -107,19 +115,19 @@ export async function GET() {
   await ensureTable();
 
   const produtos = (await sql`
-  SELECT id, nome, sku, peso_placa_g, tempo_placa_h, pecas_na_placa
-  FROM produtos ORDER BY nome ASC
+    SELECT id, nome, sku, peso_placa_g, tempo_placa_h, pecas_na_placa
+    FROM produtos ORDER BY nome ASC
   `) as ProdutoRow[];
 
   const overrides = (await sql`
-  SELECT produto_id, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual
-  FROM precificacao_produtos
+    SELECT produto_id, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, ativo_ml, ativo_shopee
+    FROM precificacao_produtos
   `) as OverrideRow[];
   const overrideMap = new Map(overrides.map((o) => [o.produto_id, o]));
 
   const paramRows = (await sql`
-  SELECT preco_filamento_kg, energia_hora, manutencao_hora, falha_impressao
-  FROM parametros_globais ORDER BY id DESC LIMIT 1
+    SELECT preco_filamento_kg, energia_hora, manutencao_hora, falha_impressao
+    FROM parametros_globais ORDER BY id DESC LIMIT 1
   `) as ParametrosRow[];
   const params: GlobalParams = paramRows.length
     ? {
@@ -131,8 +139,8 @@ export async function GET() {
     : DEFAULT_PARAMS;
 
   const configRows = (await sql`
-  SELECT imposto_pct, ads_pct_ml, ads_pct_shopee, afiliado_pct_shopee, embalagem_custo, margem_desejada_pct, reembolso_flex_ml, custo_flex_ml
-  FROM precificacao_config ORDER BY id DESC LIMIT 1
+    SELECT imposto_pct, ads_pct_ml, ads_pct_shopee, afiliado_pct_shopee, embalagem_custo, margem_desejada_pct, reembolso_flex_ml, custo_flex_ml
+    FROM precificacao_config ORDER BY id DESC LIMIT 1
   `) as ConfigRow[];
   const config: ConfigPrecificacao = configRows.length
     ? {
@@ -179,6 +187,8 @@ export async function GET() {
       override?.embalagem_custo != null
         ? Number(override.embalagem_custo)
         : embalagemPadrao(p.nome, p.sku);
+    const ativoML = override?.ativo_ml !== false;
+    const ativoShopee = override?.ativo_shopee !== false;
 
     const resultadoML =
       precoVendaML != null
@@ -211,6 +221,8 @@ export async function GET() {
       precoVendaML,
       precoVendaShopee,
       enviadoPorFlexML,
+      ativoML,
+      ativoShopee,
       resultadoML,
       resultadoShopee,
     };
@@ -231,6 +243,8 @@ export async function PUT(request: NextRequest) {
     embalagemCusto,
     margemDesejadaPct,
     custoProducao,
+    ativoML,
+    ativoShopee,
   } = body as {
     produtoId: number;
     pesoEnvioKg: number | null;
@@ -240,24 +254,31 @@ export async function PUT(request: NextRequest) {
     embalagemCusto: number | null;
     margemDesejadaPct: number | null;
     custoProducao: number | null;
+    ativoML: boolean | null;
+    ativoShopee: boolean | null;
   };
 
   if (!produtoId) {
     return NextResponse.json({ error: "produtoId e obrigatorio" }, { status: 400 });
   }
 
+  const ativoMLFinal = ativoML !== false;
+  const ativoShopeeFinal = ativoShopee !== false;
+
   await sql`
-  INSERT INTO precificacao_produtos (produto_id, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, atualizado_em)
-  VALUES (${produtoId}, ${pesoEnvioKg}, ${precoVendaML}, ${precoVendaShopee}, ${enviadoPorFlexML === true}, ${embalagemCusto}, ${margemDesejadaPct}, ${custoProducao}, now())
-  ON CONFLICT (produto_id) DO UPDATE
-  SET peso_envio_kg = ${pesoEnvioKg},
-  preco_venda_ml = ${precoVendaML},
-  preco_venda_shopee = ${precoVendaShopee},
-  enviado_por_flex_ml = ${enviadoPorFlexML === true},
-  embalagem_custo = ${embalagemCusto},
-  margem_desejada_pct = ${margemDesejadaPct},
-  custo_producao_manual = ${custoProducao},
-  atualizado_em = now()
+    INSERT INTO precificacao_produtos (produto_id, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, ativo_ml, ativo_shopee, atualizado_em)
+    VALUES (${produtoId}, ${pesoEnvioKg}, ${precoVendaML}, ${precoVendaShopee}, ${enviadoPorFlexML === true}, ${embalagemCusto}, ${margemDesejadaPct}, ${custoProducao}, ${ativoMLFinal}, ${ativoShopeeFinal}, now())
+    ON CONFLICT (produto_id) DO UPDATE
+    SET peso_envio_kg = ${pesoEnvioKg},
+        preco_venda_ml = ${precoVendaML},
+        preco_venda_shopee = ${precoVendaShopee},
+        enviado_por_flex_ml = ${enviadoPorFlexML === true},
+        embalagem_custo = ${embalagemCusto},
+        margem_desejada_pct = ${margemDesejadaPct},
+        custo_producao_manual = ${custoProducao},
+        ativo_ml = ${ativoMLFinal},
+        ativo_shopee = ${ativoShopeeFinal},
+        atualizado_em = now()
   `;
 
   return NextResponse.json({ ok: true });
