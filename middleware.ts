@@ -35,7 +35,16 @@ const DOMINIO_CANONICO = "gestao-3d-ecru.vercel.app";
 // app/shopeecalculadora/page.tsx), então ficarem de fora dessa lista
 // era um esquecimento: o modal levava pra uma URL que exigia login,
 // mesmo o conteúdo sendo idêntico ao que já está liberado em /painel.
-const PUBLIC_PATHS = ["/", "/painel", "/mercadolivrecalculadora", "/shopeecalculadora", "/logo-7x7.png", "/robots.txt", "/sitemap.xml"];
+// 08/09/2026 (v2) -- bug real: "/login" NAO estava nessa lista, entao
+// uma visita sem sessao valida (cookie expirado/ausente) caia no bloco
+// abaixo que redireciona pra "/login" -- so que a propria "/login" e
+// que estava sendo visitada, gerando um redirect pra ela mesma
+// infinitamente (ERR_TOO_MANY_REDIRECTS / tela de erro no navegador).
+// Isso so nao afetava o Guilherme no dia a dia porque a sessao dele
+// raramente expira, mas travava qualquer tentativa de logar depois de
+// expirar/limpar cookies. "/login" tem que ser sempre acessivel sem
+// sessao -- senao ninguem consegue logar de novo.
+const PUBLIC_PATHS = ["/", "/login", "/painel", "/mercadolivrecalculadora", "/shopeecalculadora", "/logo-7x7.png", "/robots.txt", "/sitemap.xml"];
 // Rotas de API que precisam continuar acessíveis SEM sessão porque quem
 // chama nunca vai ter o cookie g3d_session: cron da própria Vercel
 // (vercel.json), webhooks chamados pelos servidores do Telegram/Mercado
