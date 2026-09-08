@@ -200,10 +200,23 @@ interface ProdutoPrecificacaoResposta {
 export async function GET() {
   await ensureTable();
 
-const produtos = (await sql`
+const produtosBrutos = (await sql`
 SELECT id, nome, sku, peso_placa_g, tempo_placa_h, pecas_na_placa
 FROM produtos ORDER BY nome ASC
 `) as ProdutoRow[];
+  // 08/09/2026 (v3) -- Guilherme apontou que a tela de Precificacao
+  // ainda mostrava placas "componente" (ex: "Suporte BMW - Corpos+
+  // Ganchos (placa mista)", "Suporte Carregador BYD - Ganchos (placa
+  // pura)") como se cada pedaco fosse um produto vendavel separado,
+  // com sku = "Componente: corpo do X" / "Componente: gancho do X".
+  // Essas linhas sao so a placa isolada usada internamente pra montar
+  // o custo do produto composto real -- nunca sao o SKU que de fato
+  // existe cadastrado no ML/Shopee. A regra: Precificacao so pode
+  // mostrar produtos com o SKU REAL de venda (o que ja temos
+  // cadastrado certo no ML/Shopee), nunca a placa/componente isolado.
+  const produtos = produtosBrutos.filter(
+    (p) => !(p.sku ?? "").trim().toLowerCase().startsWith("componente:")
+      );
 
 const overrides = (await sql`
 SELECT produto_id, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, ativo_ml, ativo_shopee, reembolso_flex_ml
@@ -354,6 +367,13 @@ const composicaoPorSku = new Map<
     // sentido -- o produto real ja e precificado pela placa/SKU
     // verdadeiro. Pula essas linhas aqui.
     if (/^mlb\d+$/i.test(linha.sku.trim())) continue;
+    // 08/09/2026 (v3) -- mesma logica pro caso reportado pelo Guilherme
+    // com o SKU "58259211611": nenhum SKU real da Morolar e 100%
+    // numerico (todos tem letras/hifen, ex: "STAM-01", "SUPORTE 6
+    // PRATOS BRANCO") -- entao um sku_placa.sku so com digitos tambem
+    // e uma chave auxiliar de matching (ean/codigo de barras/item
+    // ambiguo), nao um produto de verdade. Pula do mesmo jeito.
+    if (/^\d+$/.test(linha.sku.trim())) continue;
   const pecasPorPlaca = Number(linha.pecas_por_placa) || 1;
     const custoUnitarioPlaca = calcularCusto(
       {
