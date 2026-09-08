@@ -214,9 +214,14 @@ FROM produtos ORDER BY nome ASC
   // existe cadastrado no ML/Shopee. A regra: Precificacao so pode
   // mostrar produtos com o SKU REAL de venda (o que ja temos
   // cadastrado certo no ML/Shopee), nunca a placa/componente isolado.
-  const produtos = produtosBrutos.filter(
-    (p) => !(p.sku ?? "").trim().toLowerCase().startsWith("componente:")
-      );
+  // 08/09/2026 (v4) -- placa "componente isolado" (ex: "Suporte Carregador BYD - Corpos (Prata)") tambem tem que ser excluida mesmo quando o sku dela nao comeca com "componente:" -- o padrao real e o NOME da placa seguir a convencao " - Corpos"/" - Ganchos" usada em todo o catalogo pra placas que imprimem SO uma parte do produto composto (nunca vendidas sozinhas). Nao exclui "- Mista" (essa e a placa que imprime corpo+gancho juntos e PODE ser o produto vendavel de verdade).
+  const RE_PLACA_COMPONENTE_ISOLADA = /-\s*(corpos?|ganchos?)\b/i;
+  const produtos = produtosBrutos.filter((p) => {
+    const skuLower = (p.sku ?? "").trim().toLowerCase();
+    if (skuLower.startsWith("componente:")) return false;
+    if (RE_PLACA_COMPONENTE_ISOLADA.test(p.nome ?? "")) return false;
+    return true;
+  });
 
 const overrides = (await sql`
 SELECT produto_id, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, ativo_ml, ativo_shopee, reembolso_flex_ml
