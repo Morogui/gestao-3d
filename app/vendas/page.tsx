@@ -478,7 +478,7 @@ interface RankingProduto {
     titulo: string;
     sku: string;
     quantidade: number;
-  </></div>  pedidos: number;
+    pedidos: number;
   plataforma: "ml" | "shopee";
 }
 
@@ -638,7 +638,6 @@ export default async function VendasPage({
   
     // Resumo semana/mês — sempre relativo a hoje, independente do filtro
     // usado na tabela detalhada abaixo. Reaproveita a consulta já feita
-  </div>
       // quando o filtro coincide com um desses períodos, pra não duplicar
       // chamada à API. O card do período selecionado (1º card) usa
       // `principal`, que já é a busca do filtro de data escolhido — por isso
@@ -935,4 +934,3 @@ export default async function VendasPage({
       </div>
     );
     }
-  </div>
