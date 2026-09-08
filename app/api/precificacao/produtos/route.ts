@@ -344,6 +344,16 @@ const composicaoPorSku = new Map<
   for (const linha of linhasSkuPlaca) {
     const chave = normalizarTexto(linha.sku);
     if (skuJaEmProdutos.has(chave)) continue; // ja tem linha propria via `produtos`, nao duplica
+    // 08/09/2026 (v2) -- algumas linhas de sku_placa usam o item_id do
+    // Mercado Livre (ex: "MLB6841541452") como SKU: nao sao SKUs reais
+    // de venda, sao so uma chave auxiliar criada pra ajudar o
+    // casamento pedido->placa quando o titulo do anuncio era ambiguo
+    // (ver rotas admin/registrar-item-ids-ambiguos*). O Guilherme
+    // apontou que isso vazava pra tela de Precificacao como se fosse
+    // um produto de verdade (nome/sku = "MLB..."), o que nao faz
+    // sentido -- o produto real ja e precificado pela placa/SKU
+    // verdadeiro. Pula essas linhas aqui.
+    if (/^mlb\d+$/i.test(linha.sku.trim())) continue;
   const pecasPorPlaca = Number(linha.pecas_por_placa) || 1;
     const custoUnitarioPlaca = calcularCusto(
       {
