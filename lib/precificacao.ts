@@ -10,8 +10,8 @@
 // - % de comissao de afiliados na Shopee (se ele participar do programa)
 // - aliquota exata de imposto (confirmar com a contadora, CF Contabil)
 // - custo real do Mercado Envios Flex: Guilherme confirmou que o ML
-//   reembolsa uma parte e ele tem um custo real que paga pelo Flex --
-//   default R$0 editavel (config.custoFlexML, ainda global).
+// reembolsa uma parte e ele tem um custo real que paga pelo Flex --
+// default R$0 editavel (config.custoFlexML, ainda global).
 //
 // Embalagem (04/09/2026): deixou de ser um valor unico global e virou
 // um campo por produto (ver precificacao_produtos.embalagem_custo em
@@ -38,11 +38,29 @@
 // quando o produto ainda nao tem um override proprio cadastrado) e por
 // compatibilidade com registros antigos no banco -- nao e mais editado
 // na secao "Configuracao geral" da tela.
+//
+// Ads/Afiliado por produto (08/09/2026): Guilherme perguntou se a
+// Margem ML/Shopee mostrada ja considerava Ads e Afiliado, e pediu um
+// check por produto igual ao do Flex pra poder ver quanto ficaria a
+// margem usando cada modalidade. Antes, Ads sempre entrava na conta (fixo,
+// sem opcao de desligar) e Afiliado no ML nem existia (sempre 0) --
+// so a Shopee tinha afiliado modelado, tambem sempre ligado quando a
+// config tinha um % > 0. Agora calcularML/calcularShopee recebem
+// usaAdsML/usaAfiliadoML (ML) e usaAdsShopee/usaAfiliadoShopee (Shopee)
+// como parametros booleanos explicitos -- o percentual usado continua
+// vindo da config geral (adsPctML/adsPctShopee/afiliadoPctML/
+// afiliadoPctShopee), so o liga/desliga passou a ser por produto (ver
+// as novas colunas em precificacao_produtos/precificacao_sku_virtual).
+// Os defaults (usaAdsML=true, usaAfiliadoML=false, usaAdsShopee=true,
+// usaAfiliadoShopee=true) foram escolhidos pra preservar exatamente o
+// comportamento que a tela ja tinha antes desta mudanca pra qualquer
+// produto que ainda nao tiver o override novo salvo.
 
 export interface ConfigPrecificacao {
     impostoPct: number;
     adsPctML: number;
     adsPctShopee: number;
+    afiliadoPctML: number;
     afiliadoPctShopee: number;
     embalagemCusto: number;
     margemDesejadaPct: number;
@@ -54,6 +72,7 @@ export const DEFAULT_CONFIG_PRECIFICACAO: ConfigPrecificacao = {
     impostoPct: 6,
     adsPctML: 5,
     adsPctShopee: 10,
+    afiliadoPctML: 0,
     afiliadoPctShopee: 0,
     embalagemCusto: 1.1,
     margemDesejadaPct: 20,
@@ -61,18 +80,8 @@ export const DEFAULT_CONFIG_PRECIFICACAO: ConfigPrecificacao = {
     custoFlexML: 0,
 };
 
-// Comissao do anuncio Classico no Mercado Livre. Confirmada em 19/08/2026
-// lendo o breakdown real da Tarifa de venda de varios anuncios do
-// Guilherme -- deu 11,49% a 11,50% em todos os pontos de preco testados.
 export const COMISSAO_ML_CLASSICO_PCT = 11.5;
 
-// Comissao por categoria do Mercado Livre. O ML nao expoe uma tabela
-// publica via API -- o valor exato so aparece no simulador ao criar o
-// anuncio. Estes percentuais sao uma estimativa a partir das faixas
-// praticadas em 2026 (Classico ~10-14%, Premium ~15-19%, variando por
-// categoria), com "Casa, Moveis e Decoracao" usando o valor de 11,5%
-// que o Guilherme confirmou de verdade na Central de Vendedores.
-// Confirme a taxa exata da sua categoria especifica antes de publicar.
 export interface CategoriaML {
     nome: string;
     classicoPct: number;
@@ -95,19 +104,8 @@ export const CATEGORIAS_ML: CategoriaML[] = [
     { nome: "Calcados, Roupas e Bolsas", classicoPct: 14, premiumPct: 19 },
     ];
 
-// Comissao do anuncio Premium no Mercado Livre. Faixa tipica de mercado
-// (Classico ~10-14%, Premium ~15-19%) -- o ML nao expoe uma tabela
-// publica fechada por categoria, entao esse e um valor de referencia
-// editavel; confira o breakdown real do seu anuncio (Central de
-// Vendedores) antes de fechar preco no Premium.
 export const COMISSAO_ML_PREMIUM_PCT = 16.5;
 
-// Tarifa fixa do ML quando o vendedor NAO oferece frete gratis (frete
-// pago pelo comprador). Nesse caso o ML cobra uma tarifa fixa por
-// faixa de preco, bem menor que a tarifa por peso do frete gratis, e
-// zera acima de ~R$79. Baseado em faixas publicamente divulgadas --
-// confirme no seu extrato antes de fechar preco (nao e uma tabela
-// auditada como a de frete gratis abaixo).
 export function taxaFixaMLSemFreteGratis(preco: number): number {
     if (preco < 12.5) return 0;
     if (preco < 29) return 6.25;
@@ -116,21 +114,6 @@ export function taxaFixaMLSemFreteGratis(preco: number): number {
     return 0;
 }
 
-// Tarifa de Envios do Mercado Livre por peso x faixa de preco -- tabela
-// OFICIAL "Custos para MercadoLideres, com reputacao verde ou sem
-// reputacao", valida a partir de 24/08/2026
-// (vendedores.mercadolivre.com.br/knowledge-hub/48392). Usada quando o
-// vendedor oferece frete gratis (padrao, de R$19 a R$78,99, ou rapido
-// obrigatorio a partir de R$79).
-//
-// ATENCAO Guilherme: essa e a tabela do tier "reputacao verde ou sem
-// reputacao". Se sua conta for MercadoLider Platinum/Ouro/Gold, o ML
-// pode te dar uma tabela diferente (normalmente mais barata) -- confira
-// seu nivel de reputacao na Central de Vendedores antes de bater o olho
-// nesses valores como definitivos. Tambem existe uma opcao paga de
-// "frete gratis e rapido" pra produtos abaixo de R$79 (upgrade
-// opcional) que nao esta modelada aqui -- avise se quiser que eu
-// adicione esse terceiro modo.
 const FAIXAS_PRECO_ML = [18.99, 48.99, 78.99, 99.99, 119.99, 149.99, 199.99, Infinity];
 
 const FAIXAS_PESO_ML: { ateKg: number; valores: number[] }[] = [
@@ -172,12 +155,9 @@ export function taxaPesoML(pesoKg: number, preco: number = 0): number {
     let colPreco = FAIXAS_PRECO_ML.findIndex((max) => preco <= max);
     if (colPreco === -1) colPreco = FAIXAS_PRECO_ML.length - 1;
     const valor = faixaPeso.valores[colPreco];
-    // "Os produtos de menos de R$19 pagam no maximo metade do preco do produto."
-return preco > 0 && preco < 19 ? Math.min(valor, preco / 2) : valor;
+    return preco > 0 && preco < 19 ? Math.min(valor, preco / 2) : valor;
 }
 
-// Comissao + tarifa fixa da Shopee. Confirmada igual a regra oficial 2026
-// (lida direto da formula da planilha PRECIFICACAO CERTA, aba SHOPEE).
 export function comissaoShopeePct(preco: number): number {
     return preco < 80 ? 20 : 14;
 }
@@ -210,75 +190,42 @@ export function calcularML(
     embalagemCusto: number,
     reembolsoFlexML: number,
     config: ConfigPrecificacao,
-    enviadoPorFlex: boolean = false
+    enviadoPorFlex: boolean = false,
+    usaAdsML: boolean = true,
+    usaAfiliadoML: boolean = false
     ): ResultadoPlataforma {
     const comissao = preco * (COMISSAO_ML_CLASSICO_PCT / 100);
     const taxaFixa = taxaPesoML(pesoKg, preco);
     const imposto = preco * (config.impostoPct / 100);
-    const ads = preco * (config.adsPctML / 100);
+    const ads = usaAdsML ? preco * (config.adsPctML / 100) : 0;
+    const afiliado = usaAfiliadoML ? preco * (config.afiliadoPctML / 100) : 0;
     const embalagem = embalagemCusto;
-    const flexCusto = enviadoPorFlex
-    ? Math.max(0, config.custoFlexML - reembolsoFlexML)
-        : 0;
-    const lucro =
-        preco - comissao - taxaFixa - imposto - ads - embalagem - flexCusto - custoProducao;
+    const flexCusto = enviadoPorFlex ? Math.max(0, config.custoFlexML - reembolsoFlexML) : 0;
+    const lucro = preco - comissao - taxaFixa - imposto - ads - afiliado - embalagem - flexCusto - custoProducao;
     const margemPct = preco > 0 ? (lucro / preco) * 100 : 0;
-    return {
-        preco,
-        comissao,
-        taxaFixa,
-        imposto,
-        ads,
-        afiliado: 0,
-        embalagem,
-        flexCusto,
-        custoProducao,
-        lucro,
-        margemPct,
-    };
+    return { preco, comissao, taxaFixa, imposto, ads, afiliado, embalagem, flexCusto, custoProducao, lucro, margemPct };
 }
 
 export function calcularShopee(
     preco: number,
     custoProducao: number,
     embalagemCusto: number,
-    config: ConfigPrecificacao
+    config: ConfigPrecificacao,
+    usaAdsShopee: boolean = true,
+    usaAfiliadoShopee: boolean = true
     ): ResultadoPlataforma {
     const comissao = preco * (comissaoShopeePct(preco) / 100);
     const taxaFixa = taxaFixaShopee(preco);
     const imposto = preco * (config.impostoPct / 100);
-    const ads = preco * (config.adsPctShopee / 100);
-    const afiliado = preco * (config.afiliadoPctShopee / 100);
+    const ads = usaAdsShopee ? preco * (config.adsPctShopee / 100) : 0;
+    const afiliado = usaAfiliadoShopee ? preco * (config.afiliadoPctShopee / 100) : 0;
     const embalagem = embalagemCusto;
-    const lucro =
-        preco -
-        comissao -
-        taxaFixa -
-        imposto -
-        ads -
-        afiliado -
-        embalagem -
-        custoProducao;
+    const lucro = preco - comissao - taxaFixa - imposto - ads - afiliado - embalagem - custoProducao;
     const margemPct = preco > 0 ? (lucro / preco) * 100 : 0;
-    return {
-        preco,
-        comissao,
-        taxaFixa,
-        imposto,
-        ads,
-        afiliado,
-        embalagem,
-        flexCusto: 0,
-        custoProducao,
-        lucro,
-        margemPct,
-    };
+    return { preco, comissao, taxaFixa, imposto, ads, afiliado, embalagem, flexCusto: 0, custoProducao, lucro, margemPct };
 }
 
 export function formatBRL(value: number): string {
     if (Number.isNaN(value) || !Number.isFinite(value)) return "R$ 0,00";
-    return value.toLocaleString("pt-BR", {
-        style: "currency",
-        currency: "BRL",
-    });
+    return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
