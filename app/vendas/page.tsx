@@ -26,6 +26,7 @@ import { getAdsInvestimentoRange, getAdsInvestimentoDoDia } from "@/lib/ads-inve
 import AdsInvestimentoForm from "@/components/AdsInvestimentoForm";
 import TopProdutosCardToggle from "@/components/TopProdutosCardToggle";
 
+
 export const dynamic = "force-dynamic";
 
 type Plataforma = "ml" | "shopee" | "todas";
