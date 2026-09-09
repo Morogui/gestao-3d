@@ -21,6 +21,9 @@ import { todaySP, formatDiaBR, diasAtras, inicioDoMes } from "@/lib/date";
 import ItemThumbnail from "@/components/ItemThumbnail";
 import VendasTabSwitch from "@/components/VendasTabSwitch";
 import OcultarNumeros from "@/components/OcultarNumeros";
+import { getCustoPorSku, getConfigPrecificacao, calcularMargemPedido, MargemPedido } from "@/lib/margem";
+import { getAdsInvestimentoRange, getAdsInvestimentoDoDia } from "@/lib/ads-investimento";
+import AdsInvestimentoForm from "@/components/AdsInvestimentoForm";
 
 export const dynamic = "force-dynamic";
 
@@ -565,6 +568,110 @@ function RankingProdutosTable({
         );
 }
 
+// Conta pedidos Full vs Flex dentro do Mercado Livre (Full so existe hoje
+// na conta Morolar do ML) - pedido do Guilherme em 2026-09-08: mostrar
+// quantidade Full x Flex no painel de Vendas.
+function contarFullFlex(orders: OrderSummary[]): { full: number; flex: number; outros: number } {
+    let full = 0;
+    let flex = 0;
+    let outros = 0;
+    for (const o of orders) {
+          if (o.plataforma !== "ml") continue;
+          if (o.shippingMode === "Full") full++;
+          else if (o.shippingMode === "Flex") flex++;
+          else outros++;
+    }
+    return { full, flex, outros };
+}
+
+function FullFlexCard({
+    label,
+    full,
+    flex,
+    outros,
+}: {
+    label: string;
+    full: number;
+    flex: number;
+    outros: number;
+}) {
+    return (
+          <div className="rounded-lg border border-gray-200 bg-white p-4">
+                <p className="text-xs text-gray-500">{label}</p>
+                <div className="valor-sensivel mt-1 flex items-baseline gap-3">
+                        <span className="text-xl font-semibold text-gray-900">{full}</span>
+                        <span className="text-xs text-gray-400">Full</span>
+                        <span className="text-xl font-semibold text-gray-900">{flex}</span>
+                        <span className="text-xs text-gray-400">Flex</span>
+                </div>
+          {outros > 0 && (
+                    <p className="valor-sensivel mt-1 text-[11px] text-gray-400">
+                      +{outros} em outro modo de envio
+                    </p>
+                  )}
+          </div>
+        );
+}
+
+// Card de margem real do periodo (preco de venda - comissao - taxa fixa -
+// imposto - embalagem - custo de producao) - ver lib/margem.ts pro
+// calculo por pedido. Pedido do Guilherme em 2026-09-08: "temos que
+// conseguir ver nossa margem do dia conforme as vendas".
+function MargemCard({
+    label,
+    margemTotal,
+    faturamento,
+    pedidosParciais,
+}: {
+    label: string;
+    margemTotal: number;
+    faturamento: number;
+    pedidosParciais: number;
+}) {
+    const pct = faturamento > 0 ? (margemTotal / faturamento) * 100 : 0;
+    return (
+          <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                <p className="text-xs text-green-700">{label}</p>
+                <p className="valor-sensivel text-xl font-semibold text-gray-900">
+                  {formatBRL(margemTotal)}
+                </p>
+                <p className="valor-sensivel text-xs text-green-700">
+                  {pct.toFixed(1)}% de margem sobre o faturamento
+                </p>
+          {pedidosParciais > 0 && (
+                    <p className="valor-sensivel mt-1 text-[11px] text-amber-600">
+                      {pedidosParciais} pedido(s) com item sem custo cadastrado (margem parcial)
+                    </p>
+                  )}
+          </div>
+        );
+}
+
+// Card de investimento em Ads do periodo - lancamento manual (ver
+// lib/ads-investimento.ts pra entender por que ainda nao puxamos isso
+// direto da API do Mercado Ads / Shopee Ads).
+function AdsInvestimentoCard({
+    label,
+    ml,
+    shopee,
+}: {
+    label: string;
+    ml: number;
+    shopee: number;
+}) {
+    return (
+          <div className="rounded-lg border border-purple-200 bg-purple-50 p-4">
+                <p className="text-xs text-purple-700">{label}</p>
+                <p className="valor-sensivel text-xl font-semibold text-gray-900">
+                  {formatBRL(ml + shopee)}
+                </p>
+                <p className="valor-sensivel text-xs text-purple-700">
+                  Mercado Livre: {formatBRL(ml)} · Shopee: {formatBRL(shopee)}
+                </p>
+          </div>
+        );
+}
+
 export default async function VendasPage({
     searchParams,
 }: {
@@ -636,6 +743,17 @@ export default async function VendasPage({
               : null
             : null;
   
+    // Dados de margem/custo (Custo Produto 3D + Precificação) e de
+    // investimento em Ads do período — buscados em paralelo, independentes
+    // do filtro de data escolhido nos cards de resumo/ranking acima.
+    // Pedido do Guilherme em 2026-09-08.
+    const [custoPorSku, configPrecificacao, adsRangeSelecionado, adsHoje] = await Promise.all([
+          getCustoPorSku(),
+          getConfigPrecificacao(),
+          getAdsInvestimentoRange(de, ate),
+          getAdsInvestimentoDoDia(hoje),
+        ]);
+
     // Resumo semana/mês — sempre relativo a hoje, independente do filtro
     // usado na tabela detalhada abaixo. Reaproveita a consulta já feita
       // quando o filtro coincide com um desses períodos, pra não duplicar
@@ -743,7 +861,20 @@ export default async function VendasPage({
       const rankingSemana = rankingPorQuantidade(vendidos(semanaResult.orders));
       const rankingMes = rankingPorQuantidade(vendidos(mesResult.orders));
 
-      const resumo = (
+      // Margem real por pedido (ver lib/margem.ts) e contagem Full/Flex do
+    // período selecionado — reaproveita vendidos(principal.orders), já
+    // filtrado pra excluir pedidos cancelados/não pagos.
+    const vendidosSelecionados = vendidos(principal.orders);
+    const margensSelecionadas: MargemPedido[] = vendidosSelecionados.map((o) =>
+      calcularMargemPedido(o, custoPorSku, configPrecificacao)
+    );
+    const margemTotalSelecionado = margensSelecionadas.reduce((s, m) => s + m.margemReal, 0);
+    const pedidosParciaisSelecionado = margensSelecionadas.filter(
+      (m) => m.itensSemCusto.length > 0
+    ).length;
+    const fullFlexSelecionado = contarFullFlex(vendidosSelecionados);
+
+    const resumo = (
         <div className="flex flex-col gap-4">
           {avisoPlataforma && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
@@ -804,6 +935,25 @@ export default async function VendasPage({
               </div>
             )}
               </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <MargemCard
+                                label={`Margem real em ${rotuloPeriodo}`}
+                                margemTotal={margemTotalSelecionado}
+                                faturamento={resumoSelecionado.faturamento}
+                                pedidosParciais={pedidosParciaisSelecionado}
+                              />
+                    <FullFlexCard
+                                label={`Full vs Flex (ML) — ${rotuloPeriodo}`}
+                                full={fullFlexSelecionado.full}
+                                flex={fullFlexSelecionado.flex}
+                                outros={fullFlexSelecionado.outros}
+                              />
+                    <AdsInvestimentoCard
+                                label={`Investimento em Ads — ${rotuloPeriodo}`}
+                                ml={adsRangeSelecionado.ml}
+                                shopee={adsRangeSelecionado.shopee}
+                              />
+            </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <TopProdutosCard ranking={rankingSemana} periodo="últimos 7 dias" />
                       <TopProdutosCard ranking={rankingMes} periodo="mês" />
@@ -927,10 +1077,97 @@ export default async function VendasPage({
       </div>
     );
   
+    const margemView = (
+    <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <h2 className="text-sm font-semibold text-gray-900">
+                            Margem real por pedido — {rotuloPlataforma} — {rotuloPeriodo}
+                  </h2>
+                  <div className="flex items-center gap-4">
+                            <span className="text-xs text-gray-500">
+                              {margensSelecionadas.length} pedido(s) vendido(s)
+                            </span>
+                            <RangeFilter de={de} ate={ate} plataforma={plataforma} />
+                  </div>
+          </div>
+          <AdsInvestimentoForm dia={hoje} mlInicial={adsHoje.ml} shopeeInicial={adsHoje.shopee} />
+      {margensSelecionadas.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
+                    Nenhuma venda no período selecionado.
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+                    <table className="w-full text-sm">
+                                <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
+                                  <tr>
+                                              <th className="px-4 py-3">Pedido</th>
+                                              <th className="px-4 py-3">Data</th>
+                                              <th className="px-4 py-3 text-right">Preço</th>
+                                              <th className="px-4 py-3 text-right">Custo produto</th>
+                                              <th className="px-4 py-3 text-right">Comissão</th>
+                                              <th className="px-4 py-3 text-right">Taxa fixa</th>
+                                              <th className="px-4 py-3 text-right">Imposto</th>
+                                              <th className="px-4 py-3 text-right">Embalagem</th>
+                                              <th className="px-4 py-3 text-right">Margem real</th>
+                                              <th className="px-4 py-3 text-right">Margem %</th>
+                                  </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {margensSelecionadas.map((m) => (
+                            <tr key={m.order.plataforma + m.order.id} className="hover:bg-gray-50">
+                                  <td className="px-4 py-3 font-medium text-gray-900">
+                                    {mostrarPlataforma && (
+                                        <div className="mb-1">
+                                                <PlataformaBadge plataforma={m.order.plataforma} />
+                                        </div>
+                          )  }
+                                                #{m.order.id}
+                                  </td>
+                                  <td className="px-4 py-3 text-gray-500">
+                                    {new Date(m.order.dateCreated).toLocaleDateString("pt-BR")}
+                                  </td>
+                                  <td className="px-4 py-3 text-right text-gray-900">
+                                    {formatBRL(m.order.totalAmount)}
+                                  </td>
+                                  <td className="px-4 py-3 text-right text-gray-500">
+                                    {formatBRL(m.custoProdutoTotal)}
+                                    {m.itensSemCusto.length > 0 && (
+                                        <span
+                                                    className="ml-1 text-[10px] text-amber-600"
+                                                    title={`Sem custo cadastrado: ${m.itensSemCusto.join(", ")}`}
+                                        >
+                                          parcial
+                                        </span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 text-right text-gray-500">{formatBRL(m.comissao)}</td>
+                                  <td className="px-4 py-3 text-right text-gray-500">{formatBRL(m.taxaFixa)}</td>
+                                  <td className="px-4 py-3 text-right text-gray-500">{formatBRL(m.imposto)}</td>
+                                  <td className="px-4 py-3 text-right text-gray-500">{formatBRL(m.embalagem)}</td>
+                                  <td
+                                                className={
+                                                           "px-4 py-3 text-right font-semibold " +
+                                                           (m.margemReal >= 0 ? "text-green-700" : "text-red-600")
+                                                      }
+                                                    >
+                                                {formatBRL(m.margemReal)}
+                                  </td>
+                                  <td className="px-4 py-3 text-right text-gray-500">
+                                    {m.margemPct.toFixed(1)}%
+                                  </td>
+                            </tr>
+                          ))}
+                                </tbody>
+                        </table>
+          </div>
+        )}
+    </div>
+  );
+
     return (
       <div className="flex flex-col gap-4">
             <OcultarNumeros>{resumo}</OcultarNumeros>
-            <VendasTabSwitch pedidosView={pedidosView} rankingView={rankingView} />
+            <VendasTabSwitch pedidosView={pedidosView} rankingView={rankingView} margemView={margemView} />
       </div>
     );
     }
