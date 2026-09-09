@@ -151,9 +151,12 @@ export async function getConfigPrecificacao(): Promise<ConfigPrecificacao> {
       impostoPct: Number(rows[0].imposto_pct),
       adsPctML: Number(rows[0].ads_pct_ml),
       adsPctShopee: Number(rows[0].ads_pct_shopee),
+      afiliadoPctML: DEFAULT_CONFIG_PRECIFICACAO.afiliadoPctML,
       afiliadoPctShopee: Number(rows[0].afiliado_pct_shopee),
       embalagemCusto: Number(rows[0].embalagem_custo),
       margemDesejadaPct: Number(rows[0].margem_desejada_pct),
+      reembolsoFlexML: DEFAULT_CONFIG_PRECIFICACAO.reembolsoFlexML,
+      custoFlexML: DEFAULT_CONFIG_PRECIFICACAO.custoFlexML,
     };
   } catch {
     return DEFAULT_CONFIG_PRECIFICACAO;
