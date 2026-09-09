@@ -1,49 +1,45 @@
 "use client";
 
-import { ReactNode, useState } from "react";
+import { useState, ReactNode } from "react";
 
-// Alterna entre duas visões dentro da MESMA página de Vendas (sem
-// recarregar/navegar) — "Pedidos" (lista detalhada, como já era) e
-// "Ranking de produtos" (quantidade vendida por produto no período
-// filtrado). As duas visões já vêm prontas (renderizadas no server,
-// usando os mesmos pedidos já buscados pro filtro de data ativo) — este
-// componente só decide qual delas mostrar.
+interface VendasTabSwitchProps {
+  pedidosView: ReactNode;
+  rankingView: ReactNode;
+  margemView: ReactNode;
+}
+
+// Alterna entre as 3 visões da seção "Pedidos" da aba Vendas: pedidos
+// (lista crua, inclui cancelados p/ auditoria), ranking (mais
+// vendidos) e margem (lucro real por pedido — novo, pedido do
+// Guilherme em 2026-09-08).
 export default function VendasTabSwitch({
   pedidosView,
   rankingView,
-}: {
-  pedidosView: ReactNode;
-  rankingView: ReactNode;
-}) {
-  const [aba, setAba] = useState<"pedidos" | "ranking">("pedidos");
+  margemView,
+}: VendasTabSwitchProps) {
+  const [aba, setAba] = useState<"pedidos" | "ranking" | "margem">("pedidos");
+
+  const botao = (valor: "pedidos" | "ranking" | "margem", label: string) => (
+    <button
+      onClick={() => setAba(valor)}
+      className={`rounded-md px-3 py-1 text-sm font-medium ${
+        aba === valor
+          ? "bg-neutral-900 text-white"
+          : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
+      }`}
+    >
+      {label}
+    </button>
+  );
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex gap-1.5">
-        <button
-          onClick={() => setAba("pedidos")}
-          className={
-            "rounded-md px-3 py-1 text-sm font-medium " +
-            (aba === "pedidos"
-              ? "bg-gray-900 text-white"
-              : "border border-gray-300 text-gray-700 hover:bg-gray-50")
-          }
-        >
-          Pedidos
-        </button>
-        <button
-          onClick={() => setAba("ranking")}
-          className={
-            "rounded-md px-3 py-1 text-sm font-medium " +
-            (aba === "ranking"
-              ? "bg-gray-900 text-white"
-              : "border border-gray-300 text-gray-700 hover:bg-gray-50")
-          }
-        >
-          Ranking de produtos
-        </button>
+    <div>
+      <div className="mb-3 flex gap-2">
+        {botao("pedidos", "Pedidos")}
+        {botao("ranking", "Ranking")}
+        {botao("margem", "Margem")}
       </div>
-      {aba === "pedidos" ? pedidosView : rankingView}
+      {aba === "pedidos" ? pedidosView : aba === "ranking" ? rankingView : margemView}
     </div>
   );
 }
