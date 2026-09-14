@@ -17,11 +17,28 @@ const PUBLIC_LAYOUT_PATHS = ["/", "/painel", "/login", "/mercadolivrecalculadora
 function isPublicLayoutPath(pathname: string): boolean {
   return PUBLIC_LAYOUT_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
+// Cada cliente (ex: Plez Store) tem sua propria area em "/[slug]/login|vendas|full",
+// isolada do sistema interno da Morolar e com seu proprio chrome (ver app/[cliente]/layout.tsx).
+// Precisa espelhar a mesma lista de segmentos reservados do middleware.ts (RESERVED_TOP_SEGMENTS)
+// pra nao confundir uma rota interna (ex: /vendas) com uma area de cliente (ex: /plez/vendas).
+const RESERVED_TOP_SEGMENTS = new Set([
+  "api", "login", "painel", "vendas", "full", "produtos", "producao", "custo",
+  "estoque", "financeiro", "relatorios", "analise", "precificacao",
+  "mercadolivrecalculadora", "shopeecalculadora",
+  ]);
+const CLIENTE_SUBPATHS = ["login", "vendas", "full"];
 
+function isClienteAreaPath(pathname: string): boolean {
+  const parts = pathname.split("/").filter(Boolean);
+  if (parts.length < 2) return false;
+  const [slug, sub] = parts;
+  if (RESERVED_TOP_SEGMENTS.has(slug)) return false;
+  return CLIENTE_SUBPATHS.includes(sub);
+}
 export default function AppChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
 
-  if (isPublicLayoutPath(pathname)) {
+  if (isPublicLayoutPath(pathname) || isClienteAreaPath(pathname)) {
     return <>{children}</>;
   }
 
