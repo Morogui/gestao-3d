@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { sql } from "./db";
 
 // Tabela multi-tenant: cada linha e um cliente do Escala 7x7 (ex: "plez")
-// que acessa uma versao enxuta do gestao-3d em /c/<slug>, com login
+// que acessa uma versao enxuta do gestao-3d em /<slug>, com login
 // proprio e so as abas liberadas em abas_permitidas. A Morolar continua
 // usando o login antigo (env vars + g3d_session) sem nenhuma mudanca --
 // esta tabela e tudo que depende dela e aditivo, criado pra suportar o
@@ -26,15 +26,15 @@ interface ClienteRow {
 
 async function garantirTabela() {
   await sql`
-  CREATE TABLE IF NOT EXISTS clients (
-  id TEXT PRIMARY KEY,
-  nome TEXT NOT NULL,
-  login TEXT NOT NULL,
-  senha_salt TEXT NOT NULL,
-  senha_hash TEXT NOT NULL,
-  abas_permitidas TEXT[] NOT NULL DEFAULT '{}',
-  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
-  )
+    CREATE TABLE IF NOT EXISTS clients (
+      id TEXT PRIMARY KEY,
+      nome TEXT NOT NULL,
+      login TEXT NOT NULL,
+      senha_salt TEXT NOT NULL,
+      senha_hash TEXT NOT NULL,
+      abas_permitidas TEXT[] NOT NULL DEFAULT '{}',
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
   `;
 }
 
@@ -55,38 +55,41 @@ export async function criarCliente(params: {
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = hashSenha(params.senha, salt);
   await sql`
-  INSERT INTO clients (id, nome, login, senha_salt, senha_hash, abas_permitidas)
-  VALUES (${params.id}, ${params.nome}, ${params.login}, ${salt}, ${hash}, ${params.abasPermitidas})
-  ON CONFLICT (id) DO UPDATE SET
-  nome = EXCLUDED.nome,
-  login = EXCLUDED.login,
-  senha_salt = EXCLUDED.senha_salt,
-  senha_hash = EXCLUDED.senha_hash,
-  abas_permitidas = EXCLUDED.abas_permitida
-  function rowToCliente(row: ClienteRow): Cliente {
-  return {
-  id: row.id,
-  nome: row.nome,
-  login: row.login,
-  abasPermitidas: row.abas_permitidas ?? [],
-  };
-  }
+    INSERT INTO clients (id, nome, login, senha_salt, senha_hash, abas_permitidas)
+    VALUES (${params.id}, ${params.nome}, ${params.login}, ${salt}, ${hash}, ${params.abasPermitidas})
+    ON CONFLICT (id) DO UPDATE SET
+      nome = EXCLUDED.nome,
+      login = EXCLUDED.login,
+      senha_salt = EXCLUDED.senha_salt,
+      senha_hash = EXCLUDED.senha_hash,
+      abas_permitidas = EXCLUDED.abas_permitidas
+  `;
+}
 
-  export async function getCliente(id: string): Promise<Cliente | null> {
+function rowToCliente(row: ClienteRow): Cliente {
+  return {
+    id: row.id,
+    nome: row.nome,
+    login: row.login,
+    abasPermitidas: row.abas_permitidas ?? [],
+  };
+}
+
+export async function getCliente(id: string): Promise<Cliente | null> {
   await garantirTabela();
   const rows = (await sql`SELECT * FROM clients WHERE id = ${id}`) as ClienteRow[];
   if (rows.length === 0) return null;
   return rowToCliente(rows[0]);
-  }
+}
 
-  // Verifica usuario/senha pro slug informado. Comparacao de hash com
-  // timingSafeEqual (mesmo padrao de app/api/auth/login/route.ts) pra
-  // evitar timing attack.
-  export async function verificarLogin(
+// Verifica usuario/senha pro slug informado. Comparacao de hash com
+// timingSafeEqual (mesmo padrao de app/api/auth/login/route.ts) pra
+// evitar timing attack.
+export async function verificarLogin(
   id: string,
   login: string,
   senha: string
-  ): Promise<Cliente | null> {
+): Promise<Cliente | null> {
   await garantirTabela();
   const rows = (await sql`SELECT * FROM clients WHERE id = ${id}`) as ClienteRow[];
   if (rows.length === 0) return null;
@@ -97,6 +100,4 @@ export async function criarCliente(params: {
   const b = Buffer.from(row.senha_hash, "hex");
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
   return rowToCliente(row);
-  }
-  
-// test
+}
