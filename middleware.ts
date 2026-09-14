@@ -64,9 +64,20 @@ const PUBLIC_PATHS = ["/", "/login", "/painel", "/mercadolivrecalculadora", "/sh
 // dados por trás delas (ex: /api/produtos/catalogo) estavam abertos.
 // Agora o matcher volta a cobrir /api inteiro, e só esta lista pequena e
 // explícita fica de fora da exigência de sessão.
+//
+// "/api/auth/cliente-logout" adicionada em 2026-09-14 — bug real
+// encontrado ao unificar o login: essa rota nao exigia client_session
+// nem g3d_session (nao caia em nenhum dos blocos especiais abaixo, so no
+// bloco generico no fim, que checa g3d_session) — ou seja, um cliente
+// externo (ex: Plez Store) que clicasse em "Sair" sem ter uma sessao
+// Morolar ativa no mesmo navegador tomava 401 silencioso. Efeito pratico:
+// so funcionava por acidente quando testado no mesmo navegador logado
+// como Morolar. Agora fica publica, igual o "/api/auth/logout" da
+// Morolar -- faz sentido, ela so limpa um cookie, nao expoe dado nenhum.
 const PUBLIC_API_PATHS = [
   "/api/auth/login",
   "/api/auth/logout",
+  "/api/auth/cliente-logout",
   "/api/telegram/webhook",
   "/api/mercadolivre/webhook",
   "/api/mercadolivre/callback",
@@ -120,7 +131,17 @@ async function hasValidSession(req: NextRequest): Promise<boolean> {
   return expected === sig;
 }
 
-const CLIENTE_SUBPATHS = ["login", "vendas", "full"];
+// "login" removido da lista de subcaminhos de cliente em 2026-09-14 --
+// pedido do Guilherme: "o login da plez ou da morolar, tem que ser
+// feitos por essa janela https://www.escala7x7ecommerce.com.br/login".
+// Antes, cada cliente tinha sua propria tela em /<slug>/login. Agora
+// login e sempre em /login (ver app/login/page.tsx + app/api/auth/login,
+// que tentam primeiro a conta Morolar e depois qualquer cliente
+// cadastrado). Uma visita a /plez/login (URL antiga) simplesmente nao
+// bate mais em parseClienteArea (sub "login" nao esta mais na lista) e
+// cai no bloco generico no fim do arquivo, que redireciona pra /login --
+// comportamento correto, so que sem precisar manter a rota antiga viva.
+const CLIENTE_SUBPATHS = ["vendas", "full"];
 const RESERVED_TOP_SEGMENTS = new Set([
   "api", "login", "painel", "vendas", "full", "produtos", "producao",
   "custo", "estoque", "financeiro", "relatorios", "analise",
@@ -232,14 +253,14 @@ export async function middleware(req: NextRequest) {
   }
   const areaCliente = parseClienteArea(pathname);
   if (areaCliente) {
-    if (areaCliente.sub === "login") {
-      return NextResponse.next();
-    }
     const clienteTokenArea = req.cookies.get("client_session")?.value;
     const clienteSessaoArea = await verificarClientSessionEdge(clienteTokenArea);
     if (!clienteSessaoArea || clienteSessaoArea.clientId !== areaCliente.slug || !clienteSessaoArea.abas.includes(areaCliente.sub)) {
+      // Antes redirecionava pra "/" + slug + "/login" (tela propria do
+      // cliente). Agora todo login -- Morolar ou qualquer cliente -- e
+      // sempre em "/login" (pedido do Guilherme em 2026-09-14).
       const url = req.nextUrl.clone();
-      url.pathname = "/" + areaCliente.slug + "/login";
+      url.pathname = "/login";
       url.search = "";
       return NextResponse.redirect(url);
     }
