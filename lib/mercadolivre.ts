@@ -35,13 +35,19 @@ export interface MLTokenResponse {
   refresh_token: string;
 }
 
+// "state" opcional: usado pelo fluxo multi-tenant (ver
+// app/api/mercadolivre/authorize/route.ts) pra levar o slug do cliente
+// externo (ex: "cliente:plez") ida e volta pelo OAuth da ML, sem mexer
+// no fluxo normal da Morolar (que nunca passa state).
 export function buildAuthorizationUrl(state?: string): string {
   const { clientId, redirectUri } = getMLConfig();
   const url = new URL(ML_AUTH_URL);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", redirectUri);
-  if (state) url.searchParams.set("state", state);
+  if (state) {
+    url.searchParams.set("state", state);
+  }
   return url.toString();
 }
 
