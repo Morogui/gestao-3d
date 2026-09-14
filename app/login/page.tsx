@@ -65,12 +65,8 @@ export default function LoginPage() {
         onSubmit={handleSubmit}
         className="w-full max-w-sm rounded-2xl border border-[#23232b] bg-[#131318] p-8"
       >
-        <div className="mb-6 flex items-center gap-3">
-          <img src="/logo-7x7.png" alt="7x7 Escala Ecommerce" className="h-12 w-auto" />
-          <div>
-            <h1 className="text-sm font-semibold text-white">Gestao 3D</h1>
-            <p className="text-xs text-[#8b8b96]">Acesse sua conta</p>
-          </div>
+        <div className="mb-8 flex items-center justify-center">
+          <img src="/logo-7x7.png" alt="7x7 Escala Ecommerce" className="h-16 w-auto" />
         </div>
 
         <label className="mb-1 block text-xs text-[#8b8b96]">Usuario</label>
