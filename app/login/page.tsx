@@ -26,6 +26,22 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
+      // Login unificado (pedido do Guilherme em 2026-09-14): esta mesma
+      // tela agora atende tanto a conta da Morolar quanto qualquer
+      // cliente externo cadastrado (ex: Plez Store), sem precisar de
+      // uma URL separada por cliente. A rota /api/auth/login devolve
+      // "tipo" pra dizer pra onde mandar cada um: "cliente" -> primeira
+      // aba liberada dentro de /<slug>/..., "morolar" -> sistema interno
+      // (ver comentario historico abaixo sobre por que "/custo" e nao
+      // "/").
+      const data = await res.json().catch(() => ({}));
+      if (data.tipo === "cliente" && data.slug) {
+        const abas: string[] = Array.isArray(data.abas) ? data.abas : [];
+        const destino = abas.includes("vendas") ? "vendas" : abas[0] || "vendas";
+        router.push(`/${data.slug}/${destino}`);
+        router.refresh();
+        return;
+      }
       // "/" hoje é a landing page pública (/painel), não o sistema
       // interno — desde que app/page.tsx passou a reexportar
       // ./painel/page (pedido do Guilherme em 2026-08-24: "painel vira
