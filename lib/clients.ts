@@ -84,7 +84,9 @@ export async function getCliente(id: string): Promise<Cliente | null> {
 
 // Verifica usuario/senha pro slug informado. Comparacao de hash com
 // timingSafeEqual (mesmo padrao de app/api/auth/login/route.ts) pra
-// evitar timing attack.
+// evitar timing attack. Ainda usada onde o slug ja e conhecido de
+// antemao; para o login unificado (usuario nao informa o slug) ver
+// verificarLoginGlobal abaixo.
 export async function verificarLogin(
   id: string,
   login: string,
@@ -95,6 +97,28 @@ export async function verificarLogin(
   if (rows.length === 0) return null;
   const row = rows[0];
   if (row.login !== login) return null;
+  const hash = hashSenha(senha, row.senha_salt);
+  const a = Buffer.from(hash, "hex");
+  const b = Buffer.from(row.senha_hash, "hex");
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  return rowToCliente(row);
+}
+
+// Login unificado (pedido do Guilherme em 2026-09-14: "o login da plez
+// ou da morolar, tem que ser feitos por essa janela .../login") -- busca
+// por usuario em QUALQUER linha da tabela clients, sem precisar saber o
+// slug de antemao (quem loga em /login so digita usuario/senha, nunca
+// o slug). app/api/auth/login/route.ts tenta primeiro a conta Morolar
+// (env vars) e, se nao bater, cai aqui pra checar se e um cliente
+// externo cadastrado.
+export async function verificarLoginGlobal(
+  login: string,
+  senha: string
+): Promise<Cliente | null> {
+  await garantirTabela();
+  const rows = (await sql`SELECT * FROM clients WHERE login = ${login}`) as ClienteRow[];
+  if (rows.length === 0) return null;
+  const row = rows[0];
   const hash = hashSenha(senha, row.senha_salt);
   const a = Buffer.from(hash, "hex");
   const b = Buffer.from(row.senha_hash, "hex");
