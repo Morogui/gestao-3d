@@ -35,12 +35,13 @@ export interface MLTokenResponse {
   refresh_token: string;
 }
 
-export function buildAuthorizationUrl(): string {
+export function buildAuthorizationUrl(state?: string): string {
   const { clientId, redirectUri } = getMLConfig();
   const url = new URL(ML_AUTH_URL);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", redirectUri);
+  if (state) url.searchParams.set("state", state);
   return url.toString();
 }
 
