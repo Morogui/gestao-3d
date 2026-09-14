@@ -120,6 +120,76 @@ async function hasValidSession(req: NextRequest): Promise<boolean> {
   return expected === sig;
 }
 
+const CLIENTE_SUBPATHS = ["login", "vendas", "full"];
+const RESERVED_TOP_SEGMENTS = new Set([
+  "api", "login", "painel", "vendas", "full", "produtos", "producao",
+  "custo", "estoque", "financeiro", "relatorios", "analise",
+  "precificacao", "mercadolivrecalculadora", "shopeecalculadora",
+  "logo-7x7.png", "robots.txt", "sitemap.xml", "favicon.ico",
+  ]);
+
+function parseClienteArea(pathname: string): { slug: string; sub: string } | null {
+  const parts = pathname.split("/").filter(Boolean);
+  if (parts.length < 2) return null;
+  const [slug, sub] = parts;
+  if (RESERVED_TOP_SEGMENTS.has(slug)) return null;
+  if (!CLIENTE_SUBPATHS.includes(sub)) return null;
+  return { slug, sub };
+}
+
+function toBase64Url(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  const base64 = btoa(binary);
+  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function hmacBase64Url(secret: string, data: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+    );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data));
+  return toBase64Url(sig);
+}
+
+function base64UrlToBase64(input: string): string {
+  let b64 = input.replace(/-/g, "+").replace(/_/g, "/");
+  while (b64.length % 4) b64 += "=";
+  return b64;
+}
+
+interface ClientSessionPayload {
+  clientId: string;
+  abas: string[];
+  exp: number;
+}
+
+async function verificarClientSessionEdge(token: string | undefined): Promise<ClientSessionPayload | null> {
+  if (!token) return null;
+  const partes = token.split(".");
+  if (partes.length !== 2) return null;
+  const [payloadB64, sig] = partes;
+  const secret = process.env.AUTH_SESSION_SECRET;
+  if (!secret) return null;
+  const expected = await hmacBase64Url(secret, payloadB64);
+  if (expected !== sig) return null;
+  try {
+    const json = atob(base64UrlToBase64(payloadB64));
+    const payload = JSON.parse(json) as ClientSessionPayload;
+    if (!payload.exp || Date.now() > payload.exp) return null;
+    if (!payload.clientId) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const host = req.headers.get("host") ?? "";
@@ -141,6 +211,39 @@ export async function middleware(req: NextRequest) {
     url.protocol = "https";
     url.port = "";
     return NextResponse.redirect(url, 308);
+  }
+  // Roteamento multi-tenant de clientes (client_session), separado do g3d_session da Morolar
+  const clienteQueryParam = req.nextUrl.searchParams.get("cliente");
+  if (pathname === "/api/mercadolivre/authorize" && clienteQueryParam) {
+    const clienteTokenAuth = req.cookies.get("client_session")?.value;
+    const clienteSessaoAuth = await verificarClientSessionEdge(clienteTokenAuth);
+    if (!clienteSessaoAuth || clienteSessaoAuth.clientId !== clienteQueryParam) {
+      return NextResponse.json({ error: "Sessao de cliente invalida" }, { status: 401 });
+    }
+    return NextResponse.next();
+  }
+  if (pathname.startsWith("/api/c/")) {
+    const clienteTokenApi = req.cookies.get("client_session")?.value;
+    const clienteSessaoApi = await verificarClientSessionEdge(clienteTokenApi);
+    if (!clienteSessaoApi) {
+      return NextResponse.json({ error: "Nao autenticado" }, { status: 401 });
+    }
+    return NextResponse.next();
+  }
+  const areaCliente = parseClienteArea(pathname);
+  if (areaCliente) {
+    if (areaCliente.sub === "login") {
+      return NextResponse.next();
+    }
+    const clienteTokenArea = req.cookies.get("client_session")?.value;
+    const clienteSessaoArea = await verificarClientSessionEdge(clienteTokenArea);
+    if (!clienteSessaoArea || clienteSessaoArea.clientId !== areaCliente.slug || !clienteSessaoArea.abas.includes(areaCliente.sub)) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/" + areaCliente.slug + "/login";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+    return NextResponse.next();
   }
 
   if (!isPublicPath(pathname) && !(await hasValidSession(req))) {
