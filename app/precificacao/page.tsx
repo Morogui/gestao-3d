@@ -22,6 +22,8 @@ interface ProdutoPrecificacao {
   margemDesejadaPct: number;
   reembolsoFlexML: number;
   precoVendaML: number | null;
+  precoAnunciadoML: number | null;
+  rebateML: number;
   precoVendaShopee: number | null;
   enviadoPorFlexML: boolean;
   enviadoPorFull: boolean;
@@ -230,6 +232,8 @@ export default function PrecificacaoPage() {
       sku: produto.sku,
       pesoEnvioKg: produto.pesoEnvioKg,
       precoVendaML: produto.precoVendaML,
+      precoAnunciadoML: produto.precoAnunciadoML,
+      rebateML: produto.rebateML,
       precoVendaShopee: produto.precoVendaShopee,
       enviadoPorFlexML: produto.enviadoPorFlexML,
       enviadoPorFull: produto.enviadoPorFull,
@@ -352,9 +356,11 @@ export default function PrecificacaoPage() {
   const somenteLeitura = aba === "todos";
   // 14/09/2026 -- ML ganhou 2 colunas novas (Anúncio Clássico/Premium
   // e Comissão ML visível) pra deixar claro qual comissão está sendo
-  // usada em cada produto -- ver lib/precificacao.ts.
+  // usada em cada produto -- ver lib/precificacao.ts. 15/09/2026 --
+  // mais 2 colunas novas (Preço Anunciado e Rebate ML), ver comentario
+  // no topo de lib/precificacao.ts.
   const colSpanDetalhes =
-    3 + (mostrarML ? 10 : 0) + (mostrarShopee ? 5 : 0) + 1;
+    3 + (mostrarML ? 12 : 0) + (mostrarShopee ? 5 : 0) + 1;
 
   return c(
     "div",
@@ -396,7 +402,7 @@ export default function PrecificacaoPage() {
       c(
         "p",
         { className: "mb-4 rounded-md bg-blue-50 p-3 text-xs text-blue-900" },
-        "Comissão ML agora varia por produto: marque na coluna \"Anúncio\" (aba Mercado Livre) se o anúncio é Clássico (11,5%) ou Premium (16,5%) — a Margem ML usa a comissão real do tipo marcado, e a coluna \"Comissão ML\" mostra o percentual e o valor em R$ usados na conta. Tarifa por peso do ML e comissão + tarifa fixa da Shopee já vêm calibradas com dados reais verificados em 19/08/2026 — não precisam de ajuste manual. Embalagem e Reembolso Flex ML são configurados por produto, direto na tabela abaixo (o reembolso varia por peso/tamanho de cada produto, não faz sentido um valor único pra conta inteira). Ads e Afiliado também têm um check por produto na tabela (igual o Flex) — o % abaixo é o valor usado quando o check está marcado, mas se o produto está ou não usando cada modalidade se decide linha a linha. Produto enviado por Mercado Envios Full: marque a coluna \"Full\" (aba Mercado Livre) — comissão e tarifa por peso continuam as mesmas (verificado com pedidos reais em 14/09/2026), mas o custo de Flex é zerado e some o custo de Armazenagem Full (configurável abaixo, ainda pendente de confirmação do valor real na fatura do ML). Full e Flex são mutuamente exclusivos: marcar um desmarca o outro. Clique em \"Detalhes\" em qualquer produto pra ver o caminho completo de custos (comissão, tarifa, imposto, ads, afiliado, embalagem, Flex/Full e custo de produção) até o lucro final. Imposto, os percentuais de ADS/afiliado, o Custo do Flex ML e o Custo de Armazenagem Full ML continuam editáveis aqui e ainda precisam de confirmação."
+        "Comissão ML agora varia por produto: marque na coluna \"Anúncio\" (aba Mercado Livre) se o anúncio é Clássico (11,5%) ou Premium (16,5%) — a Margem ML usa a comissão real do tipo marcado, e a coluna \"Comissão ML\" mostra o percentual e o valor em R$ usados na conta. Tarifa por peso do ML e comissão + tarifa fixa da Shopee já vêm calibradas com dados reais verificados em 19/08/2026 — não precisam de ajuste manual. Embalagem e Reembolso Flex ML são configurados por produto, direto na tabela abaixo (o reembolso varia por peso/tamanho de cada produto, não faz sentido um valor único pra conta inteira). Ads e Afiliado também têm um check por produto na tabela (igual o Flex) — o % abaixo é o valor usado quando o check está marcado, mas se o produto está ou não usando cada modalidade se decide linha a linha. Produto enviado por Mercado Envios Full: marque a coluna \"Full\" (aba Mercado Livre) — comissão e tarifa por peso continuam as mesmas (verificado com pedidos reais em 14/09/2026), mas o custo de Flex é zerado e some o custo de Armazenagem Full (configurável abaixo, ainda pendente de confirmação do valor real na fatura do ML). Full e Flex são mutuamente exclusivos: marcar um desmarca o outro. Preço ML x Preço Anunciado (15/09/2026): \"Preço ML\" é o preço que está sendo cobrado de fato (o promocional, quando o anúncio está numa promoção ativa) — é esse valor que entra na conta de comissão/imposto/margem. \"Preço Anunciado\" é só o preço \"De\" (cheio) do anúncio, pra referência/comparação, e não entra no cálculo. Rebate ML (R$): em algumas campanhas do ML (ex: \"Com redução de tarifas\", confirmado direto na conta) o próprio Mercado Livre reduz a comissão que cobra por venda — preencha esse valor por produto (o texto \"Reduzimos R$X das suas tarifas por cada venda\" aparece na tela da promoção) pra a margem refletir esse ganho real. Clique em \"Detalhes\" em qualquer produto pra ver o caminho completo de custos (comissão bruta, rebate, tarifa, imposto, ads, afiliado, embalagem, Flex/Full e custo de produção) até o lucro final. Imposto, os percentuais de ADS/afiliado, o Custo do Flex ML e o Custo de Armazenagem Full ML continuam editáveis aqui e ainda precisam de confirmação."
       ),
       c(
         "div",
@@ -596,8 +602,20 @@ export default function PrecificacaoPage() {
                         c(
                           "th",
                           {
+                            key: "th-preco-anunciado-ml",
+                            className: "px-3 py-3 text-right",
+                            title:
+                              "Preço \"De\" (cheio) do anúncio, só pra referência/comparação. Não entra no cálculo de margem.",
+                          },
+                          "Preço Anunciado"
+                        ),
+                        c(
+                          "th",
+                          {
                             key: "th-preco-ml",
                             className: "px-3 py-3 text-right",
+                            title:
+                              "Preço realmente cobrado do comprador (o promocional, quando o anúncio está em promoção). É esse valor que entra na conta de comissão/imposto/margem.",
                           },
                           "Preço ML"
                         ),
@@ -617,9 +635,19 @@ export default function PrecificacaoPage() {
                             key: "th-comissao-ml",
                             className: "px-3 py-3 text-right",
                             title:
-                              "Comissão do Mercado Livre efetivamente usada no cálculo deste produto, de acordo com o tipo de anúncio marcado.",
+                              "Comissão do Mercado Livre efetivamente usada no cálculo deste produto, já líquida do Rebate ML (quando houver).",
                           },
                           "Comissão ML"
+                        ),
+                        c(
+                          "th",
+                          {
+                            key: "th-rebate-ml",
+                            className: "px-3 py-3 text-right",
+                            title:
+                              "Redução de tarifa que o próprio Mercado Livre dá em algumas campanhas de promoção (ex: \"Com redução de tarifas\") — preencha com o valor em R$ mostrado na tela da promoção (\"Reduzimos R$X das suas tarifas por cada venda\"). Reduz a comissão líquida usada na margem.",
+                          },
+                          "Rebate ML (R$)"
                         ),
                         c(
                           "th",
@@ -1041,6 +1069,30 @@ function ProdutoRow({
         ? [
             c(
               "td",
+              {
+                key: "td-preco-anunciado-ml",
+                className: "px-3 py-2 text-right",
+              },
+              c("input", {
+                type: "number",
+                step: 0.01,
+                min: 0,
+                value: produto.precoAnunciadoML ?? "",
+                placeholder: "—",
+                disabled: somenteLeitura,
+                onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+                  onChangeLocal({
+                    precoAnunciadoML: e.target.value
+                      ? parseFloat(e.target.value)
+                      : null,
+                  }),
+                onBlur: onSalvar,
+                className:
+                  "w-24 rounded border border-gray-200 px-2 py-1 text-right text-sm disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400",
+              })
+            ),
+            c(
+              "td",
               { key: "td-preco-ml", className: "px-3 py-2 text-right" },
               c("input", {
                 type: "number",
@@ -1120,6 +1172,23 @@ function ProdutoRow({
                     )
                   )
                 : c("span", { className: "text-gray-400" }, "—")
+            ),
+            c(
+              "td",
+              { key: "td-rebate-ml", className: "px-3 py-2 text-right" },
+              c("input", {
+                type: "number",
+                step: 0.01,
+                min: 0,
+                value: produto.rebateML,
+                disabled: somenteLeitura,
+                onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+                  onChangeLocal({
+                    rebateML: parseFloat(e.target.value) || 0,
+                  }),
+                onBlur: onSalvar,
+                className: classeInputBase,
+              })
             ),
             c(
               "td",
@@ -1432,10 +1501,16 @@ function DetalhePlataforma({
     resultado.preco > 0 ? ` (${((valor / resultado.preco) * 100).toFixed(1)}%)` : "";
   const linhas: [string, number][] = [
     ["Preço de venda", resultado.preco],
-    [`Comissão${pct(resultado.comissao)}`, -resultado.comissao],
-    ["Tarifa fixa/peso", -resultado.taxaFixa],
-    [`Imposto${pct(resultado.imposto)}`, -resultado.imposto],
+    [`Comissão bruta${pct(resultado.comissaoBruta)}`, -resultado.comissaoBruta],
   ];
+  // 15/09/2026 -- Rebate ML: reducao de tarifa dada pelo proprio ML em
+  // certas promocoes (ver lib/precificacao.ts). Mostrado como credito
+  // (positivo) logo apos a comissao bruta, pra ficar claro o caminho
+  // ate a comissao liquida que de fato entra no lucro.
+  if (resultado.rebateML)
+    linhas.push(["Rebate ML (redução de tarifa)", resultado.rebateML]);
+  linhas.push(["Tarifa fixa/peso", -resultado.taxaFixa]);
+  linhas.push([`Imposto${pct(resultado.imposto)}`, -resultado.imposto]);
   if (resultado.ads) linhas.push([`ADS${pct(resultado.ads)}`, -resultado.ads]);
   if (resultado.afiliado)
     linhas.push([`Afiliado${pct(resultado.afiliado)}`, -resultado.afiliado]);
