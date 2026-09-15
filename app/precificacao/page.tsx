@@ -5,6 +5,7 @@ import {
   ConfigPrecificacao,
   DEFAULT_CONFIG_PRECIFICACAO,
   ResultadoPlataforma,
+  TipoAnuncioML,
   formatBRL,
 } from "@/lib/precificacao";
 
@@ -29,6 +30,7 @@ interface ProdutoPrecificacao {
   usaAfiliadoML: boolean;
   usaAdsShopee: boolean;
   usaAfiliadoShopee: boolean;
+  tipoAnuncioML: TipoAnuncioML;
   resultadoML: ResultadoPlataforma | null;
   resultadoShopee: ResultadoPlataforma | null;
 }
@@ -233,6 +235,7 @@ export default function PrecificacaoPage() {
       usaAfiliadoML: produto.usaAfiliadoML,
       usaAdsShopee: produto.usaAdsShopee,
       usaAfiliadoShopee: produto.usaAfiliadoShopee,
+      tipoAnuncioML: produto.tipoAnuncioML,
     };
   }
 
@@ -336,8 +339,11 @@ export default function PrecificacaoPage() {
   // por ali (edição só nas abas Mercado Livre / Shopee, onde fica
   // claro em qual plataforma a mudança está sendo feita).
   const somenteLeitura = aba === "todos";
+  // 14/09/2026 -- ML ganhou 2 colunas novas (Anúncio Clássico/Premium
+  // e Comissão ML visível) pra deixar claro qual comissão está sendo
+  // usada em cada produto -- ver lib/precificacao.ts.
   const colSpanDetalhes =
-    3 + (mostrarML ? 7 : 0) + (mostrarShopee ? 5 : 0) + 1;
+    3 + (mostrarML ? 9 : 0) + (mostrarShopee ? 5 : 0) + 1;
 
   return c(
     "div",
@@ -379,7 +385,7 @@ export default function PrecificacaoPage() {
       c(
         "p",
         { className: "mb-4 rounded-md bg-blue-50 p-3 text-xs text-blue-900" },
-        "Comissão ML (11,5% Clássico), tarifa por peso do ML e comissão + tarifa fixa da Shopee já vêm calibradas com dados reais verificados em 19/08/2026 — não precisam de ajuste manual. Embalagem e Reembolso Flex ML agora são configurados por produto, direto na tabela abaixo (o reembolso varia por peso/tamanho de cada produto, não faz sentido um valor único pra conta inteira). Ads e Afiliado também passaram a ter um check por produto na tabela (igual o Flex) — o % abaixo é o valor usado quando o check está marcado, mas se o produto está ou não usando cada modalidade agora se decide linha a linha. Margem ML/Shopee mostra a margem real considerando exatamente o que está marcado pra aquele produto. Imposto, os percentuais de ADS/afiliado e o Custo do Flex ML continuam editáveis aqui e ainda precisam de confirmação."
+        "Comissão ML agora varia por produto: marque na coluna \"Anúncio\" (aba Mercado Livre) se o anúncio é Clássico (11,5%) ou Premium (16,5%) — a Margem ML usa a comissão real do tipo marcado, e a coluna \"Comissão ML\" mostra o percentual e o valor em R$ usados na conta. Tarifa por peso do ML e comissão + tarifa fixa da Shopee já vêm calibradas com dados reais verificados em 19/08/2026 — não precisam de ajuste manual. Embalagem e Reembolso Flex ML são configurados por produto, direto na tabela abaixo (o reembolso varia por peso/tamanho de cada produto, não faz sentido um valor único pra conta inteira). Ads e Afiliado também têm um check por produto na tabela (igual o Flex) — o % abaixo é o valor usado quando o check está marcado, mas se o produto está ou não usando cada modalidade se decide linha a linha. Clique em \"Detalhes\" em qualquer produto pra ver o caminho completo de custos (comissão, tarifa, imposto, ads, afiliado, embalagem, Flex e custo de produção) até o lucro final. Imposto, os percentuais de ADS/afiliado e o Custo do Flex ML continuam editáveis aqui e ainda precisam de confirmação."
       ),
       c(
         "div",
@@ -576,6 +582,26 @@ export default function PrecificacaoPage() {
                             className: "px-3 py-3 text-right",
                           },
                           "Preço ML"
+                        ),
+                        c(
+                          "th",
+                          {
+                            key: "th-anuncio-ml",
+                            className: "px-3 py-3 text-center",
+                            title:
+                              "Tipo de anúncio no Mercado Livre. Define a comissão usada no cálculo: Clássico cobra 11,5%, Premium cobra 16,5% (categoria Casa/Móveis/Decoração).",
+                          },
+                          "Anúncio"
+                        ),
+                        c(
+                          "th",
+                          {
+                            key: "th-comissao-ml",
+                            className: "px-3 py-3 text-right",
+                            title:
+                              "Comissão do Mercado Livre efetivamente usada no cálculo deste produto, de acordo com o tipo de anúncio marcado.",
+                          },
+                          "Comissão ML"
                         ),
                         c(
                           "th",
@@ -806,8 +832,8 @@ function ProdutoRow({
     aba === "ml"
       ? !produto.ativoML
       : aba === "shopee"
-      ? !produto.ativoShopee
-      : !produto.ativoML && !produto.ativoShopee;
+        ? !produto.ativoShopee
+        : !produto.ativoML && !produto.ativoShopee;
 
   function toggleAtivo(plataforma: "ml" | "shopee") {
     if (plataforma === "ml") {
@@ -853,6 +879,15 @@ function ProdutoRow({
         ? { usaAfiliadoShopee: true, usaAdsShopee: false }
         : { usaAfiliadoShopee: false }
     );
+    setTimeout(onSalvar, 0);
+  }
+
+  // 14/09/2026 -- Clássico/Premium não é mutuamente exclusivo no
+  // mesmo sentido de Ads/Afiliado (é um único campo de dois valores,
+  // não dois campos independentes) -- só troca o tipo direto.
+  function toggleTipoAnuncioML(tipo: TipoAnuncioML) {
+    if (tipo === produto.tipoAnuncioML) return;
+    onChangeLocal({ tipoAnuncioML: tipo });
     setTimeout(onSalvar, 0);
   }
 
@@ -963,6 +998,67 @@ function ProdutoRow({
                 className:
                   "w-24 rounded border border-gray-200 px-2 py-1 text-right text-sm disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400",
               })
+            ),
+            c(
+              "td",
+              { key: "td-anuncio-ml", className: "px-3 py-2 text-center" },
+              c(
+                "div",
+                {
+                  className:
+                    "inline-flex overflow-hidden rounded border border-gray-300 text-[10px] font-medium",
+                },
+                c(
+                  "button",
+                  {
+                    type: "button",
+                    disabled: somenteLeitura,
+                    onClick: () => toggleTipoAnuncioML("classico"),
+                    title: "Comissão de 11,5% sobre o preço de venda",
+                    className:
+                      "px-1.5 py-1 disabled:cursor-not-allowed " +
+                      (produto.tipoAnuncioML === "classico"
+                        ? "bg-gray-900 text-white"
+                        : "bg-white text-gray-500 hover:bg-gray-50 disabled:hover:bg-white"),
+                  },
+                  "Clássico"
+                ),
+                c(
+                  "button",
+                  {
+                    type: "button",
+                    disabled: somenteLeitura,
+                    onClick: () => toggleTipoAnuncioML("premium"),
+                    title: "Comissão de 16,5% sobre o preço de venda",
+                    className:
+                      "border-l border-gray-300 px-1.5 py-1 disabled:cursor-not-allowed " +
+                      (produto.tipoAnuncioML === "premium"
+                        ? "bg-gray-900 text-white"
+                        : "bg-white text-gray-500 hover:bg-gray-50 disabled:hover:bg-white"),
+                  },
+                  "Premium"
+                )
+              )
+            ),
+            c(
+              "td",
+              { key: "td-comissao-ml", className: "px-3 py-2 text-right" },
+              produto.resultadoML
+                ? c(
+                    "div",
+                    null,
+                    c(
+                      "div",
+                      { className: "text-gray-700" },
+                      `${produto.resultadoML.comissaoPct.toFixed(1)}%`
+                    ),
+                    c(
+                      "div",
+                      { className: "text-[10px] text-gray-400" },
+                      formatBRL(produto.resultadoML.comissao)
+                    )
+                  )
+                : c("span", { className: "text-gray-400" }, "—")
             ),
             c(
               "td",
@@ -1152,8 +1248,8 @@ function ProdutoRow({
                     ? "Inativar ML"
                     : "Inativar"
                   : sufixoPlataforma
-                  ? "Reativar ML"
-                  : "Reativar"
+                    ? "Reativar ML"
+                    : "Reativar"
               )
             : null,
           mostrarShopee && !somenteLeitura
@@ -1175,8 +1271,8 @@ function ProdutoRow({
                     ? "Inativar Shopee"
                     : "Inativar"
                   : sufixoPlataforma
-                  ? "Reativar Shopee"
-                  : "Reativar"
+                    ? "Reativar Shopee"
+                    : "Reativar"
               )
             : null,
           c(
@@ -1210,6 +1306,10 @@ function ProdutoRow({
                 ? c(DetalhePlataforma, {
                     titulo: "Mercado Livre",
                     resultado: produto.resultadoML,
+                    infoExtra:
+                      produto.tipoAnuncioML === "premium"
+                        ? "Anúncio Premium"
+                        : "Anúncio Clássico",
                   })
                 : null,
               mostrarShopee
@@ -1228,9 +1328,11 @@ function ProdutoRow({
 function DetalhePlataforma({
   titulo,
   resultado,
+  infoExtra,
 }: {
   titulo: string;
   resultado: ResultadoPlataforma | null;
+  infoExtra?: string;
 }) {
   if (!resultado) {
     return c(
@@ -1248,24 +1350,47 @@ function DetalhePlataforma({
       )
     );
   }
+  // 14/09/2026 -- cada linha de custo percentual agora mostra o %
+  // usado na conta (calculado em cima do próprio valor em R$ já
+  // retornado), pra ficar visualmente claro todo o caminho de custos
+  // até o lucro -- pedido do Guilherme. Tarifa fixa/peso não é
+  // percentual (é uma tabela de faixas), então fica só em R$.
+  const pct = (valor: number) =>
+    resultado.preco > 0 ? ` (${((valor / resultado.preco) * 100).toFixed(1)}%)` : "";
   const linhas: [string, number][] = [
     ["Preço de venda", resultado.preco],
-    ["Comissão", -resultado.comissao],
-    ["Tarifa", -resultado.taxaFixa],
-    ["Imposto", -resultado.imposto],
-    ["ADS", -resultado.ads],
+    [`Comissão${pct(resultado.comissao)}`, -resultado.comissao],
+    ["Tarifa fixa/peso", -resultado.taxaFixa],
+    [`Imposto${pct(resultado.imposto)}`, -resultado.imposto],
   ];
-  if (resultado.afiliado) linhas.push(["Afiliado", -resultado.afiliado]);
+  if (resultado.ads) linhas.push([`ADS${pct(resultado.ads)}`, -resultado.ads]);
+  if (resultado.afiliado)
+    linhas.push([`Afiliado${pct(resultado.afiliado)}`, -resultado.afiliado]);
   linhas.push(["Embalagem", -resultado.embalagem]);
-  if (resultado.flexCusto) linhas.push(["Custo Flex", -resultado.flexCusto]);
+  if (resultado.flexCusto)
+    linhas.push(["Custo Flex (líquido do reembolso)", -resultado.flexCusto]);
   linhas.push(["Custo de produção", -resultado.custoProducao]);
   return c(
     "div",
     { className: "rounded-md border border-gray-200 bg-white p-3" },
     c(
       "div",
-      { className: "mb-2 text-xs font-semibold text-gray-700" },
-      titulo
+      { className: "mb-2 flex items-center justify-between" },
+      c(
+        "div",
+        { className: "text-xs font-semibold text-gray-700" },
+        titulo
+      ),
+      infoExtra
+        ? c(
+            "span",
+            {
+              className:
+                "rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500",
+            },
+            infoExtra
+          )
+        : null
     ),
     c(
       "div",
