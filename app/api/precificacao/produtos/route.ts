@@ -51,6 +51,26 @@ async function ensureTable() {
   // reais). Default false preserva o comportamento anterior.
   await sql`ALTER TABLE precificacao_produtos ADD COLUMN IF NOT EXISTS enviado_por_full BOOLEAN NOT NULL DEFAULT false`;
 
+  // Defensivo: garante a coluna de armazenagem Full em precificacao_config
+  // mesmo se essa rota rodar antes de /api/precificacao/config (que tambem
+  // faz esse ALTER). Idempotente, nao depende de ordem de chamada.
+  await sql`
+    CREATE TABLE IF NOT EXISTS precificacao_config (
+      id SERIAL PRIMARY KEY,
+      imposto_pct NUMERIC NOT NULL DEFAULT 6,
+      ads_pct_ml NUMERIC NOT NULL DEFAULT 5,
+      ads_pct_shopee NUMERIC NOT NULL DEFAULT 10,
+      afiliado_pct_shopee NUMERIC NOT NULL DEFAULT 0,
+      embalagem_custo NUMERIC NOT NULL DEFAULT 1.1,
+      margem_desejada_pct NUMERIC NOT NULL DEFAULT 20,
+      atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`ALTER TABLE precificacao_config ADD COLUMN IF NOT EXISTS reembolso_flex_ml NUMERIC NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE precificacao_config ADD COLUMN IF NOT EXISTS custo_flex_ml NUMERIC NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE precificacao_config ADD COLUMN IF NOT EXISTS afiliado_pct_ml NUMERIC NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE precificacao_config ADD COLUMN IF NOT EXISTS armazenagem_full_ml NUMERIC NOT NULL DEFAULT 0`;
+
   await sql`
     CREATE TABLE IF NOT EXISTS precificacao_sku_virtual (
       id SERIAL PRIMARY KEY,
@@ -155,6 +175,7 @@ type ConfigRow = {
   margem_desejada_pct: string;
   reembolso_flex_ml: string;
   custo_flex_ml: string;
+  armazenagem_full_ml: string;
 };
 
 function normalizarTexto(s: string): string {
@@ -237,7 +258,7 @@ export async function GET() {
     : DEFAULT_PARAMS;
 
   const configRows = (await sql`
-    SELECT imposto_pct, ads_pct_ml, ads_pct_shopee, afiliado_pct_ml, afiliado_pct_shopee, embalagem_custo, margem_desejada_pct, reembolso_flex_ml, custo_flex_ml
+    SELECT imposto_pct, ads_pct_ml, ads_pct_shopee, afiliado_pct_ml, afiliado_pct_shopee, embalagem_custo, margem_desejada_pct, reembolso_flex_ml, custo_flex_ml, armazenagem_full_ml
     FROM precificacao_config ORDER BY id DESC LIMIT 1
   `) as ConfigRow[];
   const config: ConfigPrecificacao = configRows.length
@@ -251,6 +272,7 @@ export async function GET() {
         margemDesejadaPct: Number(configRows[0].margem_desejada_pct),
         reembolsoFlexML: Number(configRows[0].reembolso_flex_ml),
         custoFlexML: Number(configRows[0].custo_flex_ml),
+        armazenagemFullML: Number(configRows[0].armazenagem_full_ml),
       }
     : DEFAULT_CONFIG_PRECIFICACAO;
 
