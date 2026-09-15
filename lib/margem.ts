@@ -157,6 +157,7 @@ export async function getConfigPrecificacao(): Promise<ConfigPrecificacao> {
       margemDesejadaPct: Number(rows[0].margem_desejada_pct),
       reembolsoFlexML: DEFAULT_CONFIG_PRECIFICACAO.reembolsoFlexML,
       custoFlexML: DEFAULT_CONFIG_PRECIFICACAO.custoFlexML,
+      armazenagemFullML: DEFAULT_CONFIG_PRECIFICACAO.armazenagemFullML,
     };
   } catch {
     return DEFAULT_CONFIG_PRECIFICACAO;
