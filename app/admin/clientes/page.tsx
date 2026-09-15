@@ -12,6 +12,8 @@ interface Cliente {
 const ABAS: { value: string; label: string }[] = [
   { value: "vendas", label: "Vendas (conectar Mercado Livre + ver pedidos)" },
   { value: "full", label: "Full (planejar envios pro Full)" },
+  { value: "produtos", label: "Produtos (cadastro de SKU, nome e custo)" },
+  { value: "precificacao", label: "Precificação (preço ML/Shopee + margem)" },
 ];
 
 // Painel master de clientes -- pedido do Guilherme em 2026-09-14:
