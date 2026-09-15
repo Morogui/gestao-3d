@@ -51,6 +51,16 @@ async function ensureTable() {
   // reais). Default false preserva o comportamento anterior.
   await sql`ALTER TABLE precificacao_produtos ADD COLUMN IF NOT EXISTS enviado_por_full BOOLEAN NOT NULL DEFAULT false`;
 
+  // 15/09/2026 -- Preço Anunciado (preço "De", cheio) e Rebate ML
+  // (reducao de tarifa que o ML aplica em certas promocoes) por
+  // produto. Ver comentario grande no topo de lib/precificacao.ts pra
+  // contexto completo (validado direto na conta real do Guilherme).
+  // preco_anunciado_ml e so informativo (nao entra em calcularML);
+  // rebate_ml entra como parametro explicito e reduz a comissao
+  // liquida usada no calculo de margem.
+  await sql`ALTER TABLE precificacao_produtos ADD COLUMN IF NOT EXISTS preco_anunciado_ml NUMERIC`;
+  await sql`ALTER TABLE precificacao_produtos ADD COLUMN IF NOT EXISTS rebate_ml NUMERIC NOT NULL DEFAULT 0`;
+
   // Defensivo: garante a coluna de armazenagem Full em precificacao_config
   // mesmo se essa rota rodar antes de /api/precificacao/config (que tambem
   // faz esse ALTER). Idempotente, nao depende de ordem de chamada.
@@ -98,6 +108,8 @@ async function ensureTable() {
   await sql`ALTER TABLE precificacao_sku_virtual ADD COLUMN IF NOT EXISTS usa_afiliado_shopee BOOLEAN NOT NULL DEFAULT true`;
   await sql`ALTER TABLE precificacao_sku_virtual ADD COLUMN IF NOT EXISTS tipo_anuncio_ml TEXT NOT NULL DEFAULT 'classico'`;
   await sql`ALTER TABLE precificacao_sku_virtual ADD COLUMN IF NOT EXISTS enviado_por_full BOOLEAN NOT NULL DEFAULT false`;
+  await sql`ALTER TABLE precificacao_sku_virtual ADD COLUMN IF NOT EXISTS preco_anunciado_ml NUMERIC`;
+  await sql`ALTER TABLE precificacao_sku_virtual ADD COLUMN IF NOT EXISTS rebate_ml NUMERIC NOT NULL DEFAULT 0`;
 }
 
 type ProdutoRow = {
@@ -127,6 +139,8 @@ type OverrideRow = {
   usa_afiliado_shopee: boolean | null;
   tipo_anuncio_ml: string | null;
   enviado_por_full: boolean | null;
+  preco_anunciado_ml: string | null;
+  rebate_ml: string | null;
 };
 
 type SkuPlacaRow = {
@@ -156,6 +170,8 @@ type SkuVirtualOverrideRow = {
   usa_afiliado_shopee: boolean | null;
   tipo_anuncio_ml: string | null;
   enviado_por_full: boolean | null;
+  preco_anunciado_ml: string | null;
+  rebate_ml: string | null;
 };
 
 type ParametrosRow = {
@@ -209,6 +225,8 @@ interface ProdutoPrecificacaoResposta {
   margemDesejadaPct: number;
   reembolsoFlexML: number;
   precoVendaML: number | null;
+  precoAnunciadoML: number | null;
+  rebateML: number;
   precoVendaShopee: number | null;
   enviadoPorFlexML: boolean;
   ativoML: boolean;
@@ -239,7 +257,7 @@ export async function GET() {
   });
 
   const overrides = (await sql`
-    SELECT produto_id, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, ativo_ml, ativo_shopee, reembolso_flex_ml, usa_ads_ml, usa_afiliado_ml, usa_ads_shopee, usa_afiliado_shopee, tipo_anuncio_ml, enviado_por_full
+    SELECT produto_id, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, ativo_ml, ativo_shopee, reembolso_flex_ml, usa_ads_ml, usa_afiliado_ml, usa_ads_shopee, usa_afiliado_shopee, tipo_anuncio_ml, enviado_por_full, preco_anunciado_ml, rebate_ml
     FROM precificacao_produtos
   `) as OverrideRow[];
   const overrideMap = new Map(overrides.map((o) => [o.produto_id, o]));
@@ -299,6 +317,10 @@ export async function GET() {
         : custoCalculado.custoUnitario;
     const precoVendaML =
       override?.preco_venda_ml != null ? Number(override.preco_venda_ml) : null;
+    const precoAnunciadoML =
+      override?.preco_anunciado_ml != null ? Number(override.preco_anunciado_ml) : null;
+    const rebateML =
+      override?.rebate_ml != null ? Number(override.rebate_ml) : 0;
     const precoVendaShopee =
       override?.preco_venda_shopee != null
         ? Number(override.preco_venda_shopee)
@@ -323,7 +345,7 @@ export async function GET() {
 
     const resultadoML =
       precoVendaML != null
-        ? calcularML(precoVendaML, pesoEnvioKg, custoProducao, embalagemCusto, reembolsoFlexML, config, enviadoPorFlexML, usaAdsML, usaAfiliadoML, tipoAnuncioML, enviadoPorFull)
+        ? calcularML(precoVendaML, pesoEnvioKg, custoProducao, embalagemCusto, reembolsoFlexML, config, enviadoPorFlexML, usaAdsML, usaAfiliadoML, tipoAnuncioML, enviadoPorFull, rebateML)
         : null;
     const resultadoShopee =
       precoVendaShopee != null
@@ -346,6 +368,8 @@ export async function GET() {
       margemDesejadaPct,
       reembolsoFlexML,
       precoVendaML,
+      precoAnunciadoML,
+      rebateML,
       precoVendaShopee,
       enviadoPorFlexML,
       ativoML,
@@ -418,7 +442,7 @@ export async function GET() {
 
   const virtuaisOverrides = composicaoPorSku.size
     ? ((await sql`
-        SELECT id, sku, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, ativo_ml, ativo_shopee, reembolso_flex_ml, usa_ads_ml, usa_afiliado_ml, usa_ads_shopee, usa_afiliado_shopee, tipo_anuncio_ml, enviado_por_full
+        SELECT id, sku, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, ativo_ml, ativo_shopee, reembolso_flex_ml, usa_ads_ml, usa_afiliado_ml, usa_ads_shopee, usa_afiliado_shopee, tipo_anuncio_ml, enviado_por_full, preco_anunciado_ml, rebate_ml
         FROM precificacao_sku_virtual
       `) as SkuVirtualOverrideRow[])
     : [];
@@ -441,6 +465,10 @@ export async function GET() {
         : calc.pesoEnvioKg;
     const precoVendaML =
       override?.preco_venda_ml != null ? Number(override.preco_venda_ml) : null;
+    const precoAnunciadoML =
+      override?.preco_anunciado_ml != null ? Number(override.preco_anunciado_ml) : null;
+    const rebateML =
+      override?.rebate_ml != null ? Number(override.rebate_ml) : 0;
     const precoVendaShopee =
       override?.preco_venda_shopee != null
         ? Number(override.preco_venda_shopee)
@@ -465,7 +493,7 @@ export async function GET() {
 
     const resultadoML =
       precoVendaML != null
-        ? calcularML(precoVendaML, pesoEnvioKg, custoProducao, embalagemCusto, reembolsoFlexML, config, enviadoPorFlexML, usaAdsML, usaAfiliadoML, tipoAnuncioML, enviadoPorFull)
+        ? calcularML(precoVendaML, pesoEnvioKg, custoProducao, embalagemCusto, reembolsoFlexML, config, enviadoPorFlexML, usaAdsML, usaAfiliadoML, tipoAnuncioML, enviadoPorFull, rebateML)
         : null;
     const resultadoShopee =
       precoVendaShopee != null
@@ -490,6 +518,8 @@ export async function GET() {
       margemDesejadaPct,
       reembolsoFlexML,
       precoVendaML,
+      precoAnunciadoML,
+      rebateML,
       precoVendaShopee,
       enviadoPorFlexML,
       ativoML,
@@ -517,6 +547,8 @@ export async function PUT(request: NextRequest) {
     sku,
     pesoEnvioKg,
     precoVendaML,
+    precoAnunciadoML,
+    rebateML,
     precoVendaShopee,
     enviadoPorFlexML,
     embalagemCusto,
@@ -536,6 +568,8 @@ export async function PUT(request: NextRequest) {
     sku?: string | null;
     pesoEnvioKg: number | null;
     precoVendaML: number | null;
+    precoAnunciadoML?: number | null;
+    rebateML?: number | null;
     precoVendaShopee: number | null;
     enviadoPorFlexML: boolean | null;
     embalagemCusto: number | null;
@@ -564,17 +598,20 @@ export async function PUT(request: NextRequest) {
   const usaAfiliadoShopeeFinal = usaAfiliadoShopee !== false;
   const tipoAnuncioMLFinal = tipoAnuncioML === "premium" ? "premium" : "classico";
   const enviadoPorFullFinal = enviadoPorFull === true;
+  const rebateMLFinal = rebateML != null ? rebateML : 0;
 
   if (produtoId < 0) {
     if (!sku) {
       return NextResponse.json({ error: "sku e obrigatorio para produtos compostos" }, { status: 400 });
     }
     await sql`
-      INSERT INTO precificacao_sku_virtual (sku, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, reembolso_flex_ml, ativo_ml, ativo_shopee, usa_ads_ml, usa_afiliado_ml, usa_ads_shopee, usa_afiliado_shopee, tipo_anuncio_ml, enviado_por_full, atualizado_em)
-      VALUES (${sku}, ${pesoEnvioKg}, ${precoVendaML}, ${precoVendaShopee}, ${enviadoPorFlexML === true}, ${embalagemCusto}, ${margemDesejadaPct}, ${custoProducao}, ${reembolsoFlexML}, ${ativoMLFinal}, ${ativoShopeeFinal}, ${usaAdsMLFinal}, ${usaAfiliadoMLFinal}, ${usaAdsShopeeFinal}, ${usaAfiliadoShopeeFinal}, ${tipoAnuncioMLFinal}, ${enviadoPorFullFinal}, now())
+      INSERT INTO precificacao_sku_virtual (sku, peso_envio_kg, preco_venda_ml, preco_anunciado_ml, rebate_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, reembolso_flex_ml, ativo_ml, ativo_shopee, usa_ads_ml, usa_afiliado_ml, usa_ads_shopee, usa_afiliado_shopee, tipo_anuncio_ml, enviado_por_full, atualizado_em)
+      VALUES (${sku}, ${pesoEnvioKg}, ${precoVendaML}, ${precoAnunciadoML ?? null}, ${rebateMLFinal}, ${precoVendaShopee}, ${enviadoPorFlexML === true}, ${embalagemCusto}, ${margemDesejadaPct}, ${custoProducao}, ${reembolsoFlexML}, ${ativoMLFinal}, ${ativoShopeeFinal}, ${usaAdsMLFinal}, ${usaAfiliadoMLFinal}, ${usaAdsShopeeFinal}, ${usaAfiliadoShopeeFinal}, ${tipoAnuncioMLFinal}, ${enviadoPorFullFinal}, now())
       ON CONFLICT (sku) DO UPDATE
       SET peso_envio_kg = ${pesoEnvioKg},
           preco_venda_ml = ${precoVendaML},
+          preco_anunciado_ml = ${precoAnunciadoML ?? null},
+          rebate_ml = ${rebateMLFinal},
           preco_venda_shopee = ${precoVendaShopee},
           enviado_por_flex_ml = ${enviadoPorFlexML === true},
           embalagem_custo = ${embalagemCusto},
@@ -595,11 +632,13 @@ export async function PUT(request: NextRequest) {
   }
 
   await sql`
-    INSERT INTO precificacao_produtos (produto_id, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, ativo_ml, ativo_shopee, reembolso_flex_ml, usa_ads_ml, usa_afiliado_ml, usa_ads_shopee, usa_afiliado_shopee, tipo_anuncio_ml, enviado_por_full, atualizado_em)
-    VALUES (${produtoId}, ${pesoEnvioKg}, ${precoVendaML}, ${precoVendaShopee}, ${enviadoPorFlexML === true}, ${embalagemCusto}, ${margemDesejadaPct}, ${custoProducao}, ${ativoMLFinal}, ${ativoShopeeFinal}, ${reembolsoFlexML}, ${usaAdsMLFinal}, ${usaAfiliadoMLFinal}, ${usaAdsShopeeFinal}, ${usaAfiliadoShopeeFinal}, ${tipoAnuncioMLFinal}, ${enviadoPorFullFinal}, now())
+    INSERT INTO precificacao_produtos (produto_id, peso_envio_kg, preco_venda_ml, preco_anunciado_ml, rebate_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, ativo_ml, ativo_shopee, reembolso_flex_ml, usa_ads_ml, usa_afiliado_ml, usa_ads_shopee, usa_afiliado_shopee, tipo_anuncio_ml, enviado_por_full, atualizado_em)
+    VALUES (${produtoId}, ${pesoEnvioKg}, ${precoVendaML}, ${precoAnunciadoML ?? null}, ${rebateMLFinal}, ${precoVendaShopee}, ${enviadoPorFlexML === true}, ${embalagemCusto}, ${margemDesejadaPct}, ${custoProducao}, ${ativoMLFinal}, ${ativoShopeeFinal}, ${reembolsoFlexML}, ${usaAdsMLFinal}, ${usaAfiliadoMLFinal}, ${usaAdsShopeeFinal}, ${usaAfiliadoShopeeFinal}, ${tipoAnuncioMLFinal}, ${enviadoPorFullFinal}, now())
     ON CONFLICT (produto_id) DO UPDATE
     SET peso_envio_kg = ${pesoEnvioKg},
         preco_venda_ml = ${precoVendaML},
+        preco_anunciado_ml = ${precoAnunciadoML ?? null},
+        rebate_ml = ${rebateMLFinal},
         preco_venda_shopee = ${precoVendaShopee},
         enviado_por_flex_ml = ${enviadoPorFlexML === true},
         embalagem_custo = ${embalagemCusto},
