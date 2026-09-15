@@ -5,15 +5,19 @@ import { usePathname } from "next/navigation";
 
 const TABS = [
   { href: "/custo", label: "Custo" },
-  { href: "/produtos", label: "Produtos" },
   { href: "/vendas", label: "Vendas" },
   { href: "/producao", label: "Produção" },
   { href: "/estoque", label: "Estoque" },
   { href: "/full", label: "Full" },
   { href: "/financeiro", label: "Financeiro" },
   { href: "/relatorios", label: "Relatórios" },
-  { href: "/analise", label: "Analise" },
-  { href: "/precificacao", label: "Precificação" },
+  // Painel master de clientes (/admin/clientes) -- pedido do Guilherme
+  // em 2026-09-14: administrar as contas externas (ex: Plez Store) e
+  // escolher quais abas cada uma enxerga. So a Morolar chega nessa aba
+  // (ver middleware.ts, exige g3d_session); ClienteChrome.tsx (nav dos
+  // clientes externos) e um componente totalmente separado que nunca
+  // mostra esse link.
+  { href: "/admin/clientes", label: "Clientes" },
 ];
 
 export default function TabsNav() {
