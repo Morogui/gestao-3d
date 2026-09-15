@@ -737,7 +737,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
           </p>
 
           <div className="mx-auto mt-8 flex max-w-xl items-center gap-4">
-            <span className="text-sm font-semibold text-gray-500 dark:text-[#8b8b96]">2019</span>
+            <span className="text-sm font-semibold text-gray-500 dark:text-[#8b8b96]">2015</span>
             <div className="relative h-1 flex-1 overflow-hidden rounded-full bg-gray-200 dark:bg-[#2a2a33]">
               <div className="absolute inset-y-0 left-0 w-full rounded-full bg-gradient-to-r from-amber-600 to-amber-400" />
             </div>
