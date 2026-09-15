@@ -7,6 +7,8 @@ import ClienteLogoutButton from "./ClienteLogoutButton";
 const LABELS: Record<string, string> = {
   vendas: "Vendas",
   full: "Full",
+  produtos: "Produtos",
+  precificacao: "Precificação",
 };
 
 // Chrome (header + nav) da area de cliente externo. So mostra as abas
