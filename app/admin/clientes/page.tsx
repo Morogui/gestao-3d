@@ -28,6 +28,12 @@ const ABAS: { value: string; label: string }[] = [
 // enviar pro Full (lib/client-full.ts). Esse painel so cria a conta e
 // escolhe quais abas ela enxerga; a conexao com o ML e feita pelo
 // proprio cliente, dentro da area dele.
+//
+// Estilo segue o mesmo padrao Tailwind claro das outras abas internas
+// (ver app/produtos/page.tsx) -- a primeira versao deste arquivo usava
+// cores escuras "hardcoded" (copiadas de app/login/page.tsx, que tem
+// fundo proprio #0a0a0d) e ficava com titulos/texto brancos invisiveis
+// sobre o fundo claro padrao do AppChrome. Corrigido no mesmo dia.
 export default function AdminClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -132,80 +138,64 @@ export default function AdminClientesPage() {
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", color: "#fff" }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Clientes</h1>
-      <p style={{ color: "#94a3b8", marginBottom: 24, fontSize: 14 }}>
-        Contas externas (ex: Plez Store) que acessam uma versão enxuta do sistema em
-        /&lt;slug&gt;, com login próprio e só as abas liberadas aqui.
-      </p>
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-lg font-semibold text-gray-900">Clientes</h1>
+        <p className="text-sm text-gray-500">
+          Contas externas (ex: Plez Store) que acessam uma versão enxuta do sistema em
+          /&lt;slug&gt;, com login próprio e só as abas liberadas aqui.
+        </p>
+      </div>
 
-      {erro && (
-        <p style={{ color: "#f87171", marginBottom: 16, fontSize: 14 }}>{erro}</p>
-      )}
+      {erro && <p className="text-sm text-red-600">{erro}</p>}
 
-      <div
-        style={{
-          background: "#131318",
-          border: "1px solid #23232b",
-          borderRadius: 12,
-          padding: 20,
-          marginBottom: 32,
-        }}
-      >
-        <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>Novo cliente</h2>
-        <form onSubmit={criarNovoCliente} style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
+      <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-gray-900">Novo cliente</h2>
+        <form onSubmit={criarNovoCliente} className="mt-3 grid grid-cols-2 gap-3">
           <div>
-            <label style={{ display: "block", fontSize: 12, color: "#8b8b96", marginBottom: 4 }}>
+            <label className="mb-1 block text-xs text-gray-500">
               Slug (usado na URL, ex: plez)
             </label>
             <input
               value={novoSlug}
               onChange={(e) => setNovoSlug(e.target.value)}
               placeholder="plez"
-              style={inputStyle}
+              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
             />
           </div>
           <div>
-            <label style={{ display: "block", fontSize: 12, color: "#8b8b96", marginBottom: 4 }}>
-              Nome do cliente
-            </label>
+            <label className="mb-1 block text-xs text-gray-500">Nome do cliente</label>
             <input
               value={novoNome}
               onChange={(e) => setNovoNome(e.target.value)}
               placeholder="Plez Store"
-              style={inputStyle}
+              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
             />
           </div>
           <div>
-            <label style={{ display: "block", fontSize: 12, color: "#8b8b96", marginBottom: 4 }}>
-              Usuário de login
-            </label>
+            <label className="mb-1 block text-xs text-gray-500">Usuário de login</label>
             <input
               value={novoLogin}
               onChange={(e) => setNovoLogin(e.target.value)}
               placeholder="Plez"
-              style={inputStyle}
+              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
             />
           </div>
           <div>
-            <label style={{ display: "block", fontSize: 12, color: "#8b8b96", marginBottom: 4 }}>
-              Senha
-            </label>
+            <label className="mb-1 block text-xs text-gray-500">Senha</label>
             <input
               type="text"
               value={novaSenha}
               onChange={(e) => setNovaSenha(e.target.value)}
               placeholder="senha inicial"
-              style={inputStyle}
+              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
             />
           </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label style={{ display: "block", fontSize: 12, color: "#8b8b96", marginBottom: 6 }}>
-              Abas liberadas
-            </label>
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <div className="col-span-2">
+            <label className="mb-1.5 block text-xs text-gray-500">Abas liberadas</label>
+            <div className="flex flex-wrap gap-4">
               {ABAS.map((aba) => (
-                <label key={aba.value} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#e2e8f0" }}>
+                <label key={aba.value} className="flex items-center gap-1.5 text-sm text-gray-700">
                   <input
                     type="checkbox"
                     checked={novasAbas.includes(aba.value)}
@@ -216,20 +206,11 @@ export default function AdminClientesPage() {
               ))}
             </div>
           </div>
-          <div style={{ gridColumn: "1 / -1" }}>
+          <div className="col-span-2">
             <button
               type="submit"
               disabled={salvando}
-              style={{
-                background: "#f97316",
-                color: "#000",
-                fontWeight: 600,
-                padding: "10px 20px",
-                borderRadius: 8,
-                border: "none",
-                cursor: "pointer",
-                opacity: salvando ? 0.6 : 1,
-              }}
+              className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
             >
               {salvando ? "Salvando..." : "Criar cliente"}
             </button>
@@ -237,115 +218,81 @@ export default function AdminClientesPage() {
         </form>
       </div>
 
-      <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>Clientes cadastrados</h2>
-      {carregando && <p style={{ color: "#94a3b8" }}>Carregando...</p>}
-      {!carregando && clientes.length === 0 && (
-        <p style={{ color: "#94a3b8" }}>Nenhum cliente cadastrado ainda.</p>
-      )}
-      <div style={{ display: "grid", gap: 12 }}>
-        {clientes.map((c) => {
-          const edicao = edicoes[c.id] || { nome: c.nome, abas: c.abasPermitidas, senha: "" };
-          return (
-            <div
-              key={c.id}
-              style={{
-                background: "#131318",
-                border: "1px solid #23232b",
-                borderRadius: 12,
-                padding: 16,
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-                <div>
-                  <span style={{ fontWeight: 600 }}>/{c.id}</span>
-                  <span style={{ color: "#8b8b96", marginLeft: 8, fontSize: 13 }}>
-                    usuário: {c.login}
-                  </span>
+      <div>
+        <h2 className="mb-3 text-sm font-semibold text-gray-900">Clientes cadastrados</h2>
+        {carregando && <p className="text-sm text-gray-500">Carregando...</p>}
+        {!carregando && clientes.length === 0 && (
+          <p className="text-sm text-gray-500">Nenhum cliente cadastrado ainda.</p>
+        )}
+        <div className="flex flex-col gap-3">
+          {clientes.map((c) => {
+            const edicao = edicoes[c.id] || { nome: c.nome, abas: c.abasPermitidas, senha: "" };
+            return (
+              <div key={c.id} className="rounded-lg border border-gray-200 bg-white p-4">
+                <div className="mb-3">
+                  <span className="font-mono text-sm font-semibold text-gray-900">/{c.id}</span>
+                  <span className="ml-2 text-xs text-gray-500">usuário: {c.login}</span>
                 </div>
-              </div>
-              <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: 12, color: "#8b8b96", marginBottom: 4 }}>
-                    Nome
-                  </label>
-                  <input
-                    value={edicao.nome}
-                    onChange={(e) =>
-                      setEdicoes({ ...edicoes, [c.id]: { ...edicao, nome: e.target.value } })
-                    }
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: 12, color: "#8b8b96", marginBottom: 4 }}>
-                    Resetar senha (opcional)
-                  </label>
-                  <input
-                    type="text"
-                    value={edicao.senha}
-                    onChange={(e) =>
-                      setEdicoes({ ...edicoes, [c.id]: { ...edicao, senha: e.target.value } })
-                    }
-                    placeholder="deixe em branco pra manter"
-                    style={inputStyle}
-                  />
-                </div>
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <label style={{ display: "block", fontSize: 12, color: "#8b8b96", marginBottom: 6 }}>
-                    Abas liberadas
-                  </label>
-                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-                    {ABAS.map((aba) => (
-                      <label key={aba.value} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#e2e8f0" }}>
-                        <input
-                          type="checkbox"
-                          checked={edicao.abas.includes(aba.value)}
-                          onChange={() =>
-                            setEdicoes({
-                              ...edicoes,
-                              [c.id]: { ...edicao, abas: toggleAba(edicao.abas, aba.value) },
-                            })
-                          }
-                        />
-                        {aba.label}
-                      </label>
-                    ))}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs text-gray-500">Nome</label>
+                    <input
+                      value={edicao.nome}
+                      onChange={(e) =>
+                        setEdicoes({ ...edicoes, [c.id]: { ...edicao, nome: e.target.value } })
+                      }
+                      className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-gray-500">
+                      Resetar senha (opcional)
+                    </label>
+                    <input
+                      type="text"
+                      value={edicao.senha}
+                      onChange={(e) =>
+                        setEdicoes({ ...edicoes, [c.id]: { ...edicao, senha: e.target.value } })
+                      }
+                      placeholder="deixe em branco pra manter"
+                      className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="mb-1.5 block text-xs text-gray-500">Abas liberadas</label>
+                    <div className="flex flex-wrap gap-4">
+                      {ABAS.map((aba) => (
+                        <label key={aba.value} className="flex items-center gap-1.5 text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={edicao.abas.includes(aba.value)}
+                            onChange={() =>
+                              setEdicoes({
+                                ...edicoes,
+                                [c.id]: { ...edicao, abas: toggleAba(edicao.abas, aba.value) },
+                              })
+                            }
+                          />
+                          {aba.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="col-span-2">
+                    <button
+                      onClick={() => salvarEdicao(c.id)}
+                      disabled={salvando}
+                      className="rounded border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Salvar
+                    </button>
                   </div>
                 </div>
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <button
-                    onClick={() => salvarEdicao(c.id)}
-                    disabled={salvando}
-                    style={{
-                      background: "#1f2937",
-                      color: "#fff",
-                      fontWeight: 600,
-                      padding: "8px 16px",
-                      borderRadius: 8,
-                      border: "1px solid #334155",
-                      cursor: "pointer",
-                      opacity: salvando ? 0.6 : 1,
-                    }}
-                  >
-                    Salvar
-                  </button>
-                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  background: "#0a0a0d",
-  border: "1px solid #23232b",
-  borderRadius: 8,
-  padding: "8px 10px",
-  color: "#fff",
-  fontSize: 14,
-  outline: "none",
-};
