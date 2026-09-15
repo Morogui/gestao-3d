@@ -82,6 +82,50 @@ export async function getCliente(id: string): Promise<Cliente | null> {
   return rowToCliente(rows[0]);
 }
 
+// Lista todos os clientes cadastrados, mais recentes primeiro -- usado
+// pelo painel master (/admin/clientes, pedido do Guilherme em
+// 2026-09-14: "conseguir administrar as contas que eu for colocando no
+// sistema").
+export async function listarClientes(): Promise<Cliente[]> {
+  await garantirTabela();
+  const rows = (await sql`SELECT * FROM clients ORDER BY criado_em DESC`) as ClienteRow[];
+  return rows.map(rowToCliente);
+}
+
+// Atualiza nome/abas_permitidas de um cliente ja existente (usado pelo
+// painel master pra liberar/revogar abas sem precisar redigitar login e
+// senha). Nao mexe em login/senha -- isso fica a cargo de
+// atualizarSenhaCliente abaixo, chamado separadamente so quando o
+// Guilherme realmente quer resetar a senha.
+export async function atualizarCliente(
+  id: string,
+  params: { nome: string; abasPermitidas: string[] }
+): Promise<boolean> {
+  await garantirTabela();
+  const rows = (await sql`
+    UPDATE clients
+    SET nome = ${params.nome}, abas_permitidas = ${params.abasPermitidas}
+    WHERE id = ${id}
+    RETURNING id
+  `) as { id: string }[];
+  return rows.length > 0;
+}
+
+// Reseta a senha de um cliente ja existente (painel master) -- mesmo
+// hash com salt novo, igual criarCliente.
+export async function atualizarSenhaCliente(id: string, novaSenha: string): Promise<boolean> {
+  await garantirTabela();
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = hashSenha(novaSenha, salt);
+  const rows = (await sql`
+    UPDATE clients
+    SET senha_salt = ${salt}, senha_hash = ${hash}
+    WHERE id = ${id}
+    RETURNING id
+  `) as { id: string }[];
+  return rows.length > 0;
+}
+
 // Verifica usuario/senha pro slug informado. Comparacao de hash com
 // timingSafeEqual (mesmo padrao de app/api/auth/login/route.ts) pra
 // evitar timing attack. Ainda usada onde o slug ja e conhecido de
