@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import TabsNav from "@/components/TabsNav";
+import MorolarLogoutButton from "@/components/MorolarLogoutButton";
 
 // A "/painel" é a landing page pública do Escala 7x7 Ecommerce (marca de
 // serviço do Guilherme) e "/login" é a tela de acesso — nenhuma das duas
@@ -25,7 +26,7 @@ const RESERVED_TOP_SEGMENTS = new Set([
   "api", "login", "painel", "vendas", "full", "produtos", "producao", "custo",
   "estoque", "financeiro", "relatorios", "analise", "precificacao",
   "mercadolivrecalculadora", "shopeecalculadora",
-  ]);
+]);
 const CLIENTE_SUBPATHS = ["login", "vendas", "full"];
 
 function isClienteAreaPath(pathname: string): boolean {
@@ -44,12 +45,18 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="mx-auto max-w-[1400px] px-4 py-6">
-      <header className="mb-6">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.svg" alt="Morolar" className="h-10 w-auto" />
-        <p className="mt-1 text-sm text-gray-500">
-          Custo · Vendas · Produção · Estoque · Full · Financeiro · Relatórios
-        </p>
+      <header className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.svg" alt="Morolar" className="h-10 w-auto" />
+          <p className="mt-1 text-sm text-gray-500">
+            Custo · Vendas · Produção · Estoque · Full · Financeiro · Relatórios
+          </p>
+        </div>
+        {/* 2026-09-15 -- pedido do Guilherme: faltava um jeito de sair do
+            sistema (o login de cliente externo ja tinha, esse chrome interno
+            nao). Ver components/MorolarLogoutButton.tsx. */}
+        <MorolarLogoutButton />
       </header>
       <TabsNav />
       <main className="mt-6">{children}</main>
