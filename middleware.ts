@@ -141,7 +141,7 @@ async function hasValidSession(req: NextRequest): Promise<boolean> {
 // bate mais em parseClienteArea (sub "login" nao esta mais na lista) e
 // cai no bloco generico no fim do arquivo, que redireciona pra /login --
 // comportamento correto, so que sem precisar manter a rota antiga viva.
-const CLIENTE_SUBPATHS = ["vendas", "full"];
+const CLIENTE_SUBPATHS = ["vendas", "full", "produtos", "precificacao"];
 // "admin" adicionado em 2026-09-14 -- painel master de clientes
 // (/admin/clientes, ver app/admin/clientes/page.tsx). Nao era estritamente
 // necessario (nenhum sub de "admin" bate em CLIENTE_SUBPATHS mesmo sem
