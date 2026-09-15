@@ -20,7 +20,7 @@ export const runtime = "nodejs";
 // com ?cliente=). Um cliente externo logado (client_session) NUNCA
 // valida como sessao valida aqui, entao nunca chega nem no handler.
 
-const ABAS_DISPONIVEIS = ["vendas", "full"];
+const ABAS_DISPONIVEIS = ["vendas", "full", "produtos", "precificacao"];
 
 export async function GET() {
   const clientes = await listarClientes();
