@@ -46,6 +46,11 @@ async function ensureTable() {
   // 11,5%) pra qualquer produto que ainda nao tenha esse override.
   await sql`ALTER TABLE precificacao_produtos ADD COLUMN IF NOT EXISTS tipo_anuncio_ml TEXT NOT NULL DEFAULT 'classico'`;
 
+  // 14/09/2026 -- marca se o produto e enviado por Mercado Envios Full
+  // (ver lib/precificacao.ts pra regra completa, verificada com vendas
+  // reais). Default false preserva o comportamento anterior.
+  await sql`ALTER TABLE precificacao_produtos ADD COLUMN IF NOT EXISTS enviado_por_full BOOLEAN NOT NULL DEFAULT false`;
+
   await sql`
     CREATE TABLE IF NOT EXISTS precificacao_sku_virtual (
       id SERIAL PRIMARY KEY,
@@ -72,6 +77,7 @@ async function ensureTable() {
   await sql`ALTER TABLE precificacao_sku_virtual ADD COLUMN IF NOT EXISTS usa_ads_shopee BOOLEAN NOT NULL DEFAULT true`;
   await sql`ALTER TABLE precificacao_sku_virtual ADD COLUMN IF NOT EXISTS usa_afiliado_shopee BOOLEAN NOT NULL DEFAULT true`;
   await sql`ALTER TABLE precificacao_sku_virtual ADD COLUMN IF NOT EXISTS tipo_anuncio_ml TEXT NOT NULL DEFAULT 'classico'`;
+  await sql`ALTER TABLE precificacao_sku_virtual ADD COLUMN IF NOT EXISTS enviado_por_full BOOLEAN NOT NULL DEFAULT false`;
 }
 
 type ProdutoRow = {
@@ -100,6 +106,7 @@ type OverrideRow = {
   usa_ads_shopee: boolean | null;
   usa_afiliado_shopee: boolean | null;
   tipo_anuncio_ml: string | null;
+  enviado_por_full: boolean | null;
 };
 
 type SkuPlacaRow = {
@@ -128,6 +135,7 @@ type SkuVirtualOverrideRow = {
   usa_ads_shopee: boolean | null;
   usa_afiliado_shopee: boolean | null;
   tipo_anuncio_ml: string | null;
+  enviado_por_full: boolean | null;
 };
 
 type ParametrosRow = {
@@ -189,6 +197,7 @@ interface ProdutoPrecificacaoResposta {
   usaAdsShopee: boolean;
   usaAfiliadoShopee: boolean;
   tipoAnuncioML: TipoAnuncioML;
+  enviadoPorFull: boolean;
   resultadoML: ReturnType<typeof calcularML> | null;
   resultadoShopee: ReturnType<typeof calcularShopee> | null;
 }
@@ -209,7 +218,7 @@ export async function GET() {
   });
 
   const overrides = (await sql`
-    SELECT produto_id, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, ativo_ml, ativo_shopee, reembolso_flex_ml, usa_ads_ml, usa_afiliado_ml, usa_ads_shopee, usa_afiliado_shopee, tipo_anuncio_ml
+    SELECT produto_id, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, ativo_ml, ativo_shopee, reembolso_flex_ml, usa_ads_ml, usa_afiliado_ml, usa_ads_shopee, usa_afiliado_shopee, tipo_anuncio_ml, enviado_por_full
     FROM precificacao_produtos
   `) as OverrideRow[];
   const overrideMap = new Map(overrides.map((o) => [o.produto_id, o]));
@@ -288,10 +297,11 @@ export async function GET() {
     const usaAdsShopee = override?.usa_ads_shopee !== false;
     const usaAfiliadoShopee = override?.usa_afiliado_shopee !== false;
     const tipoAnuncioML = tipoAnuncioMLDeOverride(override?.tipo_anuncio_ml);
+    const enviadoPorFull = override?.enviado_por_full === true;
 
     const resultadoML =
       precoVendaML != null
-        ? calcularML(precoVendaML, pesoEnvioKg, custoProducao, embalagemCusto, reembolsoFlexML, config, enviadoPorFlexML, usaAdsML, usaAfiliadoML, tipoAnuncioML)
+        ? calcularML(precoVendaML, pesoEnvioKg, custoProducao, embalagemCusto, reembolsoFlexML, config, enviadoPorFlexML, usaAdsML, usaAfiliadoML, tipoAnuncioML, enviadoPorFull)
         : null;
     const resultadoShopee =
       precoVendaShopee != null
@@ -323,6 +333,7 @@ export async function GET() {
       usaAdsShopee,
       usaAfiliadoShopee,
       tipoAnuncioML,
+      enviadoPorFull,
       resultadoML,
       resultadoShopee,
     };
@@ -385,7 +396,7 @@ export async function GET() {
 
   const virtuaisOverrides = composicaoPorSku.size
     ? ((await sql`
-        SELECT id, sku, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, ativo_ml, ativo_shopee, reembolso_flex_ml, usa_ads_ml, usa_afiliado_ml, usa_ads_shopee, usa_afiliado_shopee, tipo_anuncio_ml
+        SELECT id, sku, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, ativo_ml, ativo_shopee, reembolso_flex_ml, usa_ads_ml, usa_afiliado_ml, usa_ads_shopee, usa_afiliado_shopee, tipo_anuncio_ml, enviado_por_full
         FROM precificacao_sku_virtual
       `) as SkuVirtualOverrideRow[])
     : [];
@@ -428,10 +439,11 @@ export async function GET() {
     const usaAdsShopee = override?.usa_ads_shopee !== false;
     const usaAfiliadoShopee = override?.usa_afiliado_shopee !== false;
     const tipoAnuncioML = tipoAnuncioMLDeOverride(override?.tipo_anuncio_ml);
+    const enviadoPorFull = override?.enviado_por_full === true;
 
     const resultadoML =
       precoVendaML != null
-        ? calcularML(precoVendaML, pesoEnvioKg, custoProducao, embalagemCusto, reembolsoFlexML, config, enviadoPorFlexML, usaAdsML, usaAfiliadoML, tipoAnuncioML)
+        ? calcularML(precoVendaML, pesoEnvioKg, custoProducao, embalagemCusto, reembolsoFlexML, config, enviadoPorFlexML, usaAdsML, usaAfiliadoML, tipoAnuncioML, enviadoPorFull)
         : null;
     const resultadoShopee =
       precoVendaShopee != null
@@ -465,6 +477,7 @@ export async function GET() {
       usaAdsShopee,
       usaAfiliadoShopee,
       tipoAnuncioML,
+      enviadoPorFull,
       resultadoML,
       resultadoShopee,
     };
@@ -495,6 +508,7 @@ export async function PUT(request: NextRequest) {
     usaAdsShopee,
     usaAfiliadoShopee,
     tipoAnuncioML,
+    enviadoPorFull,
   } = body as {
     produtoId: number;
     sku?: string | null;
@@ -513,6 +527,7 @@ export async function PUT(request: NextRequest) {
     usaAdsShopee: boolean | null;
     usaAfiliadoShopee: boolean | null;
     tipoAnuncioML?: string | null;
+    enviadoPorFull?: boolean | null;
   };
 
   if (produtoId == null) {
@@ -526,14 +541,15 @@ export async function PUT(request: NextRequest) {
   const usaAdsShopeeFinal = usaAdsShopee !== false;
   const usaAfiliadoShopeeFinal = usaAfiliadoShopee !== false;
   const tipoAnuncioMLFinal = tipoAnuncioML === "premium" ? "premium" : "classico";
+  const enviadoPorFullFinal = enviadoPorFull === true;
 
   if (produtoId < 0) {
     if (!sku) {
       return NextResponse.json({ error: "sku e obrigatorio para produtos compostos" }, { status: 400 });
     }
     await sql`
-      INSERT INTO precificacao_sku_virtual (sku, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, reembolso_flex_ml, ativo_ml, ativo_shopee, usa_ads_ml, usa_afiliado_ml, usa_ads_shopee, usa_afiliado_shopee, tipo_anuncio_ml, atualizado_em)
-      VALUES (${sku}, ${pesoEnvioKg}, ${precoVendaML}, ${precoVendaShopee}, ${enviadoPorFlexML === true}, ${embalagemCusto}, ${margemDesejadaPct}, ${custoProducao}, ${reembolsoFlexML}, ${ativoMLFinal}, ${ativoShopeeFinal}, ${usaAdsMLFinal}, ${usaAfiliadoMLFinal}, ${usaAdsShopeeFinal}, ${usaAfiliadoShopeeFinal}, ${tipoAnuncioMLFinal}, now())
+      INSERT INTO precificacao_sku_virtual (sku, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, reembolso_flex_ml, ativo_ml, ativo_shopee, usa_ads_ml, usa_afiliado_ml, usa_ads_shopee, usa_afiliado_shopee, tipo_anuncio_ml, enviado_por_full, atualizado_em)
+      VALUES (${sku}, ${pesoEnvioKg}, ${precoVendaML}, ${precoVendaShopee}, ${enviadoPorFlexML === true}, ${embalagemCusto}, ${margemDesejadaPct}, ${custoProducao}, ${reembolsoFlexML}, ${ativoMLFinal}, ${ativoShopeeFinal}, ${usaAdsMLFinal}, ${usaAfiliadoMLFinal}, ${usaAdsShopeeFinal}, ${usaAfiliadoShopeeFinal}, ${tipoAnuncioMLFinal}, ${enviadoPorFullFinal}, now())
       ON CONFLICT (sku) DO UPDATE
       SET peso_envio_kg = ${pesoEnvioKg},
           preco_venda_ml = ${precoVendaML},
@@ -550,14 +566,15 @@ export async function PUT(request: NextRequest) {
           usa_ads_shopee = ${usaAdsShopeeFinal},
           usa_afiliado_shopee = ${usaAfiliadoShopeeFinal},
           tipo_anuncio_ml = ${tipoAnuncioMLFinal},
+          enviado_por_full = ${enviadoPorFullFinal},
           atualizado_em = now()
     `;
     return NextResponse.json({ ok: true });
   }
 
   await sql`
-    INSERT INTO precificacao_produtos (produto_id, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, ativo_ml, ativo_shopee, reembolso_flex_ml, usa_ads_ml, usa_afiliado_ml, usa_ads_shopee, usa_afiliado_shopee, tipo_anuncio_ml, atualizado_em)
-    VALUES (${produtoId}, ${pesoEnvioKg}, ${precoVendaML}, ${precoVendaShopee}, ${enviadoPorFlexML === true}, ${embalagemCusto}, ${margemDesejadaPct}, ${custoProducao}, ${ativoMLFinal}, ${ativoShopeeFinal}, ${reembolsoFlexML}, ${usaAdsMLFinal}, ${usaAfiliadoMLFinal}, ${usaAdsShopeeFinal}, ${usaAfiliadoShopeeFinal}, ${tipoAnuncioMLFinal}, now())
+    INSERT INTO precificacao_produtos (produto_id, peso_envio_kg, preco_venda_ml, preco_venda_shopee, enviado_por_flex_ml, embalagem_custo, margem_desejada_pct, custo_producao_manual, ativo_ml, ativo_shopee, reembolso_flex_ml, usa_ads_ml, usa_afiliado_ml, usa_ads_shopee, usa_afiliado_shopee, tipo_anuncio_ml, enviado_por_full, atualizado_em)
+    VALUES (${produtoId}, ${pesoEnvioKg}, ${precoVendaML}, ${precoVendaShopee}, ${enviadoPorFlexML === true}, ${embalagemCusto}, ${margemDesejadaPct}, ${custoProducao}, ${ativoMLFinal}, ${ativoShopeeFinal}, ${reembolsoFlexML}, ${usaAdsMLFinal}, ${usaAfiliadoMLFinal}, ${usaAdsShopeeFinal}, ${usaAfiliadoShopeeFinal}, ${tipoAnuncioMLFinal}, ${enviadoPorFullFinal}, now())
     ON CONFLICT (produto_id) DO UPDATE
     SET peso_envio_kg = ${pesoEnvioKg},
         preco_venda_ml = ${precoVendaML},
@@ -574,6 +591,7 @@ export async function PUT(request: NextRequest) {
         usa_ads_shopee = ${usaAdsShopeeFinal},
         usa_afiliado_shopee = ${usaAfiliadoShopeeFinal},
         tipo_anuncio_ml = ${tipoAnuncioMLFinal},
+        enviado_por_full = ${enviadoPorFullFinal},
         atualizado_em = now()
   `;
 
