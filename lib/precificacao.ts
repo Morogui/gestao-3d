@@ -72,6 +72,32 @@
 // poder mostrar o percentual de comissao usado, nao so o valor em R$ --
 // pedido explicito do Guilherme pra deixar visualmente claro todo o
 // caminho de custos ate a margem.
+//
+// Regra do Full por produto (14/09/2026): faltava marcar quais
+// produtos sao enviados por Mercado Envios Full (Guilherme pediu "uma
+// caixa pra marcar os produtos que sao Full" e "puxar o custo real
+// desses produtos no Full"). Fui conferir a regra real direto na conta
+// dele (Central de Vendedores -> Vendas -> Detalhe da venda -> Tarifas
+// e cancelamentos), em 2 pedidos Full reais de hoje:
+//   - Venda #2000015024198461 (preco R$43,64): Tarifa de venda
+//     R$5,02 = 43,64 x 11,5% (comissao Classico normal) + Envios
+//     R$6,95 = exatamente taxaPesoML(peso ~0,3-0,5kg, faixa de preco
+//     18,99-48,99) -- a MESMA tabela por peso ja usada pra Flex.
+//   - Venda #2000015026067711 (2un, preco total R$45,98): Tarifa
+//     R$5,28 = 45,98 x 11,5%; Envios R$13,71 = 2x taxaPesoML(peso
+//     <=0,3kg, mesma faixa de preco) = 2x 6,85.
+// Ou seja: o Full NAO tem uma tabela de comissao/tarifa por peso
+// diferente -- e a mesma comissao (Classico/Premium) + a mesma
+// taxaPesoML ja calculada por calcularML no caminho padrao (quando
+// enviadoPorFlex=false). O que o Full tem de diferente e (1) nao ter
+// custo/reembolso de Flex (o Mercado Livre que despacha, nao o
+// Guilherme) e (2) uma tarifa de armazenagem no centro de distribuicao,
+// cobrada por fatura mensal (nao aparece por venda) -- por isso
+// armazenagemFullML entra como config editavel (default 0, Guilherme
+// preenche quando descobrir o valor exato na fatura). enviadoPorFull
+// e mutuamente exclusivo com enviadoPorFlex na UI (um produto so pode
+// ser enviado de um jeito) -- aqui no calculo, Full sempre zera
+// flexCusto (nao faz sentido cobrar Flex de um produto Full).
 
 export interface ConfigPrecificacao {
   impostoPct: number;
@@ -83,6 +109,7 @@ export interface ConfigPrecificacao {
   margemDesejadaPct: number;
   reembolsoFlexML: number;
   custoFlexML: number;
+  armazenagemFullML: number;
 }
 
 export const DEFAULT_CONFIG_PRECIFICACAO: ConfigPrecificacao = {
@@ -95,6 +122,7 @@ export const DEFAULT_CONFIG_PRECIFICACAO: ConfigPrecificacao = {
   margemDesejadaPct: 20,
   reembolsoFlexML: 0,
   custoFlexML: 0,
+  armazenagemFullML: 0,
 };
 
 export type TipoAnuncioML = "classico" | "premium";
@@ -198,6 +226,7 @@ export interface ResultadoPlataforma {
   afiliado: number;
   embalagem: number;
   flexCusto: number;
+  armazenagemFull: number;
   custoProducao: number;
   lucro: number;
   margemPct: number;
@@ -213,19 +242,40 @@ export function calcularML(
   enviadoPorFlex: boolean = false,
   usaAdsML: boolean = true,
   usaAfiliadoML: boolean = false,
-  tipoAnuncioML: TipoAnuncioML = "classico"
+  tipoAnuncioML: TipoAnuncioML = "classico",
+  enviadoPorFull: boolean = false
 ): ResultadoPlataforma {
   const comissaoPct = tipoAnuncioML === "premium" ? COMISSAO_ML_PREMIUM_PCT : COMISSAO_ML_CLASSICO_PCT;
   const comissao = preco * (comissaoPct / 100);
+  // Tarifa por peso: a MESMA tabela vale pra Full (ver comentario
+  // acima, verificado com vendas reais) -- nao muda com
+  // enviadoPorFull, so a linha do Flex abaixo muda.
   const taxaFixa = taxaPesoML(pesoKg, preco);
   const imposto = preco * (config.impostoPct / 100);
   const ads = usaAdsML ? preco * (config.adsPctML / 100) : 0;
   const afiliado = usaAfiliadoML ? preco * (config.afiliadoPctML / 100) : 0;
   const embalagem = embalagemCusto;
-  const flexCusto = enviadoPorFlex ? Math.max(0, config.custoFlexML - reembolsoFlexML) : 0;
-  const lucro = preco - comissao - taxaFixa - imposto - ads - afiliado - embalagem - flexCusto - custoProducao;
+  // Full sempre zera o custo de Flex (quem despacha e o Mercado Livre,
+  // nao o Guilherme) -- mesmo que o override de Flex ainda esteja
+  // marcado por engano, Full tem prioridade.
+  const flexCusto =
+    !enviadoPorFull && enviadoPorFlex
+      ? Math.max(0, config.custoFlexML - reembolsoFlexML)
+      : 0;
+  const armazenagemFull = enviadoPorFull ? config.armazenagemFullML : 0;
+  const lucro =
+    preco -
+    comissao -
+    taxaFixa -
+    imposto -
+    ads -
+    afiliado -
+    embalagem -
+    flexCusto -
+    armazenagemFull -
+    custoProducao;
   const margemPct = preco > 0 ? (lucro / preco) * 100 : 0;
-  return { preco, comissao, comissaoPct, taxaFixa, imposto, ads, afiliado, embalagem, flexCusto, custoProducao, lucro, margemPct };
+  return { preco, comissao, comissaoPct, taxaFixa, imposto, ads, afiliado, embalagem, flexCusto, armazenagemFull, custoProducao, lucro, margemPct };
 }
 
 export function calcularShopee(
@@ -245,7 +295,7 @@ export function calcularShopee(
   const embalagem = embalagemCusto;
   const lucro = preco - comissao - taxaFixa - imposto - ads - afiliado - embalagem - custoProducao;
   const margemPct = preco > 0 ? (lucro / preco) * 100 : 0;
-  return { preco, comissao, comissaoPct, taxaFixa, imposto, ads, afiliado, embalagem, flexCusto: 0, custoProducao, lucro, margemPct };
+  return { preco, comissao, comissaoPct, taxaFixa, imposto, ads, afiliado, embalagem, flexCusto: 0, armazenagemFull: 0, custoProducao, lucro, margemPct };
 }
 
 export function formatBRL(value: number): string {
