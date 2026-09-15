@@ -3,7 +3,7 @@ import { atualizarCliente, atualizarSenhaCliente } from "@/lib/clients";
 
 export const runtime = "nodejs";
 
-const ABAS_DISPONIVEIS = ["vendas", "full"];
+const ABAS_DISPONIVEIS = ["vendas", "full", "produtos", "precificacao"];
 
 // PATCH /api/admin/clientes/[id] -- edita nome/abas liberadas de um
 // cliente ja existente, e opcionalmente reseta a senha (so quando o
