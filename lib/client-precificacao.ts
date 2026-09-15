@@ -1,5 +1,4 @@
 import { sql } from "./db";
-import { ConfigPrecificacao, DEFAULT_CONFIG_PRECIFICACAO } from "./precificacao";
 
 // Catalogo de produtos (SKU/nome/custo) e configuracao de precificacao
 // por cliente externo, escopados por client_id. Replica simplificada
@@ -8,6 +7,34 @@ import { ConfigPrecificacao, DEFAULT_CONFIG_PRECIFICACAO } from "./precificacao"
 // producao e um valor manual direto por SKU. Pedido do Guilherme em
 // 2026-09-15: replicar a estrutura de Produtos + Precificacao pro
 // cliente Garimpo (loja de roupas).
+//
+// IMPORTANTE (15/09/2026): a config de precificacao aqui e um tipo
+// PROPRIO (ClientConfigPrecificacao), separado do ConfigPrecificacao
+// de lib/precificacao.ts. O ConfigPrecificacao do Morolar cresceu com
+// campos especificos do fluxo dele (Flex ML, Full ML, afiliado ML por
+// categoria etc.) que nao se aplicam a um cliente generico como a
+// Garimpo -- por isso o painel do cliente usa so os 6 campos basicos
+// (imposto, %Ads ML/Shopee, %afiliado Shopee, embalagem, margem
+// desejada). Reusar o tipo do Morolar direto quebrava o build porque
+// o objeto retornado aqui nao tinha os campos extras dele.
+
+export interface ClientConfigPrecificacao {
+  impostoPct: number;
+  adsPctML: number;
+  adsPctShopee: number;
+  afiliadoPctShopee: number;
+  embalagemCusto: number;
+  margemDesejadaPct: number;
+}
+
+export const DEFAULT_CLIENT_CONFIG_PRECIFICACAO: ClientConfigPrecificacao = {
+  impostoPct: 6,
+  adsPctML: 5,
+  adsPctShopee: 10,
+  afiliadoPctShopee: 0,
+  embalagemCusto: 1.1,
+  margemDesejadaPct: 20,
+};
 
 export interface ClientProduto {
   id: number;
@@ -146,13 +173,13 @@ export async function excluirProdutoCliente(clientId: string, id: number): Promi
   return rows.length > 0;
 }
 
-export async function getConfigCliente(clientId: string): Promise<ConfigPrecificacao> {
+export async function getConfigCliente(clientId: string): Promise<ClientConfigPrecificacao> {
   await garantirTabelas();
   const rows = (await sql`
     SELECT imposto_pct, ads_pct_ml, ads_pct_shopee, afiliado_pct_shopee, embalagem_custo, margem_desejada_pct
     FROM client_precificacao_config WHERE client_id = ${clientId}
   `) as any[];
-  if (rows.length === 0) return { ...DEFAULT_CONFIG_PRECIFICACAO };
+  if (rows.length === 0) return { ...DEFAULT_CLIENT_CONFIG_PRECIFICACAO };
   const r = rows[0];
   return {
     impostoPct: Number(r.imposto_pct),
@@ -166,11 +193,11 @@ export async function getConfigCliente(clientId: string): Promise<ConfigPrecific
 
 export async function atualizarConfigCliente(
   clientId: string,
-  patch: Partial<ConfigPrecificacao>
-): Promise<ConfigPrecificacao> {
+  patch: Partial<ClientConfigPrecificacao>
+): Promise<ClientConfigPrecificacao> {
   await garantirTabelas();
   const atual = await getConfigCliente(clientId);
-  const novo: ConfigPrecificacao = { ...atual, ...patch };
+  const novo: ClientConfigPrecificacao = { ...atual, ...patch };
   await sql`
     INSERT INTO client_precificacao_config (client_id, imposto_pct, ads_pct_ml, ads_pct_shopee, afiliado_pct_shopee, embalagem_custo, margem_desejada_pct, atualizado_em)
     VALUES (${clientId}, ${novo.impostoPct}, ${novo.adsPctML}, ${novo.adsPctShopee}, ${novo.afiliadoPctShopee}, ${novo.embalagemCusto}, ${novo.margemDesejadaPct}, now())
