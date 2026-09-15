@@ -14,6 +14,8 @@ import { ML_API_BASE } from "@/lib/mercadolivre";
 // Documentacao: developers.mercadolivre.com.br/pt_br/relatorios-de-faturamento
 //
 // Remover esta rota depois de extrair o valor real.
+export const dynamic = "force-dynamic";
+
 export async function GET() {
     const auth = await getValidMLAccessToken();
     if (!auth) {
