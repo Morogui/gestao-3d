@@ -24,6 +24,7 @@ interface ProdutoPrecificacao {
   precoVendaML: number | null;
   precoVendaShopee: number | null;
   enviadoPorFlexML: boolean;
+  enviadoPorFull: boolean;
   ativoML: boolean;
   ativoShopee: boolean;
   usaAdsML: boolean;
@@ -47,6 +48,7 @@ type CampoBulk =
   | "usaAdsML"
   | "usaAfiliadoML"
   | "enviadoPorFlexML"
+  | "enviadoPorFull"
   | "usaAdsShopee"
   | "usaAfiliadoShopee";
 
@@ -55,6 +57,8 @@ const PARCEIRO_EXCLUSIVO: Partial<Record<CampoBulk, CampoBulk>> = {
   usaAfiliadoML: "usaAdsML",
   usaAdsShopee: "usaAfiliadoShopee",
   usaAfiliadoShopee: "usaAdsShopee",
+  enviadoPorFlexML: "enviadoPorFull",
+  enviadoPorFull: "enviadoPorFlexML",
 };
 
 // 14/09/2026 -- monta o patch de um toggle em massa sem usar chave
@@ -86,7 +90,13 @@ function construirPatchBulk(
         ? { usaAfiliadoShopee: valor }
         : { usaAfiliadoShopee: valor, usaAdsShopee: valorParceiro };
     case "enviadoPorFlexML":
-      return { enviadoPorFlexML: valor };
+      return valorParceiro === undefined
+        ? { enviadoPorFlexML: valor }
+        : { enviadoPorFlexML: valor, enviadoPorFull: valorParceiro };
+    case "enviadoPorFull":
+      return valorParceiro === undefined
+        ? { enviadoPorFull: valor }
+        : { enviadoPorFull: valor, enviadoPorFlexML: valorParceiro };
   }
 }
 
@@ -222,6 +232,7 @@ export default function PrecificacaoPage() {
       precoVendaML: produto.precoVendaML,
       precoVendaShopee: produto.precoVendaShopee,
       enviadoPorFlexML: produto.enviadoPorFlexML,
+      enviadoPorFull: produto.enviadoPorFull,
       embalagemCusto: produto.embalagemCusto,
       margemDesejadaPct: produto.margemDesejadaPct,
       custoProducao:
@@ -343,7 +354,7 @@ export default function PrecificacaoPage() {
   // e Comissão ML visível) pra deixar claro qual comissão está sendo
   // usada em cada produto -- ver lib/precificacao.ts.
   const colSpanDetalhes =
-    3 + (mostrarML ? 9 : 0) + (mostrarShopee ? 5 : 0) + 1;
+    3 + (mostrarML ? 10 : 0) + (mostrarShopee ? 5 : 0) + 1;
 
   return c(
     "div",
@@ -385,7 +396,7 @@ export default function PrecificacaoPage() {
       c(
         "p",
         { className: "mb-4 rounded-md bg-blue-50 p-3 text-xs text-blue-900" },
-        "Comissão ML agora varia por produto: marque na coluna \"Anúncio\" (aba Mercado Livre) se o anúncio é Clássico (11,5%) ou Premium (16,5%) — a Margem ML usa a comissão real do tipo marcado, e a coluna \"Comissão ML\" mostra o percentual e o valor em R$ usados na conta. Tarifa por peso do ML e comissão + tarifa fixa da Shopee já vêm calibradas com dados reais verificados em 19/08/2026 — não precisam de ajuste manual. Embalagem e Reembolso Flex ML são configurados por produto, direto na tabela abaixo (o reembolso varia por peso/tamanho de cada produto, não faz sentido um valor único pra conta inteira). Ads e Afiliado também têm um check por produto na tabela (igual o Flex) — o % abaixo é o valor usado quando o check está marcado, mas se o produto está ou não usando cada modalidade se decide linha a linha. Clique em \"Detalhes\" em qualquer produto pra ver o caminho completo de custos (comissão, tarifa, imposto, ads, afiliado, embalagem, Flex e custo de produção) até o lucro final. Imposto, os percentuais de ADS/afiliado e o Custo do Flex ML continuam editáveis aqui e ainda precisam de confirmação."
+        "Comissão ML agora varia por produto: marque na coluna \"Anúncio\" (aba Mercado Livre) se o anúncio é Clássico (11,5%) ou Premium (16,5%) — a Margem ML usa a comissão real do tipo marcado, e a coluna \"Comissão ML\" mostra o percentual e o valor em R$ usados na conta. Tarifa por peso do ML e comissão + tarifa fixa da Shopee já vêm calibradas com dados reais verificados em 19/08/2026 — não precisam de ajuste manual. Embalagem e Reembolso Flex ML são configurados por produto, direto na tabela abaixo (o reembolso varia por peso/tamanho de cada produto, não faz sentido um valor único pra conta inteira). Ads e Afiliado também têm um check por produto na tabela (igual o Flex) — o % abaixo é o valor usado quando o check está marcado, mas se o produto está ou não usando cada modalidade se decide linha a linha. Produto enviado por Mercado Envios Full: marque a coluna \"Full\" (aba Mercado Livre) — comissão e tarifa por peso continuam as mesmas (verificado com pedidos reais em 14/09/2026), mas o custo de Flex é zerado e some o custo de Armazenagem Full (configurável abaixo, ainda pendente de confirmação do valor real na fatura do ML). Full e Flex são mutuamente exclusivos: marcar um desmarca o outro. Clique em \"Detalhes\" em qualquer produto pra ver o caminho completo de custos (comissão, tarifa, imposto, ads, afiliado, embalagem, Flex/Full e custo de produção) até o lucro final. Imposto, os percentuais de ADS/afiliado, o Custo do Flex ML e o Custo de Armazenagem Full ML continuam editáveis aqui e ainda precisam de confirmação."
       ),
       c(
         "div",
@@ -427,6 +438,13 @@ export default function PrecificacaoPage() {
           label: "Custo Flex ML (R$)",
           value: config.custoFlexML,
           onChange: (v: number) => updateConfig("custoFlexML", v),
+          step: 0.1,
+          pendente: true,
+        }),
+        c(NumberField, {
+          label: "Custo Armazenagem Full ML (R$)",
+          value: config.armazenagemFullML,
+          onChange: (v: number) => updateConfig("armazenagemFullML", v),
           step: 0.1,
           pendente: true,
         })
@@ -645,6 +663,22 @@ export default function PrecificacaoPage() {
                             ativo: !!bulkSnapshots.enviadoPorFlexML,
                             onToggle: () =>
                               toggleBulkColuna("enviadoPorFlexML"),
+                          })
+                        ),
+                        c(
+                          "th",
+                          {
+                            key: "th-full",
+                            className: "px-3 py-3 text-center",
+                            title:
+                              "Produto enviado por Mercado Envios Full (estoque no CD do ML). Zera o custo de Flex e soma o custo de Armazenagem Full configurado acima. Mutuamente exclusivo com Flex.",
+                          },
+                          c(CabecalhoComBulk, {
+                            label: "Full",
+                            mostrarToggle: aba === "ml",
+                            ativo: !!bulkSnapshots.enviadoPorFull,
+                            onToggle: () =>
+                              toggleBulkColuna("enviadoPorFull"),
                           })
                         ),
                         c(
@@ -882,6 +916,27 @@ function ProdutoRow({
     setTimeout(onSalvar, 0);
   }
 
+  // 14/09/2026 -- Flex e Full são mutuamente exclusivos (um produto é
+  // enviado de um jeito ou do outro, nunca os dois): marcar Full
+  // desmarca Flex e vice-versa. Ver lib/precificacao.ts pra regra
+  // completa do Full (verificada com vendas reais).
+  function toggleFlex(checked: boolean) {
+    onChangeLocal(
+      checked
+        ? { enviadoPorFlexML: true, enviadoPorFull: false }
+        : { enviadoPorFlexML: false }
+    );
+    setTimeout(onSalvar, 0);
+  }
+  function toggleFull(checked: boolean) {
+    onChangeLocal(
+      checked
+        ? { enviadoPorFull: true, enviadoPorFlexML: false }
+        : { enviadoPorFull: false }
+    );
+    setTimeout(onSalvar, 0);
+  }
+
   // 14/09/2026 -- Clássico/Premium não é mutuamente exclusivo no
   // mesmo sentido de Ads/Afiliado (é um único campo de dois valores,
   // não dois campos independentes) -- só troca o tipo direto.
@@ -1099,12 +1154,23 @@ function ProdutoRow({
                 type: "checkbox",
                 checked: produto.enviadoPorFlexML,
                 disabled: somenteLeitura,
-                onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
-                  onChangeLocal({ enviadoPorFlexML: e.target.checked });
-                  setTimeout(onSalvar, 0);
-                },
+                onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+                  toggleFlex(e.target.checked),
                 className: classeCheckboxBase,
                 title: "Enviado por Mercado Envios Flex",
+              })
+            ),
+            c(
+              "td",
+              { key: "td-full", className: "px-3 py-2 text-center" },
+              c("input", {
+                type: "checkbox",
+                checked: produto.enviadoPorFull,
+                disabled: somenteLeitura,
+                onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+                  toggleFull(e.target.checked),
+                className: classeCheckboxBase,
+                title: "Enviado por Mercado Envios Full",
               })
             ),
             c(
@@ -1313,9 +1379,10 @@ function ProdutoRow({
                     titulo: "Mercado Livre",
                     resultado: produto.resultadoML,
                     infoExtra:
-                      produto.tipoAnuncioML === "premium"
+                      (produto.tipoAnuncioML === "premium"
                         ? "Anúncio Premium"
-                        : "Anúncio Clássico",
+                        : "Anúncio Clássico") +
+                      (produto.enviadoPorFull ? " · Full" : ""),
                   })
                 : null,
               mostrarShopee
@@ -1375,6 +1442,8 @@ function DetalhePlataforma({
   linhas.push(["Embalagem", -resultado.embalagem]);
   if (resultado.flexCusto)
     linhas.push(["Custo Flex (líquido do reembolso)", -resultado.flexCusto]);
+  if (resultado.armazenagemFull)
+    linhas.push(["Armazenagem Full", -resultado.armazenagemFull]);
   linhas.push(["Custo de produção", -resultado.custoProducao]);
   return c(
     "div",
