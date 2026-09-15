@@ -896,8 +896,14 @@ function ProdutoRow({
   // 14/09/2026 -- classe extra pros inputs/checkboxes quando a linha
   // está em modo somente-leitura (aba Todos), pra ficar visualmente
   // claro que aquele campo não é editável ali.
+  // 14/09/2026 -- Peso e Custo produção mostravam a casa decimal
+  // inteira vinda do banco (ex: "0,05412222222222222"), o que estourava
+  // a largura da coluna e cortava a tabela na tela. Arredondado só na
+  // exibição (toFixed abaixo, no value do input) -- o valor completo
+  // continua em produto.pesoEnvioKg/custoProducao e só é sobrescrito se
+  // o usuário de fato editar o campo.
   const classeInputBase =
-    "w-28 rounded border border-gray-200 px-2 py-1 text-right text-sm disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400";
+    "w-20 rounded border border-gray-200 px-2 py-1 text-right text-sm disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400";
   const classeCheckboxBase =
     "h-4 w-4 disabled:cursor-not-allowed disabled:opacity-40";
 
@@ -931,7 +937,7 @@ function ProdutoRow({
           type: "number",
           step: 0.01,
           min: 0,
-          value: produto.pesoEnvioKg,
+          value: produto.pesoEnvioKg.toFixed(3),
           disabled: somenteLeitura,
           onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
             onChangeLocal({ pesoEnvioKg: parseFloat(e.target.value) || 0 }),
@@ -946,7 +952,7 @@ function ProdutoRow({
           type: "number",
           step: 0.01,
           min: 0,
-          value: produto.custoProducao,
+          value: produto.custoProducao.toFixed(2),
           disabled: somenteLeitura,
           onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
             onChangeLocal({ custoProducao: parseFloat(e.target.value) || 0 }),
