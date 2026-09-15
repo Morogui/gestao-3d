@@ -11,6 +11,7 @@ const TABS = [
   { href: "/full", label: "Full" },
   { href: "/financeiro", label: "Financeiro" },
   { href: "/relatorios", label: "Relatórios" },
+  { href: "/analise", label: "Análise" },
   // Painel master de clientes (/admin/clientes) -- pedido do Guilherme
   // em 2026-09-14: administrar as contas externas (ex: Plez Store) e
   // escolher quais abas cada uma enxerga. So a Morolar chega nessa aba
