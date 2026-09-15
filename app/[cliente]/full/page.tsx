@@ -15,8 +15,16 @@ interface Envio {
 interface RecomendacaoItem {
   itemId: string;
   titulo: string;
-  quantidade: number;
+  quantidadeBase: number;
+  curva: "A" | "B" | "C";
+  quantidadeRecomendada: number;
 }
+
+const CORES_CURVA: Record<string, string> = {
+  A: "#22c55e",
+  B: "#f59e0b",
+  C: "#64748b",
+};
 
 export default function ClienteFullPage() {
   const [envios, setEnvios] = useState<Envio[]>([]);
@@ -30,12 +38,18 @@ export default function ClienteFullPage() {
   // Pedido do Guilherme em 2026-09-15: escolher janela (1 semana/15 dias)
   // + data, e o sistema monta a recomendação de quanto enviar pro Full
   // com base nas vendas reais, agrupadas por MLB (ver
-  // app/api/c/full/recomendacao/route.ts).
+  // app/api/c/full/recomendacao/route.ts). Cada item entra numa Curva
+  // ABC (por volume de venda no Full dentro da janela) e leva um
+  // multiplicador por curva -- default Curva A = 1.4x, B = 1.1x,
+  // C = 1.0x, mas editável aqui antes de aplicar.
   const [planejarAberto, setPlanejarAberto] = useState(false);
   const [janela, setJanela] = useState<7 | 15>(7);
   const [dataRecomendacao, setDataRecomendacao] = useState(() =>
     new Date().toISOString().slice(0, 10)
   );
+  const [multA, setMultA] = useState("1.4");
+  const [multB, setMultB] = useState("1.1");
+  const [multC, setMultC] = useState("1.0");
   const [recomendacao, setRecomendacao] = useState<RecomendacaoItem[] | null>(null);
   const [carregandoRecomendacao, setCarregandoRecomendacao] = useState(false);
   const [erroRecomendacao, setErroRecomendacao] = useState("");
@@ -86,7 +100,8 @@ export default function ClienteFullPage() {
     setRecomendacao(null);
     try {
       const resp = await fetch(
-        `/api/c/full/recomendacao?janela=${janela}&ate=${dataRecomendacao}`
+        `/api/c/full/recomendacao?janela=${janela}&ate=${dataRecomendacao}` +
+          `&multA=${encodeURIComponent(multA)}&multB=${encodeURIComponent(multB)}&multC=${encodeURIComponent(multC)}`
       );
       const data = await resp.json();
       if (!resp.ok) {
@@ -99,7 +114,7 @@ export default function ClienteFullPage() {
       const qtd: Record<string, string> = {};
       for (const item of itens) {
         sel[item.itemId] = true;
-        qtd[item.itemId] = String(item.quantidade);
+        qtd[item.itemId] = String(item.quantidadeRecomendada);
       }
       setSelecionados(sel);
       setQuantidadesRecomendacao(qtd);
@@ -110,13 +125,33 @@ export default function ClienteFullPage() {
     }
   }
 
+  // Reaplica os multiplicadores de Curva ABC atuais em cima da
+  // quantidadeBase já buscada, sem precisar chamar a API da ML de novo --
+  // pedido do Guilherme: os multiplicadores tem que ficar editáveis "na
+  // hora de planejar". Sobrescreve qualquer ajuste manual feito por
+  // linha, por isso é uma ação explícita (botão), não algo automático a
+  // cada tecla digitada.
+  function handleAplicarMultiplicadores() {
+    if (!recomendacao) return;
+    const mult: Record<string, number> = {
+      A: Number(multA.replace(",", ".")) || 1,
+      B: Number(multB.replace(",", ".")) || 1,
+      C: Number(multC.replace(",", ".")) || 1,
+    };
+    const qtd: Record<string, string> = {};
+    for (const item of recomendacao) {
+      qtd[item.itemId] = String(Math.round(item.quantidadeBase * mult[item.curva]));
+    }
+    setQuantidadesRecomendacao(qtd);
+  }
+
   async function handleSalvarRecomendacao() {
     if (!recomendacao) return;
     setSalvandoRecomendacao(true);
     try {
       const itensSelecionados = recomendacao.filter((item) => selecionados[item.itemId]);
       for (const item of itensSelecionados) {
-        const qtd = Number(quantidadesRecomendacao[item.itemId] ?? item.quantidade);
+        const qtd = Number(quantidadesRecomendacao[item.itemId] ?? item.quantidadeRecomendada);
         if (!qtd || qtd <= 0) continue;
         await fetch("/api/c/full", {
           method: "POST",
@@ -242,6 +277,96 @@ export default function ClienteFullPage() {
 
             {recomendacao && recomendacao.length > 0 && (
               <>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 12,
+                    alignItems: "flex-end",
+                    flexWrap: "wrap",
+                    marginBottom: 12,
+                    padding: 12,
+                    borderRadius: 6,
+                    background: "#111827",
+                    border: "1px solid #1e293b",
+                  }}
+                >
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>
+                      Multiplicador Curva A
+                    </label>
+                    <input
+                      type="text"
+                      value={multA}
+                      onChange={(e) => setMultA(e.target.value)}
+                      style={{
+                        width: 70,
+                        padding: 6,
+                        borderRadius: 6,
+                        border: "1px solid #334155",
+                        background: "#0f172a",
+                        color: CORES_CURVA.A,
+                        fontWeight: 700,
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>
+                      Multiplicador Curva B
+                    </label>
+                    <input
+                      type="text"
+                      value={multB}
+                      onChange={(e) => setMultB(e.target.value)}
+                      style={{
+                        width: 70,
+                        padding: 6,
+                        borderRadius: 6,
+                        border: "1px solid #334155",
+                        background: "#0f172a",
+                        color: CORES_CURVA.B,
+                        fontWeight: 700,
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>
+                      Multiplicador Curva C
+                    </label>
+                    <input
+                      type="text"
+                      value={multC}
+                      onChange={(e) => setMultC(e.target.value)}
+                      style={{
+                        width: 70,
+                        padding: 6,
+                        borderRadius: 6,
+                        border: "1px solid #334155",
+                        background: "#0f172a",
+                        color: CORES_CURVA.C,
+                        fontWeight: 700,
+                      }}
+                    />
+                  </div>
+                  <button
+                    onClick={handleAplicarMultiplicadores}
+                    style={{
+                      padding: "6px 14px",
+                      borderRadius: 6,
+                      border: "1px solid #334155",
+                      background: "transparent",
+                      color: "#cbd5e1",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Aplicar multiplicadores
+                  </button>
+                  <p style={{ fontSize: 11, color: "#64748b", margin: 0 }}>
+                    Curva A/B/C = classificação por volume de venda no Full dentro do período
+                    (80/15/5% acumulado). Reaplica em cima da quantidade base vendida, sobrescrevendo
+                    ajustes manuais feitos linha a linha.
+                  </p>
+                </div>
+
                 <table
                   style={{
                     width: "100%",
@@ -255,6 +380,8 @@ export default function ClienteFullPage() {
                       <th style={{ padding: 8 }}></th>
                       <th style={{ padding: 8 }}>MLB</th>
                       <th style={{ padding: 8 }}>Anúncio</th>
+                      <th style={{ padding: 8 }}>Curva</th>
+                      <th style={{ padding: 8 }}>Qtd. vendida (base)</th>
                       <th style={{ padding: 8 }}>Qtd. recomendada</th>
                     </tr>
                   </thead>
@@ -275,6 +402,22 @@ export default function ClienteFullPage() {
                         </td>
                         <td style={{ padding: 8, color: "#94a3b8" }}>{item.itemId}</td>
                         <td style={{ padding: 8 }}>{item.titulo}</td>
+                        <td style={{ padding: 8 }}>
+                          <span
+                            style={{
+                              display: "inline-block",
+                              padding: "2px 8px",
+                              borderRadius: 999,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              color: "#0f172a",
+                              background: CORES_CURVA[item.curva] ?? "#64748b",
+                            }}
+                          >
+                            {item.curva}
+                          </span>
+                        </td>
+                        <td style={{ padding: 8, color: "#94a3b8" }}>{item.quantidadeBase}</td>
                         <td style={{ padding: 8 }}>
                           <input
                             type="number"
