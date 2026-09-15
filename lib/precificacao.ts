@@ -98,6 +98,49 @@
 // e mutuamente exclusivo com enviadoPorFlex na UI (um produto so pode
 // ser enviado de um jeito) -- aqui no calculo, Full sempre zera
 // flexCusto (nao faz sentido cobrar Flex de um produto Full).
+//
+// Rebate ML / redução de tarifas por produto (15/09/2026): Guilherme
+// apontou que o "Preço ML" que o sistema pré-preenche pega o preço
+// PROMOCIONAL ativo do anúncio quando existe promoção (commit
+// 5df2718/510 -- "corrigir extração de preço ML: promoção vs cheio"),
+// mas a tela nunca deixou claro que esse é o preço promo, não o preço
+// cheio anunciado ("De"). Fui validar direto na conta real dele
+// (Central de vendedores -> Anúncios -> Promoções -> aba Promoções,
+// campanha "Com redução de tarifas") pra entender o mecanismo antes de
+// mexer, conforme pedido. Confirmado com 2 variações reais do Suporte
+// Organizador Universal Parede:
+//   - "Preto Com Parafuso" (#684141288, preço anunciado R$64,99):
+//     na promoção "Com redução de tarifas" (ativa 16/jul-30/set),
+//     preço final R$22,99, texto explícito "Reduzimos R$0,91 das
+//     suas tarifas por cada venda".
+//   - "Preto" (#684141284, preço anunciado R$61,99): mesma promoção,
+//     preço final R$22,30, "Reduzimos R$0,89 das suas tarifas por
+//     cada venda".
+// Ou seja: em certas campanhas (não em todas -- "Com redução de
+// tarifas" especificamente) o próprio Mercado Livre reduz a comissão
+// que cobra do vendedor por venda, em R$ fixo por listagem/variação
+// (não é %, varia por anúncio). Isso muda a margem real pra melhor
+// e a conta anterior não capturava esse ganho. Modelagem escolhida,
+// seguindo o mesmo padrão já usado pra Flex/Embalagem/Margem desejada
+// (fatores que variam por listagem viram campo por produto, não config
+// global -- não faz sentido um único valor de rebate pra conta
+// inteira): 2 campos novos por produto em precificacao_produtos /
+// precificacao_sku_virtual --
+//   - preco_anunciado_ml: o preço "De" (cheio) do anúncio, editável,
+//     só informativo -- NÃO entra em calcularML, é só pra Guilherme
+//     comparar com o preço que está de fato cobrando (que continua
+//     sendo precoVendaML/"Preço ML", o preço realmente praticado --
+//     promocional quando há promoção ativa, porque é esse valor que
+//     define comissão/imposto/margem de verdade).
+//   - rebate_ml: o valor em R$ que o ML reduz da própria comissão
+//     nesta venda (0 por padrão -- só usa quando o produto está numa
+//     promoção com redução de tarifas confirmada na conta). Entra em
+//     calcularML como parâmetro explícito rebateML e é subtraído da
+//     comissão bruta (nunca deixa a comissão líquida ficar negativa).
+// ResultadoPlataforma ganhou os campos comissaoBruta e rebateML pra
+// tela mostrar o caminho completo (comissão cheia -> rebate do ML ->
+// comissão líquida usada na conta), igual o padrão já usado pra
+// comissaoPct.
 
 export interface ConfigPrecificacao {
   impostoPct: number;
@@ -219,7 +262,9 @@ export function taxaFixaShopee(preco: number): number {
 export interface ResultadoPlataforma {
   preco: number;
   comissao: number;
+  comissaoBruta: number;
   comissaoPct: number;
+  rebateML: number;
   taxaFixa: number;
   imposto: number;
   ads: number;
@@ -243,10 +288,16 @@ export function calcularML(
   usaAdsML: boolean = true,
   usaAfiliadoML: boolean = false,
   tipoAnuncioML: TipoAnuncioML = "classico",
-  enviadoPorFull: boolean = false
+  enviadoPorFull: boolean = false,
+  rebateML: number = 0
 ): ResultadoPlataforma {
   const comissaoPct = tipoAnuncioML === "premium" ? COMISSAO_ML_PREMIUM_PCT : COMISSAO_ML_CLASSICO_PCT;
-  const comissao = preco * (comissaoPct / 100);
+  const comissaoBruta = preco * (comissaoPct / 100);
+  // Rebate ML (15/09/2026): reducao de tarifa que o proprio ML da em
+  // certas campanhas de promocao (ver comentario no topo do arquivo,
+  // validado com dados reais da conta). Subtrai da comissao bruta sem
+  // deixar a comissao liquida negativa.
+  const comissao = Math.max(0, comissaoBruta - rebateML);
   // Tarifa por peso: a MESMA tabela vale pra Full (ver comentario
   // acima, verificado com vendas reais) -- nao muda com
   // enviadoPorFull, so a linha do Flex abaixo muda.
@@ -275,7 +326,7 @@ export function calcularML(
     armazenagemFull -
     custoProducao;
   const margemPct = preco > 0 ? (lucro / preco) * 100 : 0;
-  return { preco, comissao, comissaoPct, taxaFixa, imposto, ads, afiliado, embalagem, flexCusto, armazenagemFull, custoProducao, lucro, margemPct };
+  return { preco, comissao, comissaoBruta, comissaoPct, rebateML, taxaFixa, imposto, ads, afiliado, embalagem, flexCusto, armazenagemFull, custoProducao, lucro, margemPct };
 }
 
 export function calcularShopee(
@@ -295,7 +346,7 @@ export function calcularShopee(
   const embalagem = embalagemCusto;
   const lucro = preco - comissao - taxaFixa - imposto - ads - afiliado - embalagem - custoProducao;
   const margemPct = preco > 0 ? (lucro / preco) * 100 : 0;
-  return { preco, comissao, comissaoPct, taxaFixa, imposto, ads, afiliado, embalagem, flexCusto: 0, armazenagemFull: 0, custoProducao, lucro, margemPct };
+  return { preco, comissao, comissaoBruta: comissao, comissaoPct, rebateML: 0, taxaFixa, imposto, ads, afiliado, embalagem, flexCusto: 0, armazenagemFull: 0, custoProducao, lucro, margemPct };
 }
 
 export function formatBRL(value: number): string {
