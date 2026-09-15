@@ -142,11 +142,16 @@ async function hasValidSession(req: NextRequest): Promise<boolean> {
 // cai no bloco generico no fim do arquivo, que redireciona pra /login --
 // comportamento correto, so que sem precisar manter a rota antiga viva.
 const CLIENTE_SUBPATHS = ["vendas", "full"];
+// "admin" adicionado em 2026-09-14 -- painel master de clientes
+// (/admin/clientes, ver app/admin/clientes/page.tsx). Nao era estritamente
+// necessario (nenhum sub de "admin" bate em CLIENTE_SUBPATHS mesmo sem
+// isso), mas reserva o slug pra sempre e deixa explicito que "admin"
+// nunca pode ser o slug de um cliente futuro criado nesse mesmo painel.
 const RESERVED_TOP_SEGMENTS = new Set([
   "api", "login", "painel", "vendas", "full", "produtos", "producao",
   "custo", "estoque", "financeiro", "relatorios", "analise",
   "precificacao", "mercadolivrecalculadora", "shopeecalculadora",
-  "logo-7x7.png", "robots.txt", "sitemap.xml", "favicon.ico",
+  "logo-7x7.png", "robots.txt", "sitemap.xml", "favicon.ico", "admin",
   ]);
 
 function parseClienteArea(pathname: string): { slug: string; sub: string } | null {
