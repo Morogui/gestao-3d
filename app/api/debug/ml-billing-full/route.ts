@@ -24,7 +24,7 @@ export async function GET() {
     const headers = { Authorization: `Bearer ${auth.accessToken}` };
 
   const periodosResp = await fetch(
-        `${ML_API_BASE}/billing/integration/periods?group=ML&document_type=BILL&limit=6`,
+        `${ML_API_BASE}/billing/integration/monthly/periods?group=ML&document_type=BILL&limit=6`,
     { headers, cache: "no-store" }
       );
     const periodosBody = await periodosResp.text();
