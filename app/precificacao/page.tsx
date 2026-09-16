@@ -563,7 +563,7 @@ export default function PrecificacaoPage() {
             "div",
             {
               className:
-                "overflow-x-auto rounded-lg border border-gray-200 bg-white",
+                "overflow-x-auto overflow-y-auto max-h-[75vh] rounded-lg border border-gray-200 bg-white",
             },
             c(
               "table",
