@@ -577,7 +577,7 @@ export default function PrecificacaoPage() {
                 c(
                   "tr",
                   null,
-                  c("th", { className: "px-3 py-3" }, "Produto"),
+                  c("th", { className: "sticky left-0 z-20 bg-gray-50 px-3 py-3 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.15)]" }, "Produto"),
                   c(
                     "th",
                     { className: "px-3 py-3 text-right" },
@@ -1001,7 +1001,7 @@ function ProdutoRow({
       },
       c(
         "td",
-        { className: "px-3 py-2" },
+        { className: "sticky left-0 z-10 bg-white px-3 py-2" },
         c(
           "div",
           { className: "font-medium text-gray-900" },
