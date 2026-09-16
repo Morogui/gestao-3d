@@ -1,7 +1,3 @@
-https://raw.githubusercontent.com/Morogui/gestao-3d/main/app/precificacao/page.tsx?nocache=1
-→ https://raw.githubusercontent.com/Morogui/gestao-3d/main/app/precificacao/page.tsx?nocache=1
-Content-Type: text/plain; charset=utf-8
-
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
