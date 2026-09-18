@@ -3,7 +3,7 @@
 import { calcularCusto, formatBRL, GlobalParams, ProdutoInput } from "@/lib/custo";
 import { useEffect, useState } from "react";
 
-function SetaCustoDelta({ produtoId, valor }: { produtoId: number; valor: number }) {
+function SetaCustoDelta({ produtoId, valor }: { produtoId: string; valor: number }) {
   const [delta, setDelta] = useState<number | null>(null);
   useEffect(() => {
     if (!valor || valor <= 0 || typeof window === "undefined") return;
