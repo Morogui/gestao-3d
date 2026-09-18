@@ -253,6 +253,23 @@ export async function GET() {
     const skuLower = (p.sku ?? "").trim().toLowerCase();
     if (skuLower.startsWith("componente:")) return false;
     if (RE_PLACA_COMPONENTE_ISOLADA.test(p.nome ?? "")) return false;
+    // 18/09/2026 -- pedido do Guilherme: "Suporte Papel Toalha" (SKU =
+    // "SUPORTE PAPEL TOALHA VERDE, SUPORTE PAPEL TOALHA VERDE E
+    // DOURADO", cadastrado com 2 SKUs numa unica linha da aba Custo,
+    // por ser a MESMA placa usada nas 2 cores) apareceu na Precificação
+    // como uma 3a linha estranha: nome/SKU combinados numa unica
+    // string E com custo errado (essa linha usa calcularCusto so da
+    // placa principal, ignorando a placa "Lateral" adicional do
+    // composto). As 2 linhas certas, uma por SKU/cor, ja existem mais
+    // abaixo (secao "virtual", via sku_placa) com o custo completo
+    // (Base + Lateral). Entao qualquer produto do catalogo com mais de
+    // 1 SKU cadastrado junto fica de fora daqui -- ele so aparece pelas
+    // linhas virtuais corretas, uma por SKU real.
+    const numSkus = (p.sku ?? "")
+      .split(/[,\n]+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0).length;
+    if (numSkus > 1) return false;
     return true;
   });
 
