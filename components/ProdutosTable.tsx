@@ -48,10 +48,34 @@ export default function ProdutosTable({
         <tbody className="divide-y divide-gray-100">
           {produtos.map((produto) => {
             const custo = calcularCusto(produto, params);
+            const custoA2l =
+              produto.pecasNaPlacaA2l && produto.pecasNaPlacaA2l > 0
+                ? calcularCusto(
+                    {
+                      pesoPlacaG: produto.pesoPlacaA2lG || produto.pesoPlacaG,
+                      tempoPlacaH: produto.tempoPlacaA2lH || produto.tempoPlacaH,
+                      pecasNaPlaca: produto.pecasNaPlacaA2l,
+                    },
+                    params
+                  ).custoUnitario
+                : null;
+            const numComponentes = produto.placasAdicionais?.length ?? 0;
             return (
               <tr key={produto.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3 font-medium text-gray-900">
                   {produto.nome}
+                  {numComponentes > 0 && (
+                    <span
+                      title={`Produto composto por ${numComponentes + 1} placas: ${
+                        produto.nomePlaca || produto.nome
+                      }, ${produto.placasAdicionais
+                        ?.map((c) => c.nome)
+                        .join(", ")}`}
+                      className="ml-2 inline-flex cursor-help items-center rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-700"
+                    >
+                      composto · {numComponentes + 1} placas
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-gray-500">{produto.sku || "—"}</td>
                 <td className="px-4 py-3">
@@ -80,14 +104,7 @@ export default function ProdutosTable({
                   {formatBRL(custo.custoUnitario)}
                 </td>
                 <td className="px-4 py-3 text-right text-gray-700">
-                  {produto.pecasNaPlacaA2l
-                    ? formatBRL(
-                        calcularCusto(
-                          { ...produto, pecasNaPlaca: produto.pecasNaPlacaA2l },
-                          params
-                        ).custoUnitario
-                      )
-                    : "—"}
+                  {custoA2l !== null ? formatBRL(custoA2l) : "—"}
                 </td>
                 <td className="px-4 py-3 text-right whitespace-nowrap">
                   <button

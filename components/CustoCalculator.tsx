@@ -6,6 +6,7 @@ import {
   DEFAULT_PARAMS,
   formatBRL,
   GlobalParams,
+  PlacaComponenteInput,
   ProdutoInput,
 } from "@/lib/custo";
 import {
@@ -53,13 +54,31 @@ function acharDivergenciaSku(
   return null;
 }
 
+function novaPlacaAdicional(): PlacaComponenteInput {
+  return {
+    nome: "",
+    pesoPlacaG: 0,
+    tempoPlacaH: 0,
+    pecasNaPlaca: 1,
+    pecasNaPlacaA2l: null,
+    pesoPlacaA2lG: null,
+    tempoPlacaA2lH: null,
+    pecasPorUnidade: 1,
+  };
+}
+
 const EMPTY_FORM: Omit<ProdutoInput, "id"> = {
   nome: "",
   sku: "",
+  nomePlaca: null,
   pesoPlacaG: 0,
   tempoPlacaH: 0,
   pecasNaPlaca: 1,
   pecasNaPlacaA2l: null,
+  pesoPlacaA2lG: null,
+  tempoPlacaA2lH: null,
+  pecasPorUnidade: 1,
+  placasAdicionais: [],
 };
 
 export default function CustoCalculator() {
@@ -116,6 +135,19 @@ export default function CustoCalculator() {
 
   const preview = useMemo(() => calcularCusto(form, params), [form, params]);
 
+  // Extensão de 2026-09-18: custo total do produto já montado, somando
+  // a placa principal + todas as placas adicionais, cada uma pesada
+  // pela quantidade que ela realmente entra em 1 unidade do produto
+  // final. Só aparece quando existe pelo menos 1 placa adicional.
+  const custoTotalMontado = useMemo(() => {
+    const principal = preview.custoUnitario * (form.pecasPorUnidade || 1);
+    const adicionais = (form.placasAdicionais ?? []).reduce((soma, componente) => {
+      const custoComponente = calcularCusto(componente, params).custoUnitario;
+      return soma + custoComponente * (componente.pecasPorUnidade || 1);
+    }, 0);
+    return principal + adicionais;
+  }, [preview, form.placasAdicionais, form.pecasPorUnidade, params]);
+
   const produtosFiltrados = useMemo(() => {
     const alvo = normalizarBusca(busca);
     if (!alvo) return produtos;
@@ -143,6 +175,29 @@ export default function CustoCalculator() {
   function updateParam<K extends keyof GlobalParams>(key: K, value: number) {
     setParams((prev) => ({ ...prev, [key]: value }));
     setParamsSalvos(false);
+  }
+
+  function addPlacaAdicional() {
+    setForm((prev) => ({
+      ...prev,
+      placasAdicionais: [...(prev.placasAdicionais ?? []), novaPlacaAdicional()],
+    }));
+  }
+
+  function updatePlacaAdicional(index: number, patch: Partial<PlacaComponenteInput>) {
+    setForm((prev) => ({
+      ...prev,
+      placasAdicionais: (prev.placasAdicionais ?? []).map((p, i) =>
+        i === index ? { ...p, ...patch } : p
+      ),
+    }));
+  }
+
+  function removePlacaAdicional(index: number) {
+    setForm((prev) => ({
+      ...prev,
+      placasAdicionais: (prev.placasAdicionais ?? []).filter((_, i) => i !== index),
+    }));
   }
 
   async function handleSalvarParams() {
@@ -175,7 +230,7 @@ export default function CustoCalculator() {
 
   function handleEdit(produto: ProdutoInput) {
     const { id, ...rest } = produto;
-    setForm(rest);
+    setForm({ ...EMPTY_FORM, ...rest });
     setEditingId(id);
   }
 
@@ -226,19 +281,19 @@ export default function CustoCalculator() {
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <div className="block">
-                   <span className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600">
-                                Filamento (R$/kg)
-                                <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">
-                                              Automatico
-                                </span>
-                    </span>
-                    <div className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                      {params.precoFilamentoKg.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                    <span className="mt-1 block text-[11px] text-gray-400">
-                                Media do mes (compras de filamento chegadas) - nao editavel
-                    </span>
+          <div className="block">
+            <span className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600">
+              Filamento (R$/kg)
+              <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">
+                Automatico
+              </span>
+            </span>
+            <div className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+              {params.precoFilamentoKg.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <span className="mt-1 block text-[11px] text-gray-400">
+              Media do mes (compras de filamento chegadas) - nao editavel
+            </span>
           </div>
           <NumberField
             label="Energia (R$/h)"
@@ -267,42 +322,94 @@ export default function CustoCalculator() {
           {editingId ? "Editar produto" : "Novo produto"}
         </h2>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <TextField
-              label="Nome / código do produto"
-              value={form.nome}
-              onChange={(v) => updateForm("nome", v)}
-              required
-            />
-            <TextField
-              label="SKU (opcional)"
-              value={form.sku}
-              onChange={(v) => updateForm("sku", v)}
-            />
-            <NumberField
-              label="Peso da placa (g)"
-              value={form.pesoPlacaG}
-              onChange={(v) => updateForm("pesoPlacaG", v)}
-              step={0.1}
-            />
-            <TimeField
-              label="Tempo da placa (h)"
-              totalHoras={form.tempoPlacaH}
-              onChange={(v) => updateForm("tempoPlacaH", v)}
-            />
-            <NumberField
-              label="Peças na placa"
-              value={form.pecasNaPlaca}
-              onChange={(v) => updateForm("pecasNaPlaca", v)}
-              step={1}
-            />
-            <NumberField
-              label="Peças na placa (A2L, se diferente)"
-              value={form.pecasNaPlacaA2l ?? 0}
-              onChange={(v) => updateForm("pecasNaPlacaA2l", v || null)}
-              step={1}
-            />
-            <div className="flex gap-3 sm:col-span-2">
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <TextField
+                label="Nome / código do produto"
+                value={form.nome}
+                onChange={(v) => updateForm("nome", v)}
+                required
+              />
+              <TextField
+                label="SKU (opcional) — separe por vírgula se mais de 1 SKU usar a mesma placa"
+                value={form.sku}
+                onChange={(v) => updateForm("sku", v)}
+              />
+              <TextField
+                label="Nome desta placa (opcional — em branco usa o nome do produto)"
+                value={form.nomePlaca ?? ""}
+                onChange={(v) => updateForm("nomePlaca", v || null)}
+              />
+              <NumberField
+                label="Peso da placa (g)"
+                value={form.pesoPlacaG}
+                onChange={(v) => updateForm("pesoPlacaG", v)}
+                step={0.1}
+              />
+              <TimeField
+                label="Tempo da placa (h)"
+                totalHoras={form.tempoPlacaH}
+                onChange={(v) => updateForm("tempoPlacaH", v)}
+              />
+              <NumberField
+                label="Peso da placa (A2L, se diferente)"
+                value={form.pesoPlacaA2lG ?? 0}
+                onChange={(v) => updateForm("pesoPlacaA2lG", v || null)}
+                step={0.1}
+              />
+              <TimeField
+                label="Tempo da placa (A2L)"
+                totalHoras={form.tempoPlacaA2lH ?? 0}
+                onChange={(v) => updateForm("tempoPlacaA2lH", v || null)}
+              />
+              <NumberField
+                label="Peças na placa"
+                value={form.pecasNaPlaca}
+                onChange={(v) => updateForm("pecasNaPlaca", v)}
+                step={1}
+              />
+              <NumberField
+                label="Peças na placa (A2L, se diferente)"
+                value={form.pecasNaPlacaA2l ?? 0}
+                onChange={(v) => updateForm("pecasNaPlacaA2l", v || null)}
+                step={1}
+              />
+              <NumberField
+                label="Peças desta placa por unidade do produto"
+                value={form.pecasPorUnidade ?? 1}
+                onChange={(v) => updateForm("pecasPorUnidade", v || 1)}
+                step={1}
+              />
+            </div>
+
+            {/* Placas adicionais — pedido do Guilherme em 2026-09-18:
+                produtos como "Suporte Carro" e "Suporte Papel Toalha"
+                são montados com mais de uma placa (cada uma imprimindo
+                uma peça diferente do conjunto, em quantidades
+                diferentes). A placa principal continua sendo cadastrada
+                nos campos acima; aqui só entram as placas EXTRAS. */}
+            <div className="flex flex-col gap-3 rounded-md border border-dashed border-gray-300 p-3">
+              <span className="text-xs font-semibold text-gray-700">
+                Placas adicionais (produto composto por mais de 1 placa)
+              </span>
+              {(form.placasAdicionais ?? []).map((componente, index) => (
+                <ComponenteEditor
+                  key={index}
+                  componente={componente}
+                  onChange={(patch) => updatePlacaAdicional(index, patch)}
+                  onRemover={() => removePlacaAdicional(index)}
+                />
+              ))}
+              <button
+                type="button"
+                onClick={addPlacaAdicional}
+                className="w-fit rounded-md border border-blue-300 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
+              >
+                + Nova placa
+              </button>
+            </div>
+
+            <div className="flex gap-3">
               <button
                 type="submit"
                 className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
@@ -343,10 +450,46 @@ export default function CustoCalculator() {
               {Boolean(form.pecasNaPlacaA2l) && form.pecasNaPlacaA2l! > 0 && (
                 <Row
                   label="Custo unitário (A2L)"
-                  value={formatBRL(calcularCusto({ ...form, pecasNaPlaca: form.pecasNaPlacaA2l! }, params).custoUnitario)}
+                  value={formatBRL(
+                    calcularCusto(
+                      {
+                        pesoPlacaG: form.pesoPlacaA2lG || form.pesoPlacaG,
+                        tempoPlacaH: form.tempoPlacaA2lH || form.tempoPlacaH,
+                        pecasNaPlaca: form.pecasNaPlacaA2l!,
+                      },
+                      params
+                    ).custoUnitario
+                  )}
                 />
               )}
             </dl>
+
+            {(form.placasAdicionais ?? []).length > 0 && (
+              <div className="mt-3 border-t border-gray-200 pt-3">
+                <p className="mb-1.5 text-xs font-semibold text-gray-600">
+                  Placas adicionais
+                </p>
+                <dl className="space-y-1.5">
+                  {(form.placasAdicionais ?? []).map((componente, index) => {
+                    const custoComponente = calcularCusto(componente, params);
+                    return (
+                      <Row
+                        key={index}
+                        label={`${componente.nome || `Placa ${index + 2}`} (${
+                          componente.pecasPorUnidade || 1
+                        }× por unidade)`}
+                        value={formatBRL(custoComponente.custoUnitario)}
+                      />
+                    );
+                  })}
+                  <Row
+                    label="Custo total do produto (montado)"
+                    value={formatBRL(custoTotalMontado)}
+                    bold
+                  />
+                </dl>
+              </div>
+            )}
           </div>
         </form>
       </section>
@@ -528,5 +671,85 @@ function TimeField({
         </div>
       </div>
     </label>
+  );
+}
+
+// Linha de edição de uma placa adicional (componente) do produto
+// composto — mesmos campos da placa principal (nome, peso, tempo A1/
+// A2L, peças A1/A2L), mais "peças por unidade do produto" pra cobrir
+// casos como o Suporte Papel Toalha (1× Base + 2× Lateral por unidade
+// vendida).
+function ComponenteEditor({
+  componente,
+  onChange,
+  onRemover,
+}: {
+  componente: PlacaComponenteInput;
+  onChange: (patch: Partial<PlacaComponenteInput>) => void;
+  onRemover: () => void;
+}) {
+  return (
+    <div className="rounded-md bg-gray-50 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <input
+          type="text"
+          value={componente.nome}
+          onChange={(e) => onChange({ nome: e.target.value })}
+          onFocus={(e) => e.target.select()}
+          placeholder="Nome desta placa (ex: Lateral, Gancho)"
+          required
+          className="w-full max-w-xs rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
+        <button
+          type="button"
+          onClick={onRemover}
+          className="shrink-0 text-xs text-red-500 hover:underline"
+        >
+          remover
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <NumberField
+          label="Peso da placa (g)"
+          value={componente.pesoPlacaG}
+          onChange={(v) => onChange({ pesoPlacaG: v })}
+          step={0.1}
+        />
+        <TimeField
+          label="Tempo da placa (h)"
+          totalHoras={componente.tempoPlacaH}
+          onChange={(v) => onChange({ tempoPlacaH: v })}
+        />
+        <NumberField
+          label="Peças na placa"
+          value={componente.pecasNaPlaca}
+          onChange={(v) => onChange({ pecasNaPlaca: v })}
+          step={1}
+        />
+        <NumberField
+          label="Peso da placa (A2L, se diferente)"
+          value={componente.pesoPlacaA2lG ?? 0}
+          onChange={(v) => onChange({ pesoPlacaA2lG: v || null })}
+          step={0.1}
+        />
+        <TimeField
+          label="Tempo da placa (A2L)"
+          totalHoras={componente.tempoPlacaA2lH ?? 0}
+          onChange={(v) => onChange({ tempoPlacaA2lH: v || null })}
+        />
+        <NumberField
+          label="Peças na placa (A2L, se diferente)"
+          value={componente.pecasNaPlacaA2l ?? 0}
+          onChange={(v) => onChange({ pecasNaPlacaA2l: v || null })}
+          step={1}
+        />
+        <NumberField
+          label="Peças por unidade do produto"
+          value={componente.pecasPorUnidade ?? 1}
+          onChange={(v) => onChange({ pecasPorUnidade: v || 1 })}
+          step={1}
+        />
+      </div>
+    </div>
   );
 }
