@@ -474,6 +474,19 @@ export async function GET() {
     if (skuJaEmProdutos.has(chave)) continue;
     if (/^mlb\d+$/i.test(linha.sku.trim())) continue;
     if (/^\d+$/.test(linha.sku.trim())) continue;
+    // 18/09/2026 -- mesmo motivo do filtro "+" lá em cima (produto 23
+    // "Suporte Cortina C (com parafuso)"): existe uma linha em
+    // sku_placa com esse SKU combinado ("... + ...") ligada à placa
+    // 103. Antes ela ficava escondida só porque o produto 23 (com o
+    // mesmo texto de SKU) já estava em skuJaEmProdutos -- ao tirar o
+    // produto 23 da lista normal (filtro acima), essa linha de
+    // sku_placa passou a gerar uma linha "virtual" com o MESMO
+    // problema (nome/SKU combinado, duplicando "Suporte Cortina C
+    // Branco 1un/2un" e "PAR DE GANCHOS CORTINA COM PARAFUSO
+    // BRANCO/PRETO" que já aparecem certos em linhas próprias). Então
+    // ignora aqui também qualquer linha de sku_placa cujo SKU
+    // combine múltiplos itens com "+".
+    if (/\s\+\s/.test(linha.sku)) continue;
     const pecasPorPlaca = Number(linha.pecas_por_placa) || 1;
     const custoUnitarioPlaca = calcularCusto(
       {
