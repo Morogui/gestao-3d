@@ -19,6 +19,7 @@ interface ProdutoPrecificacao {
   custoProducaoCalculado: number;
   pesoEnvioKg: number;
   embalagemCusto: number;
+  caixaEnvioId: number | null;
   margemDesejadaPct: number;
   reembolsoFlexML: number;
   precoVendaML: number | null;
@@ -36,6 +37,22 @@ interface ProdutoPrecificacao {
   tipoAnuncioML: TipoAnuncioML;
   resultadoML: ResultadoPlataforma | null;
   resultadoShopee: ResultadoPlataforma | null;
+}
+
+// 18/09/2026 -- catálogo de caixas de envio (ver lib/caixas.ts). Cada
+// SKU pode escolher qual caixa usa (dropdown na coluna "Caixa de
+// envio"); quando escolhida, o preço da caixa substitui o valor
+// manual/padrão da coluna Embalagem.
+interface CaixaEnvio {
+  id: number;
+  nome: string;
+  comprimentoCm: number | null;
+  larguraCm: number | null;
+  alturaCm: number | null;
+  preco: number;
+  pesoCaixaG: number | null;
+  fornecedor: string | null;
+  ativa: boolean;
 }
 
 type AbaPlataforma = "todos" | "ml" | "shopee";
@@ -116,6 +133,7 @@ export default function PrecificacaoPage() {
   const [configSalva, setConfigSalva] = useState(true);
   const [salvandoConfig, setSalvandoConfig] = useState(false);
   const [produtos, setProdutos] = useState<ProdutoPrecificacao[]>([]);
+  const [caixas, setCaixas] = useState<CaixaEnvio[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState("");
   const [aba, setAba] = useState<AbaPlataforma>("todos");
@@ -152,14 +170,17 @@ export default function PrecificacaoPage() {
   }, [produtos]);
 
   async function carregarTudo() {
-    const [configRes, produtosRes] = await Promise.all([
+    const [configRes, produtosRes, caixasRes] = await Promise.all([
       fetch("/api/precificacao/config"),
       fetch("/api/precificacao/produtos"),
+      fetch("/api/precificacao/caixas"),
     ]);
     const configData = await configRes.json();
     const produtosData = await produtosRes.json();
+    const caixasData = await caixasRes.json();
     setConfig(configData);
     setProdutos(produtosData);
+    setCaixas(caixasData);
     setLoading(false);
   }
 
@@ -238,6 +259,7 @@ export default function PrecificacaoPage() {
       enviadoPorFlexML: produto.enviadoPorFlexML,
       enviadoPorFull: produto.enviadoPorFull,
       embalagemCusto: produto.embalagemCusto,
+      caixaEnvioId: produto.caixaEnvioId,
       margemDesejadaPct: produto.margemDesejadaPct,
       custoProducao:
         produto.custoProducao !== produto.custoProducaoCalculado
@@ -358,9 +380,10 @@ export default function PrecificacaoPage() {
   // e Comissão ML visível) pra deixar claro qual comissão está sendo
   // usada em cada produto -- ver lib/precificacao.ts. 15/09/2026 --
   // mais 2 colunas novas (Preço Anunciado e Rebate ML), ver comentario
-  // no topo de lib/precificacao.ts.
+  // no topo de lib/precificacao.ts. 18/09/2026 -- +1 coluna sempre
+  // visível (Caixa de envio), então a base do colSpan sobe de 3 pra 4.
   const colSpanDetalhes =
-    3 + (mostrarML ? 12 : 0) + (mostrarShopee ? 5 : 0) + 1;
+    4 + (mostrarML ? 12 : 0) + (mostrarShopee ? 5 : 0) + 1;
 
   return c(
     "div",
@@ -402,7 +425,7 @@ export default function PrecificacaoPage() {
       c(
         "p",
         { className: "mb-4 rounded-md bg-blue-50 p-3 text-xs text-blue-900" },
-        "Comissão ML agora varia por produto: marque na coluna \"Anúncio\" (aba Mercado Livre) se o anúncio é Clássico (11,5%) ou Premium (16,5%) — a Margem ML usa a comissão real do tipo marcado, e a coluna \"Comissão ML\" mostra o percentual e o valor em R$ usados na conta. Tarifa por peso do ML e comissão + tarifa fixa da Shopee já vêm calibradas com dados reais verificados em 19/08/2026 — não precisam de ajuste manual. Embalagem e Reembolso Flex ML são configurados por produto, direto na tabela abaixo (o reembolso varia por peso/tamanho de cada produto, não faz sentido um valor único pra conta inteira). Ads e Afiliado também têm um check por produto na tabela (igual o Flex) — o % abaixo é o valor usado quando o check está marcado, mas se o produto está ou não usando cada modalidade se decide linha a linha. Produto enviado por Mercado Envios Full: marque a coluna \"Full\" (aba Mercado Livre) — comissão e tarifa por peso continuam as mesmas (verificado com pedidos reais em 14/09/2026), mas o custo de Flex é zerado e some o custo de Armazenagem Full (configurável abaixo, ainda pendente de confirmação do valor real na fatura do ML). Full e Flex são mutuamente exclusivos: marcar um desmarca o outro. Preço ML x Preço Anunciado (15/09/2026): \"Preço ML\" é o preço que está sendo cobrado de fato (o promocional, quando o anúncio está numa promoção ativa) — é esse valor que entra na conta de comissão/imposto/margem. \"Preço Anunciado\" é só o preço \"De\" (cheio) do anúncio, pra referência/comparação, e não entra no cálculo. Rebate ML (R$): em algumas campanhas do ML (ex: \"Com redução de tarifas\", confirmado direto na conta) o próprio Mercado Livre reduz a comissão que cobra por venda — preencha esse valor por produto (o texto \"Reduzimos R$X das suas tarifas por cada venda\" aparece na tela da promoção) pra a margem refletir esse ganho real. Clique em \"Detalhes\" em qualquer produto pra ver o caminho completo de custos (comissão bruta, rebate, tarifa, imposto, ads, afiliado, embalagem, Flex/Full e custo de produção) até o lucro final. Imposto, os percentuais de ADS/afiliado, o Custo do Flex ML e o Custo de Armazenagem Full ML continuam editáveis aqui e ainda precisam de confirmação."
+        "Comissão ML agora varia por produto: marque na coluna \"Anúncio\" (aba Mercado Livre) se o anúncio é Clássico (11,5%) ou Premium (16,5%) — a Margem ML usa a comissão real do tipo marcado, e a coluna \"Comissão ML\" mostra o percentual e o valor em R$ usados na conta. Tarifa por peso do ML e comissão + tarifa fixa da Shopee já vêm calibradas com dados reais verificados em 19/08/2026 — não precisam de ajuste manual. Embalagem e Reembolso Flex ML são configurados por produto, direto na tabela abaixo (o reembolso varia por peso/tamanho de cada produto, não faz sentido um valor único pra conta inteira). Caixa de envio (18/09/2026): escolha o tamanho de caixa usado por cada SKU na coluna \"Caixa de envio\" — o preço da caixa passa a valer como custo de embalagem automaticamente (some a coluna Embalagem manual). Ads e Afiliado também têm um check por produto na tabela (igual o Flex) — o % abaixo é o valor usado quando o check está marcado, mas se o produto está ou não usando cada modalidade se decide linha a linha. Produto enviado por Mercado Envios Full: marque a coluna \"Full\" (aba Mercado Livre) — comissão e tarifa por peso continuam as mesmas (verificado com pedidos reais em 14/09/2026), mas o custo de Flex é zerado e some o custo de Armazenagem Full (configurável abaixo, ainda pendente de confirmação do valor real na fatura do ML). Full e Flex são mutuamente exclusivos: marcar um desmarca o outro. Preço ML x Preço Anunciado (15/09/2026): \"Preço ML\" é o preço que está sendo cobrado de fato (o promocional, quando o anúncio está numa promoção ativa) — é esse valor que entra na conta de comissão/imposto/margem. \"Preço Anunciado\" é só o preço \"De\" (cheio) do anúncio, pra referência/comparação, e não entra no cálculo. Rebate ML (R$): em algumas campanhas do ML (ex: \"Com redução de tarifas\", confirmado direto na conta) o próprio Mercado Livre reduz a comissão que cobra por venda — preencha esse valor por produto (o texto \"Reduzimos R$X das suas tarifas por cada venda\" aparece na tela da promoção) pra a margem refletir esse ganho real. Clique em \"Detalhes\" em qualquer produto pra ver o caminho completo de custos (comissão bruta, rebate, tarifa, imposto, ads, afiliado, embalagem, Flex/Full e custo de produção) até o lucro final. Imposto, os percentuais de ADS/afiliado, o Custo do Flex ML e o Custo de Armazenagem Full ML continuam editáveis aqui e ainda precisam de confirmação."
       ),
       c(
         "div",
@@ -597,6 +620,15 @@ export default function PrecificacaoPage() {
                     { className: "px-3 py-3 text-right" },
                     "Embalagem (R$)"
                   ),
+                  c(
+                    "th",
+                    {
+                      className: "px-3 py-3 text-left",
+                      title:
+                        "Caixa de envio usada por este SKU (ver tamanhos/preços em lib/caixas.ts). Quando escolhida, o preço da caixa passa a valer como custo de embalagem, substituindo o valor manual da coluna Embalagem.",
+                    },
+                    "Caixa de envio"
+                  ),
                   ...(mostrarML
                     ? [
                         c(
@@ -741,10 +773,7 @@ export default function PrecificacaoPage() {
                     ? [
                         c(
                           "th",
-                          {
-                            key: "th-preco-shopee",
-                            className: "px-3 py-3 text-right",
-                          },
+                          { key: "th-preco-shopee", className: "px-3 py-3 text-right" },
                           "Preço Shopee"
                         ),
                         c(
@@ -767,8 +796,6 @@ export default function PrecificacaoPage() {
                           {
                             key: "th-afiliado-shopee",
                             className: "px-3 py-3 text-center",
-                            title:
-                              "Considera comissão de afiliados no cálculo da margem deste produto",
                           },
                           c(CabecalhoComBulk, {
                             label: "Afiliado Shopee",
@@ -806,6 +833,7 @@ export default function PrecificacaoPage() {
                   c(ProdutoRow, {
                     key: produto.id,
                     produto,
+                    caixas,
                     aba,
                     mostrarML,
                     mostrarShopee,
@@ -861,6 +889,7 @@ function CabecalhoComBulk({
 
 function ProdutoRow({
   produto,
+  caixas,
   aba,
   mostrarML,
   mostrarShopee,
@@ -870,6 +899,7 @@ function ProdutoRow({
   onSalvar,
 }: {
   produto: ProdutoPrecificacao;
+  caixas: CaixaEnvio[];
   aba: AbaPlataforma;
   mostrarML: boolean;
   mostrarShopee: boolean;
@@ -894,8 +924,8 @@ function ProdutoRow({
     aba === "ml"
       ? !produto.ativoML
       : aba === "shopee"
-        ? !produto.ativoShopee
-        : !produto.ativoML && !produto.ativoShopee;
+      ? !produto.ativoShopee
+      : !produto.ativoML && !produto.ativoShopee;
 
   function toggleAtivo(plataforma: "ml" | "shopee") {
     if (plataforma === "ml") {
@@ -974,6 +1004,14 @@ function ProdutoRow({
     setTimeout(onSalvar, 0);
   }
 
+  // 18/09/2026 -- troca de caixa de envio: valor "" volta pro modo
+  // manual (embalagem_custo/embalagemPadrao), qualquer outro valor é
+  // o id da caixa escolhida.
+  function onChangeCaixa(valor: string) {
+    onChangeLocal({ caixaEnvioId: valor === "" ? null : Number(valor) });
+    setTimeout(onSalvar, 0);
+  }
+
   const sufixoPlataforma = mostrarML && mostrarShopee;
 
   // 14/09/2026 -- classe extra pros inputs/checkboxes quando a linha
@@ -989,6 +1027,7 @@ function ProdutoRow({
     "w-20 rounded border border-gray-200 px-2 py-1 text-right text-sm disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400";
   const classeCheckboxBase =
     "h-4 w-4 disabled:cursor-not-allowed disabled:opacity-40";
+  const caixaSelecionada = caixas.find((cx) => cx.id === produto.caixaEnvioId);
 
   return c(
     React.Fragment,
@@ -1058,12 +1097,49 @@ function ProdutoRow({
           step: 0.05,
           min: 0,
           value: produto.embalagemCusto,
-          disabled: somenteLeitura,
+          disabled: somenteLeitura || produto.caixaEnvioId != null,
           onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
             onChangeLocal({ embalagemCusto: parseFloat(e.target.value) || 0 }),
           onBlur: onSalvar,
           className: classeInputBase,
-        })
+        }),
+        produto.caixaEnvioId != null
+          ? c(
+              "div",
+              { className: "mt-0.5 text-[10px] text-gray-400" },
+              "via caixa"
+            )
+          : null
+      ),
+      c(
+        "td",
+        { className: "px-3 py-2 text-left" },
+        c(
+          "select",
+          {
+            value: produto.caixaEnvioId ?? "",
+            disabled: somenteLeitura,
+            onChange: (e: React.ChangeEvent<HTMLSelectElement>) =>
+              onChangeCaixa(e.target.value),
+            className:
+              "w-36 rounded border border-gray-200 px-2 py-1 text-xs disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400",
+          },
+          c("option", { value: "" }, "— (manual)"),
+          caixas.map((cx) =>
+            c(
+              "option",
+              { key: cx.id, value: cx.id },
+              `${cx.nome} · ${formatBRL(cx.preco)}`
+            )
+          )
+        ),
+        caixaSelecionada
+          ? c(
+              "div",
+              { className: "mt-0.5 text-[10px] text-gray-400" },
+              `${caixaSelecionada.comprimentoCm ?? "?"}x${caixaSelecionada.larguraCm ?? "?"}x${caixaSelecionada.alturaCm ?? "?"}cm`
+            )
+          : null
       ),
       ...(mostrarML
         ? [
@@ -1389,8 +1465,8 @@ function ProdutoRow({
                     ? "Inativar ML"
                     : "Inativar"
                   : sufixoPlataforma
-                    ? "Reativar ML"
-                    : "Reativar"
+                  ? "Reativar ML"
+                  : "Reativar"
               )
             : null,
           mostrarShopee && !somenteLeitura
@@ -1412,8 +1488,8 @@ function ProdutoRow({
                     ? "Inativar Shopee"
                     : "Inativar"
                   : sufixoPlataforma
-                    ? "Reativar Shopee"
-                    : "Reativar"
+                  ? "Reativar Shopee"
+                  : "Reativar"
               )
             : null,
           c(
@@ -1624,4 +1700,3 @@ function NumberField({
     })
   );
 }
-
