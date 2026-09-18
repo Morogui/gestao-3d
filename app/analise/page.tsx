@@ -1,13 +1,16 @@
 import { getAnaliseAnuncios } from "@/lib/ml-analise";
 import { getConcorrencia } from "@/lib/concorrencia";
+import { getCategoriaTier } from "@/lib/categoria-tier";
 import AnaliseAnunciosTable from "@/components/AnaliseAnunciosTable";
 import ConcorrenciaTable from "@/components/ConcorrenciaTable";
+import CategoriaTierSection from "@/components/CategoriaTierSection";
 
 export const dynamic = "force-dynamic";
 
 export default async function AnalisePage() {
   const resultado = await getAnaliseAnuncios();
   const concorrencia = await getConcorrencia();
+  const categoriaTier = await getCategoriaTier();
 
   const secaoConcorrencia = (
     <div className="space-y-3">
@@ -24,6 +27,17 @@ export default async function AnalisePage() {
     </div>
   );
 
+  // Categoria (Tier) — pedido do Guilherme em 2026-09-17: movida pra cá
+  // da aba Full (ver components/CategoriaTierSection.tsx e
+  // lib/categoria-tier.ts). Não depende da sessão da ML (é tudo dado do
+  // nosso catálogo), então aparece mesmo se o ML estiver desconectado.
+  const secaoCategoriaTier = (
+    <CategoriaTierSection
+      fullMercadoLivre={categoriaTier.fullMercadoLivre}
+      geralMlShopee={categoriaTier.geralMlShopee}
+    />
+  );
+
   if (!resultado.connected) {
     return (
       <div className="space-y-6">
@@ -33,6 +47,7 @@ export default async function AnalisePage() {
             Conectar Mercado Livre
           </a>
         </div>
+        {secaoCategoriaTier}
         {secaoConcorrencia}
       </div>
     );
@@ -48,6 +63,7 @@ export default async function AnalisePage() {
             Reconectar Mercado Livre
           </a>
         </div>
+        {secaoCategoriaTier}
         {secaoConcorrencia}
       </div>
     );
@@ -93,6 +109,8 @@ export default async function AnalisePage() {
       </div>
 
       <AnaliseAnunciosTable grupos={grupos} />
+
+      {secaoCategoriaTier}
 
       {secaoConcorrencia}
     </div>
