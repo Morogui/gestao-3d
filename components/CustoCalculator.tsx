@@ -248,6 +248,31 @@ export default function CustoCalculator() {
     setEditingId(null);
   }
 
+  // Pedido do Guilherme em 2026-09-18: "STAM-01 eu acabei de adicionar
+  // uma nova variação de cor STAM-01 Vermelho. A placa do STAM-01 Bege
+  // é a mesma que usa para o vermelho, só temos uma variação de cor,
+  // preciso ter isso fácil quando eu criar uma cor de um produto que já
+  // tem a placa cadastrada e ele conseguir puxar certinho." — em vez de
+  // recadastrar peso/tempo/peças do zero pra cada variação de cor, isso
+  // só adiciona o SKU novo à MESMA placa (principal + adicionais) que o
+  // produto já tem, reaproveitando o cadastro por completo. É
+  // literalmente um "editar produto, acrescentar SKU, salvar" — só que
+  // em 1 clique + 1 SKU digitado.
+  async function handleNovaCor(produto: ProdutoInput) {
+    const novoSku = window.prompt(
+      `Nova cor/variação de "${produto.nome}" — mesma placa "${
+        produto.nomePlaca || produto.nome
+      }".\n\nDigite o SKU da nova cor (ex: STAM-01 VERMELHO):`
+    );
+    if (!novoSku || !novoSku.trim()) return;
+    const skuAtual = produto.sku ? produto.sku.trim() : "";
+    const skuAtualizado = skuAtual
+      ? `${skuAtual}, ${novoSku.trim()}`
+      : novoSku.trim();
+    const atualizado = await atualizarProduto({ ...produto, sku: skuAtualizado });
+    setProdutos((prev) => prev.map((p) => (p.id === produto.id ? atualizado : p)));
+  }
+
   if (loading) {
     return (
       <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
@@ -537,6 +562,7 @@ export default function CustoCalculator() {
             params={params}
             onEdit={handleEdit}
             onDelete={handleDelete}
+            onNovaCor={handleNovaCor}
             divergencias={divergencias}
           />
         )}

@@ -7,6 +7,13 @@ interface ProdutosTableProps {
   params: GlobalParams;
   onEdit: (produto: ProdutoInput) => void;
   onDelete: (id: string) => void;
+  /** Pedido do Guilherme em 2026-09-18: quando ele cadastra uma nova
+   * variação de cor de um produto que já tem a placa cadastrada (ex:
+   * "STAM-01 Vermelho" usa a MESMA placa do "STAM-01 Bege"), precisa
+   * ser fácil vincular o SKU novo sem redigitar peso/tempo/peças —
+   * "Nova cor" só adiciona o SKU aos mesmos vínculos que o produto já
+   * tem (placa principal + adicionais), reaproveitando tudo. */
+  onNovaCor: (produto: ProdutoInput) => void;
   /** Pedido do Guilherme em 2026-08-18: avisar quando o SKU cadastrado
    * no Custo parece divergir do SKU real usado numa venda ainda nao
    * identificada (o vinculo automatico so funciona se o SKU bater). */
@@ -18,6 +25,7 @@ export default function ProdutosTable({
   params,
   onEdit,
   onDelete,
+  onNovaCor,
   divergencias,
 }: ProdutosTableProps) {
   if (produtos.length === 0) {
@@ -107,6 +115,13 @@ export default function ProdutosTable({
                   {custoA2l !== null ? formatBRL(custoA2l) : "—"}
                 </td>
                 <td className="px-4 py-3 text-right whitespace-nowrap">
+                  <button
+                    onClick={() => onNovaCor(produto)}
+                    title="Vincular uma nova cor/SKU a esta MESMA placa, sem redigitar peso/tempo/peças"
+                    className="mr-3 text-emerald-600 hover:underline"
+                  >
+                    + Nova cor
+                  </button>
                   <button
                     onClick={() => onEdit(produto)}
                     className="mr-3 text-blue-600 hover:underline"
