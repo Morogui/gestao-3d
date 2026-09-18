@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -89,6 +90,13 @@ interface GrupoAgendamento {
   pecasPorUnidade: Record<number, number>;
   vendidoFull7d: number;
   recomendado: number;
+  // Tier de demanda da placa (A/B/C) — pedido do Guilherme em
+  // 2026-09-17: precisa aparecer no painel "Agendar Full" pra poder
+  // aplicar um multiplicador diferente por Tier (A recebe mais reforço
+  // que C). "C" é o default conservador pros produtos adicionados
+  // manualmente pela busca (sem uma placa "recomendada" de origem pra
+  // puxar o tier real).
+  tier: "A" | "B" | "C";
 }
 
 export default function FullPage() {
@@ -193,6 +201,7 @@ export default function FullPage() {
           pecasPorUnidade: { [l.placaId]: l.pecasPorUnidade },
           vendidoFull7d: l.vendidoFull7d,
           recomendado: l.recomendacaoEnvio,
+          tier: l.tier,
         });
       }
     }
@@ -397,7 +406,11 @@ export default function FullPage() {
       </h2>
       <p className="mb-3 text-xs text-gray-500">
       SKUs que não tiveram nenhuma venda no Full nos últimos 7 dias
-      (período {periodo?.inicio} a {periodo?.fim}).
+      (período {periodo?.inicio} a {periodo?.fim}). Estoque e Tier ficaram
+      de fora daqui de propósito — pedido do Guilherme em 2026-09-17:
+      estoque só faz sentido mostrar na aba Estoque (o estoque do Full é
+      um número separado do estoque físico), e o Tier/categoria agora
+      vive na aba Análise.
       </p>
         {semVendaFull.length === 0 ? (
       <p className="text-xs text-gray-400">
@@ -409,24 +422,18 @@ export default function FullPage() {
       <thead className="bg-gray-50 text-left font-semibold uppercase text-gray-500">
       <tr>
       <th className="px-3 py-2">SKU / Placa</th>
-      <th className="px-3 py-2">Tier</th>
-      <th className="px-3 py-2 text-right">Estoque no Full</th>
       </tr>
       </thead>
       <tbody className="divide-y divide-gray-100">
         {semVendaFull
           .slice()
-          .sort((a, b) => b.estoqueFullAtual - a.estoqueFullAtual)
+          .sort((a, b) => (a.sku || a.nome).localeCompare(b.sku || b.nome))
           .map((l) => (
             <tr key={l.chave}>
             <td className="px-3 py-2">
             <p className="font-medium text-gray-900">{l.sku || l.nome}</p>
             <p className="text-gray-400">{l.nome}</p>
             </td>
-            <td className="px-3 py-2">
-            <TierBadge tier={l.tier} />
-            </td>
-            <td className="px-3 py-2 text-right text-gray-700">{l.estoqueFullAtual}</td>
             </tr>
             ))}
       </tbody>
@@ -668,12 +675,31 @@ function AgendamentoFullPanel({
   const [incluidos, setIncluidos] = useState<Record<string, boolean>>({});
   const [dataEnvio, setDataEnvio] = useState(todaySP());
   const [enviando, setEnviando] = useState(false);
-    const [buscaProduto, setBuscaProduto] = useState("");
+  const [buscaProduto, setBuscaProduto] = useState("");
   const [resultadosBusca, setResultadosBusca] = useState<SkuResult[]>([]);
   const [gruposExtras, setGruposExtras] = useState<GrupoAgendamento[]>([]);
   const todosGrupos = [...grupos, ...gruposExtras];
-  
+
   const [estoquePorPlaca, setEstoquePorPlaca] = useState<Record<number, number>>({});
+
+  // Multiplicador por Tier (A/B/C) — pedido do Guilherme em 2026-09-17:
+  // "devemos ter... o multiplicador, para Tier A - B - C". Reaproveita
+  // os mesmos defaults já usados na Curva ABC dos clientes (ver
+  // MULTIPLICADORES_CURVA_DEFAULT em lib/client-ml-orders.ts) como
+  // ponto de partida, mas aqui é só um ajuste rápido dentro do painel —
+  // não mexe no multiplicador global da aba (aquele continua sendo o
+  // que já calcula a recomendação base de cada linha).
+  const [multiplicadoresTier, setMultiplicadoresTier] = useState<Record<"A" | "B" | "C", string>>(
+    { A: "1.4", B: "1.1", C: "1.0" }
+  );
+
+  // "Cobrir semana ou quinzena" — pedido do Guilherme em 2026-09-17:
+  // antes de revisar produto por produto, ele precisa decidir de uma
+  // vez se esse envio cobre 1 semana (padrão, recomendação normal) ou
+  // 2 semanas (quinzena, já que às vezes só vai montar o próximo Full
+  // daqui a 15 dias). "Quinzena" dobra a base (vendido no Full x2) antes
+  // de aplicar o multiplicador por Tier.
+  const [cobertura, setCobertura] = useState<"semana" | "quinzena">("semana");
 
   useEffect(() => {
     if (!aberto) return;
@@ -711,6 +737,7 @@ function AgendamentoFullPanel({
       pecasPorUnidade: { [r.placa_id]: Number(r.pecas_por_unidade) || 1 },
       vendidoFull7d: 0,
       recomendado: 0,
+      tier: "C",
     };
     setGruposExtras((prev) => [...prev, novoGrupo]);
     setIncluidos((prev) => ({ ...prev, [chave]: true }));
@@ -719,6 +746,30 @@ function AgendamentoFullPanel({
     setResultadosBusca([]);
   }
 
+  // Aplica o multiplicador de Tier (A/B/C) em cima do vendido no Full —
+  // só recalcula os grupos que vieram da recomendação real (têm
+  // vendidoFull7d de origem); produtos adicionados manualmente pela
+  // busca não são tocados, já que a quantidade ali é decisão do
+  // Guilherme, não uma recomendação. "Quinzena" dobra a base antes de
+  // aplicar o multiplicador do Tier.
+  function aplicarMultiplicadores() {
+    const mult = {
+      A: Number(multiplicadoresTier.A.replace(",", ".")) || 1,
+      B: Number(multiplicadoresTier.B.replace(",", ".")) || 1,
+      C: Number(multiplicadoresTier.C.replace(",", ".")) || 1,
+    };
+    const fatorCobertura = cobertura === "quinzena" ? 2 : 1;
+    setQuantidades((prev) => {
+      const proximo = { ...prev };
+      for (const g of grupos) {
+        if (g.vendidoFull7d <= 0) continue;
+        proximo[g.chaveGrupo] = String(
+          Math.round(g.vendidoFull7d * fatorCobertura * mult[g.tier])
+        );
+      }
+      return proximo;
+    });
+  }
 
   useEffect(() => {
     if (!aberto) return;
@@ -727,7 +778,70 @@ function AgendamentoFullPanel({
     );
     setIncluidos(Object.fromEntries(grupos.map((g) => [g.chaveGrupo, true])));
     setDataEnvio(todaySP());
+    setCobertura("semana");
   }, [aberto, grupos]);
+
+  // Preview de risco por linha — pedido do Guilherme em 2026-09-17:
+  // "quando voce for me dar a recomendacao deve me mostrar... a %
+  // do risco de nao dar tempo de produzir esse produto para enviar
+  // no full caso eu nao tiver estoque suficiente". Reaproveita a mesma
+  // rota já usada no preview de "Envios planejados"
+  // (/api/full/envios/viabilidade, ver lib/capacidade.ts) — só que
+  // aqui roda em lote (debounced) pra toda linha incluída, sempre que
+  // quantidade ou data mudam.
+  const [risco, setRisco] = useState<
+    Record<string, { status: "loading" | "ok" | "erro"; percentual: number | null; semTempo: boolean }>
+  >({});
+
+  useEffect(() => {
+    if (!aberto || !dataEnvio) return;
+    const alvo = todosGrupos.filter(
+      (g) => incluidos[g.chaveGrupo] && Number(quantidades[g.chaveGrupo]) > 0
+    );
+    if (alvo.length === 0) return;
+    const timeout = setTimeout(async () => {
+      setRisco((prev) => {
+        const proximo = { ...prev };
+        for (const g of alvo) proximo[g.chaveGrupo] = { status: "loading", percentual: null, semTempo: false };
+        return proximo;
+      });
+      await Promise.all(
+        alvo.map(async (g) => {
+          try {
+            const res = await fetch("/api/full/envios/viabilidade", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                itens: g.placaIds.map((id) => ({
+                  placaId: id,
+                  pecasPorUnidade: g.pecasPorUnidade[id] ?? 1,
+                })),
+                quantidade: Number(quantidades[g.chaveGrupo]),
+                dataLimite: dataEnvio,
+              }),
+            });
+            if (!res.ok) throw new Error("falha");
+            const data = await res.json();
+            setRisco((prev) => ({
+              ...prev,
+              [g.chaveGrupo]: {
+                status: "ok",
+                percentual: Math.round((data.percentual || 0) * 100),
+                semTempo: !data.viavel100 && (data.capacidadeDisponivelHoras ?? 0) <= 0,
+              },
+            }));
+          } catch {
+            setRisco((prev) => ({
+              ...prev,
+              [g.chaveGrupo]: { status: "erro", percentual: null, semTempo: false },
+            }));
+          }
+        })
+      );
+    }, 400);
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aberto, dataEnvio, quantidades, incluidos]);
 
   if (!aberto) return null;
 
@@ -758,7 +872,7 @@ function AgendamentoFullPanel({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-xl">
+      <div className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-gray-200 p-4">
           <h2 className="text-sm font-semibold text-gray-900">Agendar Full</h2>
           <button
@@ -778,16 +892,74 @@ function AgendamentoFullPanel({
             Desmarque o que não for enviar dessa vez, ajuste a quantidade se
             precisar, e escolha a data em que vai enviar esse Full.
           </p>
-          <div className="mb-4">
-            <label className="mb-1 block text-xs font-medium text-gray-500">
-              Data que vou enviar
-            </label>
-            <input
-              type="date"
-              value={dataEnvio}
-              onChange={(e) => setDataEnvio(e.target.value)}
-              className="rounded border border-gray-300 px-2 py-1.5 text-sm"
-            />
+          <div className="mb-4 flex flex-wrap items-end gap-4 rounded border border-gray-200 bg-gray-50 p-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">
+                Data que vou enviar
+              </label>
+              <input
+                type="date"
+                value={dataEnvio}
+                onChange={(e) => setDataEnvio(e.target.value)}
+                className="rounded border border-gray-300 px-2 py-1.5 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">
+                Cobrir
+              </label>
+              <div className="flex overflow-hidden rounded border border-gray-300">
+                <button
+                  type="button"
+                  onClick={() => setCobertura("semana")}
+                  className={
+                    "px-2.5 py-1.5 text-xs font-medium " +
+                    (cobertura === "semana"
+                      ? "bg-gray-900 text-white"
+                      : "bg-white text-gray-600 hover:bg-gray-50")
+                  }
+                >
+                  1 semana
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCobertura("quinzena")}
+                  className={
+                    "border-l border-gray-300 px-2.5 py-1.5 text-xs font-medium " +
+                    (cobertura === "quinzena"
+                      ? "bg-gray-900 text-white"
+                      : "bg-white text-gray-600 hover:bg-gray-50")
+                  }
+                >
+                  Quinzena
+                </button>
+              </div>
+            </div>
+            <div className="flex items-end gap-1.5">
+              {(["A", "B", "C"] as const).map((tier) => (
+                <div key={tier}>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">
+                    Mult. Tier {tier}
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={multiplicadoresTier[tier]}
+                    onChange={(e) =>
+                      setMultiplicadoresTier((prev) => ({ ...prev, [tier]: e.target.value }))
+                    }
+                    className="w-14 rounded border border-gray-300 px-1.5 py-1.5 text-right text-xs"
+                  />
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={aplicarMultiplicadores}
+                className="rounded border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Aplicar
+              </button>
+            </div>
           </div>
           <div className="mb-4">
             <label className="mb-1 block text-xs font-medium text-gray-500">
@@ -834,51 +1006,84 @@ function AgendamentoFullPanel({
                   <tr>
                     <th className="px-3 py-2">Incluir</th>
                     <th className="px-3 py-2">Produto / SKU</th>
+                    <th className="px-3 py-2">Tier</th>
                     <th className="px-3 py-2 text-right">Vendido (7d)</th>
-                                        <th className="px-3 py-2 text-right">Estoque</th>
+                    <th className="px-3 py-2 text-right">Estoque</th>
                     <th className="px-3 py-2 text-right">Quantidade a enviar</th>
+                    <th className="px-3 py-2 text-right">Risco de produção</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {todosGrupos.map((g) => (
-                    <tr key={g.chaveGrupo}>
-                      <td className="px-3 py-2">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(incluidos[g.chaveGrupo])}
-                          onChange={(e) =>
-                            setIncluidos((prev) => ({
-                              ...prev,
-                              [g.chaveGrupo]: e.target.checked,
-                            }))
-                          }
-                        />
-                      </td>
-                      <td className="px-3 py-2">
-                        <p className="font-medium text-gray-900">{g.sku}</p>
-                        <p className="text-gray-400">{g.nome}</p>
-                        {g.titulo && (
-                          <p className="mt-0.5 text-blue-700">Anúncio ML: {g.titulo}</p>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right text-gray-700">{g.vendidoFull7d}</td>
-                                            <td className="px-3 py-2 text-right text-gray-700">{g.placaIds.reduce((soma, id) => soma + (estoquePorPlaca[id] ?? 0), 0)}</td>
-                      <td className="px-3 py-2 text-right">
-                        <input
-                          type="number"
-                          min={0}
-                          value={quantidades[g.chaveGrupo] ?? ""}
-                          onChange={(e) =>
-                            setQuantidades((prev) => ({
-                              ...prev,
-                              [g.chaveGrupo]: e.target.value,
-                            }))
-                          }
-                          className="w-20 rounded border border-gray-300 px-1.5 py-1 text-right text-xs"
-                        />
-                      </td>
-                    </tr>
-                  ))}
+                  {todosGrupos.map((g) => {
+                    const r = risco[g.chaveGrupo];
+                    return (
+                      <tr key={g.chaveGrupo}>
+                        <td className="px-3 py-2">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(incluidos[g.chaveGrupo])}
+                            onChange={(e) =>
+                              setIncluidos((prev) => ({
+                                ...prev,
+                                [g.chaveGrupo]: e.target.checked,
+                              }))
+                            }
+                          />
+                        </td>
+                        <td className="px-3 py-2">
+                          <p className="font-medium text-gray-900">{g.sku}</p>
+                          <p className="text-gray-400">{g.nome}</p>
+                          {g.titulo && (
+                            <p className="mt-0.5 text-blue-700">Anúncio ML: {g.titulo}</p>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <TierBadge tier={g.tier} />
+                        </td>
+                        <td className="px-3 py-2 text-right text-gray-700">{g.vendidoFull7d}</td>
+                        <td className="px-3 py-2 text-right text-gray-700">{g.placaIds.reduce((soma, id) => soma + (estoquePorPlaca[id] ?? 0), 0)}</td>
+                        <td className="px-3 py-2 text-right">
+                          <input
+                            type="number"
+                            min={0}
+                            value={quantidades[g.chaveGrupo] ?? ""}
+                            onChange={(e) =>
+                              setQuantidades((prev) => ({
+                                ...prev,
+                                [g.chaveGrupo]: e.target.value,
+                              }))
+                            }
+                            className="w-20 rounded border border-gray-300 px-1.5 py-1 text-right text-xs"
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {!incluidos[g.chaveGrupo] || !(Number(quantidades[g.chaveGrupo]) > 0) ? (
+                            <span className="text-gray-300">—</span>
+                          ) : !r || r.status === "loading" ? (
+                            <span className="text-gray-400">calculando...</span>
+                          ) : r.status === "erro" ? (
+                            <span className="text-gray-400">—</span>
+                          ) : r.semTempo ? (
+                            <span className="rounded bg-red-100 px-1.5 py-0.5 font-semibold text-red-700">
+                              sem tempo
+                            </span>
+                          ) : (
+                            <span
+                              className={
+                                "rounded px-1.5 py-0.5 font-semibold " +
+                                ((r.percentual ?? 0) <= 50
+                                  ? "bg-green-100 text-green-700"
+                                  : "bg-amber-100 text-amber-800")
+                              }
+                              title="% da capacidade de produção disponível até a data escolhida que esse envio tomaria, caso o estoque atual não seja suficiente."
+                            >
+                              {r.percentual}%
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
