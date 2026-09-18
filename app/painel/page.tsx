@@ -190,6 +190,32 @@ highlight?: boolean;
   );
 }
 
+function SetaCustoDelta({ valor }: { valor: number }) {
+  const [delta, setDelta] = useState<number | null>(null);
+  useEffect(() => {
+    if (!valor || valor <= 0 || typeof window === "undefined") return;
+    const key = "gestao3d:ultimoCustoProduto";
+    const prevRaw = window.localStorage.getItem(key);
+    if (prevRaw !== null) {
+      const prev = parseFloat(prevRaw);
+      if (!isNaN(prev) && Math.abs(prev - valor) > 0.005) {
+        setDelta(valor - prev);
+      }
+    }
+    window.localStorage.setItem(key, String(valor));
+  }, [valor]);
+  if (delta === null) return null;
+  const subiu = delta > 0;
+  return (
+    <span
+      title={`${subiu ? "Subiu" : "Baixou"} ${formatBRL(Math.abs(delta))} desde a ultima vez que voce viu esse custo`}
+      style={{ marginLeft: 6, cursor: "help", color: subiu ? "#e05252" : "#3fae5c", fontWeight: 700, fontSize: 13 }}
+    >
+      {subiu ? "▲" : "▼"}
+    </span>
+  );
+}
+
 function LinhaTaxa({ label, valor, destaque = false }: { label: string; valor: string; destaque?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-2">
@@ -540,7 +566,7 @@ const [descontoReputacaoMLPct, setDescontoReputacaoMLPct] = useState("0");
             (aba === "precificacao" ? "bg-amber-500 text-black" : "bg-white dark:bg-[#131318] text-gray-500 dark:text-[#8b8b96] border border-gray-200 dark:border-[#23232b]")
           }
         >
-          Precificação Marketplace
+          PrecificaÃ§Ã£o Marketplace
         </button>
         <button
           onClick={() => {
@@ -561,7 +587,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
       {!plataformaInicial && (
         <>
       <section className="relative mb-6 overflow-hidden rounded-2xl border border-gray-200 dark:border-[#1f1f26] bg-white dark:bg-[#0d0d11] px-6 py-14 text-center sm:px-10">
-        {/* Mockups ML/Shopee no fundo do hero — pedido do Guilherme em
+        {/* Mockups ML/Shopee no fundo do hero â pedido do Guilherme em
             2026-08-26: no mobile os dois blocos borrados de 420x280px
             ficavam sem nenhuma variante responsiva, entao no celular eles
             colidiam bem no meio da tela, atras do titulo, em vez de ficar
@@ -595,15 +621,15 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
 
         <div className="relative z-10">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-amber-600 dark:text-amber-500">
-            O que é o Escala 7x7 Ecommerce
+            O que Ã© o Escala 7x7 Ecommerce
           </p>
           <h1 className="mx-auto mt-4 max-w-3xl text-4xl font-extrabold leading-tight text-gray-900 dark:text-white sm:text-5xl">
-            Uma <span className="text-amber-600 dark:text-amber-500">plataforma de soluções</span> pro seu{" "}
+            Uma <span className="text-amber-600 dark:text-amber-500">plataforma de soluÃ§Ãµes</span> pro seu{" "}
             <span className="text-amber-600 dark:text-amber-500">ecommerce</span> ou{" "}
-            <span className="text-amber-600 dark:text-amber-500">produção 3D</span>.
+            <span className="text-amber-600 dark:text-amber-500">produÃ§Ã£o 3D</span>.
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-base text-gray-500 dark:text-[#8b8b96] sm:text-lg">
-            Gestão, produção, estoque, precificação e financeiro em um só lugar, pensado
+            GestÃ£o, produÃ§Ã£o, estoque, precificaÃ§Ã£o e financeiro em um sÃ³ lugar, pensado
             pra quem vende em marketplace ou produz sob demanda e quer crescer com margem,
             caixa e previsibilidade.
           </p>
@@ -644,10 +670,10 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
         </div>
         <div className="relative z-10">
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-black/70">
-          Precificação
+          PrecificaÃ§Ã£o
         </p>
         <h2 className="mx-auto mt-3 max-w-2xl text-3xl font-extrabold leading-tight text-black sm:text-4xl">
-          Sua precificação nas plataformas está correta?
+          Sua precificaÃ§Ã£o nas plataformas estÃ¡ correta?
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-base text-black/80 sm:text-lg">
           Confira agora nossa calculadora pra <span className="font-bold">Mercado Livre e Shopee</span>.{" "}
@@ -665,8 +691,8 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
           }}
           className="mt-6 inline-flex items-center gap-2 rounded-full bg-black px-6 py-3 text-base font-semibold text-white transition hover:bg-black/80"
         >
-          Calcular minha precificação
-          <span aria-hidden>{"→"}</span>
+          Calcular minha precificaÃ§Ã£o
+          <span aria-hidden>{"â"}</span>
         </button>
         </div>
       </section>
@@ -680,11 +706,11 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
         `}</style>
 
         {/* Mobile: faixa de fotos separada, em fluxo normal, acima do texto
-            — pedido do Guilherme em 2026-08-26: as fotos nao estavam
+            â pedido do Guilherme em 2026-08-26: as fotos nao estavam
             dando pra ver direito no celular, so aparecia uma tira cortada
             sobrepondo o texto. Isso acontecia porque o efeito de colagem
             de fundo (fotos atras, card de texto flutuando por cima) so
-            funciona quando sobra espaco nas laterais do card — no mobile
+            funciona quando sobra espaco nas laterais do card â no mobile
             o card ocupa quase a largura toda da tela, entao so escapava
             uma tira fina da foto por cima do texto. Agora no mobile a
             faixa de fotos e uma secao propria, sem sobrepor nada, e o
@@ -696,7 +722,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
               <img
                 key={`m-${i}`}
                 src={src}
-                alt="Trajetória Escala 7x7 Ecommerce"
+                alt="TrajetÃ³ria Escala 7x7 Ecommerce"
                 className="h-20 w-28 flex-shrink-0 rounded-lg bg-gray-100 dark:bg-[#15151d] object-contain opacity-90"
               />
             ))}
@@ -704,7 +730,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
         </div>
 
         {/* Desktop/tablet: colagem de fundo original (fotos atras, card de
-            texto translucido flutuando por cima) — inalterada, so
+            texto translucido flutuando por cima) â inalterada, so
             escondida no mobile porque e la que ela nao funcionava bem. */}
         <div className="pointer-events-none absolute inset-0 hidden items-center overflow-hidden sm:flex">
           <div className="flex shrink-0 items-center gap-4" style={{ animation: "marqueeScrollLeft 96s linear infinite" }}>
@@ -713,7 +739,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
               <img
                 key={i}
                 src={src}
-                alt="Trajetória Escala 7x7 Ecommerce"
+                alt="TrajetÃ³ria Escala 7x7 Ecommerce"
                 className="h-48 w-72 flex-shrink-0 rounded-xl bg-gray-100 dark:bg-[#15151d] object-contain opacity-90"
               />
             ))}
@@ -728,11 +754,11 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-base text-gray-500 dark:text-[#8b8b96] sm:text-lg">
             <span className="block font-bold text-gray-900 dark:text-white sm:whitespace-nowrap">
-              Tempo suficiente pra testar o que funciona e descartar o que só parece funcionar.
+              Tempo suficiente pra testar o que funciona e descartar o que sÃ³ parece funcionar.
             </span>
             <span className="mt-1 block">
-              Gestão de conta, execução de campanha, precificação e produção
-              validado na prática, todo dia.
+              GestÃ£o de conta, execuÃ§Ã£o de campanha, precificaÃ§Ã£o e produÃ§Ã£o
+              validado na prÃ¡tica, todo dia.
             </span>
           </p>
 
@@ -745,7 +771,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
           </div>
 
           <p className="mt-6 text-base font-semibold text-gray-900 dark:text-white sm:text-lg">
-            É nisso que o Escala 7x7 Ecommerce foi construído.
+            Ã nisso que o Escala 7x7 Ecommerce foi construÃ­do.
           </p>
 
           <div className="mt-5 flex items-center justify-center gap-4">
@@ -1024,14 +1050,14 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                   (modoPrecificacao === "preco" ? "border-amber-500 bg-amber-100 dark:bg-[#2a1a0a] text-amber-600 dark:text-amber-400" : "border-gray-300 dark:border-[#2c2c36] text-gray-700 dark:text-[#c8c8d0]")
                 }
               >
-                Por preço de venda
+                Por preÃ§o de venda
               </button>
             </div>
             <div className="grid max-w-[320px] grid-cols-2 gap-2">
               {modoPrecificacao === "margem" ? (
                 <Field label="Margem liquida desejada" value={margemDesejadaPct} onChange={setMargemDesejadaPct} suffix="%" />
               ) : (
-                <Field label="Preço de venda desejado" value={precoVendaDesejado} onChange={setPrecoVendaDesejado} suffix="R$" />
+                <Field label="PreÃ§o de venda desejado" value={precoVendaDesejado} onChange={setPrecoVendaDesejado} suffix="R$" />
               )}
               <Field label="Imposto (%)" value={impostoPct} onChange={setImpostoPct} suffix="%" />
             </div>
@@ -1063,7 +1089,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
                 onClick={() => setModalPlataformaAberto(true)}
                 className="mb-3 text-sm font-medium text-amber-600 dark:text-amber-400 hover:text-amber-500 dark:hover:text-amber-300"
               >
-                {"←"} Trocar plataforma
+                {"â"} Trocar plataforma
               </button>
 <Card icon="ML" title="Mercado Livre" titleClassName="text-3xl font-extrabold text-[#FFE600]" titleStyle={{ fontFamily: "'Montserrat', sans-serif" }} subtitle="Comissao + taxa fixa por peso + imposto + ads">
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
@@ -1304,7 +1330,7 @@ Nao uso Ads
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
-                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só Ads — Flex {usaFlexML ? "ligado" : "desligado"} e afiliados {usaAfiliadoML ? "ligado" : "desligado"} (como configurado acima)</p>
+                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando sÃ³ Ads â Flex {usaFlexML ? "ligado" : "desligado"} e afiliados {usaAfiliadoML ? "ligado" : "desligado"} (como configurado acima)</p>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem Ads</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semAds.preco)}</p>
@@ -1318,7 +1344,7 @@ Nao uso Ads
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
-                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só frete grátis — Ads {usaAdsML ? "ligado" : "desligado"}, Flex {usaFlexML ? "ligado" : "desligado"} e afiliados {usaAfiliadoML ? "ligado" : "desligado"} (como configurado acima)</p>
+                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando sÃ³ frete grÃ¡tis â Ads {usaAdsML ? "ligado" : "desligado"}, Flex {usaFlexML ? "ligado" : "desligado"} e afiliados {usaAfiliadoML ? "ligado" : "desligado"} (como configurado acima)</p>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem frete gratis</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semFreteGratis.preco)}</p>
@@ -1332,7 +1358,7 @@ Nao uso Ads
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
-                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só Flex — Ads {usaAdsML ? "ligado" : "desligado"}, afiliados {usaAfiliadoML ? "ligado" : "desligado"} (como configurado acima)</p>
+                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando sÃ³ Flex â Ads {usaAdsML ? "ligado" : "desligado"}, afiliados {usaAfiliadoML ? "ligado" : "desligado"} (como configurado acima)</p>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Vendendo sem Flex</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semFlex.preco)}</p>
@@ -1348,7 +1374,7 @@ Nao uso Ads
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
-                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só afiliados — Ads {usaAdsML ? "ligado" : "desligado"}, Flex {usaFlexML ? "ligado" : "desligado"} (como configurado acima)</p>
+                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando sÃ³ afiliados â Ads {usaAdsML ? "ligado" : "desligado"}, Flex {usaFlexML ? "ligado" : "desligado"} (como configurado acima)</p>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem afiliados</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoML.semAfiliado.preco)}</p>
@@ -1370,6 +1396,7 @@ Nao uso Ads
                       {usaAdsML && <LinhaTaxa label={`Ads (${adsMLPct}%)`} valor={formatBRL(resultadoML.ads)} />}
                       {usaAfiliadoML && <LinhaTaxa label={`Afiliado (${afiliadoMLPct}%)`} valor={formatBRL(resultadoML.afiliado)} />}
                       <LinhaTaxa label="Custo do produto" valor={formatBRL(custoBaseProduto)} />
+                      <SetaCustoDelta valor={custoBaseProduto} />
                       {toNum(embalagemPrecificacao) > 0 && <LinhaTaxa label="Embalagem" valor={formatBRL(toNum(embalagemPrecificacao))} />}
                       <div className="mt-1 border-t border-gray-200 dark:border-[#23232b] pt-1">
                         <LinhaTaxa label="Lucro liquido" valor={formatBRL(resultadoML.lucro)} destaque />
@@ -1389,7 +1416,7 @@ Nao uso Ads
                 onClick={() => setModalPlataformaAberto(true)}
                 className="mb-3 text-sm font-medium text-amber-600 dark:text-amber-400 hover:text-amber-500 dark:hover:text-amber-300"
               >
-                {"←"} Trocar plataforma
+                {"â"} Trocar plataforma
               </button>
 <Card icon="SH" title="Shopee" titleClassName="text-3xl font-black text-[#EE4D2D]" titleStyle={{ fontFamily: "'Roboto', sans-serif" }} subtitle="Comissao + taxa fixa automatica + ads + afiliado">
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
@@ -1514,7 +1541,7 @@ Nao uso Ads
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
-                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só Ads — Flex {usaFlexShopee ? "ligado" : "desligado"} e afiliados {usaAfiliadoShopee ? "ligado" : "desligado"} (como configurado acima)</p>
+                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando sÃ³ Ads â Flex {usaFlexShopee ? "ligado" : "desligado"} e afiliados {usaAfiliadoShopee ? "ligado" : "desligado"} (como configurado acima)</p>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem Ads</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.semAds.preco)}</p>
@@ -1528,7 +1555,7 @@ Nao uso Ads
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
-                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só afiliados — Ads {usaAdsShopee ? "ligado" : "desligado"}, Flex {usaFlexShopee ? "ligado" : "desligado"} (como configurado acima)</p>
+                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando sÃ³ afiliados â Ads {usaAdsShopee ? "ligado" : "desligado"}, Flex {usaFlexShopee ? "ligado" : "desligado"} (como configurado acima)</p>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Sem afiliados</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.semAfiliado.preco)}</p>
@@ -1542,7 +1569,7 @@ Nao uso Ads
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 dark:bg-[#0e0e12] p-3">
-                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando só Flex — Ads {usaAdsShopee ? "ligado" : "desligado"}, afiliados {usaAfiliadoShopee ? "ligado" : "desligado"} (como configurado acima)</p>
+                    <p className="col-span-2 text-xs text-gray-400 dark:text-[#6b6b76]">Comparando sÃ³ Flex â Ads {usaAdsShopee ? "ligado" : "desligado"}, afiliados {usaAfiliadoShopee ? "ligado" : "desligado"} (como configurado acima)</p>
                     <div>
                       <p className="text-base text-gray-500 dark:text-[#8b8b96]">Vendendo sem Flex</p>
                       <p className="text-xl font-bold text-gray-900 dark:text-white">{formatBRL(resultadoShopee.semFlex.preco)}</p>
@@ -1566,6 +1593,7 @@ Nao uso Ads
                       {usaAdsShopee && <LinhaTaxa label={`Ads (${adsShopeePct}%)`} valor={formatBRL(resultadoShopee.ads)} />}
                       {usaAfiliadoShopee && <LinhaTaxa label={`Afiliado (${afiliadoShopeePct}%)`} valor={formatBRL(resultadoShopee.afiliado)} />}
                       <LinhaTaxa label="Custo do produto" valor={formatBRL(custoBaseProduto)} />
+                      <SetaCustoDelta valor={custoBaseProduto} />
                       {toNum(embalagemPrecificacao) > 0 && <LinhaTaxa label="Embalagem" valor={formatBRL(toNum(embalagemPrecificacao))} />}
                       <div className="mt-1 border-t border-gray-200 dark:border-[#23232b] pt-1">
                         <LinhaTaxa label="Lucro liquido" valor={formatBRL(resultadoShopee.lucro)} destaque />
