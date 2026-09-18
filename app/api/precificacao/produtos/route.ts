@@ -289,6 +289,24 @@ export async function GET() {
       .map((s) => s.trim())
       .filter((s) => s.length > 0).length;
     if (numSkus > 1) return false;
+    // 18/09/2026 -- mesmo problema do comentário acima, variante com "+":
+    // "Suporte Cortina C (com parafuso)" (produto id 23, placa 103) tem
+    // SKU = "PAR DE GANCHOS CORTINA COM PARAFUSO BRANCO/PRETO + Suporte
+    // Cortina C Branco 1un/2un" -- um cadastro de placa pra produção
+    // (rastreia o par de peças impressas juntas), não uma variação
+    // realmente vendida separada. O Guilherme só vende "Suporte Cortina
+    // C Branco 1un" e "2un" -- ambos já aparecem certinho como linhas
+    // "virtual" (via sku_placa) mais abaixo, com o gancho com parafuso
+    // também coberto em linhas virtuais próprias ("PAR DE GANCHOS
+    // CORTINA COM PARAFUSO BRANCO/PRETO"). Então qualquer produto com
+    // "+" separando SKUs no cadastro também fica de fora daqui, mesma
+    // lógica do filtro de vírgula/quebra de linha acima -- não afeta
+    // Produção/Estoque, só esconde a linha duplicada da Precificação.
+    const numSkusPlus = (p.sku ?? "")
+      .split(/\s\+\s/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0).length;
+    if (numSkusPlus > 1) return false;
     return true;
   });
 
