@@ -33,13 +33,26 @@ import {
     DailyTotalsResult,
 } from "./ml-orders";
 import { getOrdersRange as getOrdersRangeShopeeAoVivo } from "./shopee-orders";
+import { mlEstaConectado } from "./ml-auth";
 import { todaySP, diasAtras } from "./date";
 
 type Plataforma = "ml" | "shopee";
 
-function mlConectado(): boolean {
-    const c = cookies();
-    return Boolean(c.get("ml_access_token")?.value && c.get("ml_user_id")?.value);
+// 2026-09-21: era um check de COOKIE (ml_access_token/ml_user_id), igual
+// o resto do sistema já tinha antes da migração pra ml_auth (banco) —
+// pedido do Guilherme em 2026-08-14 (ver lib/ml-auth.ts). O problema:
+// esse arquivo aqui NUNCA foi migrado junto, então ele continuava
+// checando o cookie do NAVEGADOR mesmo depois de ml-orders.ts e o resto
+// do sistema já lerem o token direto do banco (ml_auth). Resultado:
+// abrir o sistema de um aparelho novo (ex: tablet) que nunca passou pelo
+// fluxo de "Conectar com Mercado Livre" mostrava "Conecte a aba Vendas
+// primeiro" na Produção mesmo com a conta genuinamente conectada (token
+// válido no banco, funcionando normalmente no computador) — porque só o
+// navegador que fez o OAuth tinha o cookie. Troca pra mlEstaConectado()
+// (lib/ml-auth.ts), que consulta o banco — mesma fonte de verdade usada
+// em todo o resto do sistema, funciona de qualquer aparelho/navegador.
+async function mlConectado(): Promise<boolean> {
+    return mlEstaConectado();
 }
 
 function shopeeConectado(): boolean {
@@ -128,7 +141,7 @@ export async function getOrdersRangeML(
     fromDay: string,
     toDay: string
   ): Promise<OrdersResult> {
-    if (!mlConectado()) return { connected: false };
+    if (!(await mlConectado())) return { connected: false };
     if ((await statusSyncPersistido("ml")) === "erro") return { connected: true, error: true };
     const orders = await queryRange(fromDay, toDay, "ml");
     return { connected: true, error: false, orders };
@@ -190,7 +203,7 @@ export async function getDailyTotalsRangeML(
     fromDay: string,
     toDay: string
   ): Promise<DailyTotalsResult> {
-    if (!mlConectado()) return { connected: false };
+    if (!(await mlConectado())) return { connected: false };
     if ((await statusSyncPersistido("ml")) === "erro") return { connected: true, error: true };
     const porDia = await dailyTotals(fromDay, toDay, "ml");
     return { connected: true, error: false, porDia };
@@ -243,13 +256,20 @@ export interface SincronizarPedidosResult {
     atualizadoEm: string;
 }
 
+// 2026-09-21: tentouML agora vem de mlConectado() (banco, via
+// mlEstaConectado()) em vez do cookie — então o cron de 1 em 1 minuto
+// (que roda sem cookie nenhum, servidor-a-servidor) passa a contar como
+// "tentativa válida" sempre que existir um token ML salvo no banco, e
+// grava sync_status normalmente. Isso é uma melhoria em relação a antes:
+// o status ficava só tão fresco quanto a última vez que alguém abriu uma
+// aba no navegador — agora fica tão fresco quanto o próprio cron.
 export async function sincronizarPedidos(
     dias: number
   ): Promise<SincronizarPedidosResult> {
     const hoje = todaySP();
     const inicio = diasAtras(hoje, Math.max(0, dias - 1));
 
-  const tentouML = mlConectado();
+  const tentouML = await mlConectado();
     const tentouShopee = shopeeConectado();
 
   const [resultML, resultShopee] = await Promise.all([
