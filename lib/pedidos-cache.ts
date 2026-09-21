@@ -22,7 +22,6 @@
 // dados em qualquer tela é só trocar de onde vem o import, sem mexer no
 // resto da lógica (pedidoFoiVendido, calcularDemandaSemanal, resumoStats
 // etc. continuam recebendo o mesmíssimo formato OrderSummary[]).
-import { cookies } from "next/headers";
 import { sql } from "./db";
 import {
     getOrdersRange as getOrdersRangeMLAoVivo,
@@ -34,6 +33,7 @@ import {
 } from "./ml-orders";
 import { getOrdersRange as getOrdersRangeShopeeAoVivo } from "./shopee-orders";
 import { mlEstaConectado } from "./ml-auth";
+import { shopeeEstaConectado } from "./shopee-auth";
 import { todaySP, diasAtras } from "./date";
 
 type Plataforma = "ml" | "shopee";
@@ -55,9 +55,16 @@ async function mlConectado(): Promise<boolean> {
     return mlEstaConectado();
 }
 
-function shopeeConectado(): boolean {
-    const c = cookies();
-    return Boolean(c.get("shopee_shop_id")?.value);
+// 2026-09-21: mesma correção acima, agora do lado da Shopee — era um
+// check de COOKIE (shopee_shop_id), igual o resto do sistema já tinha
+// antes da migração pra shopee_auth (banco, ver lib/shopee-auth.ts,
+// fix de 2026-08-26). lib/shopee-orders.ts já lê o token certo do banco
+// há tempos, mas essa função aqui (usada por Produção/Vendas via cache)
+// nunca tinha sido migrada junto — mesmo bug do "tablet pede pra
+// conectar mesmo já conectado" que a ML tinha. Troca pra
+// shopeeEstaConectado() (lib/shopee-auth.ts), que consulta o banco.
+async function shopeeConectado(): Promise<boolean> {
+    return shopeeEstaConectado();
 }
 
 async function garantirTabelaStatusSync() {
@@ -151,7 +158,7 @@ export async function getOrdersRangeShopee(
     fromDay: string,
     toDay: string
   ): Promise<OrdersResult> {
-    if (!shopeeConectado()) return { connected: false };
+    if (!(await shopeeConectado())) return { connected: false };
     if ((await statusSyncPersistido("shopee")) === "erro") return { connected: true, error: true };
     const orders = await queryRange(fromDay, toDay, "shopee");
     return { connected: true, error: false, orders };
@@ -213,7 +220,7 @@ export async function getDailyTotalsRangeShopee(
     fromDay: string,
     toDay: string
   ): Promise<DailyTotalsResult> {
-    if (!shopeeConectado()) return { connected: false };
+    if (!(await shopeeConectado())) return { connected: false };
     if ((await statusSyncPersistido("shopee")) === "erro") return { connected: true, error: true };
     const porDia = await dailyTotals(fromDay, toDay, "shopee");
     return { connected: true, error: false, porDia };
@@ -270,7 +277,7 @@ export async function sincronizarPedidos(
     const inicio = diasAtras(hoje, Math.max(0, dias - 1));
 
   const tentouML = await mlConectado();
-    const tentouShopee = shopeeConectado();
+    const tentouShopee = await shopeeConectado();
 
   const [resultML, resultShopee] = await Promise.all([
         getOrdersRangeMLAoVivo(inicio, hoje),
