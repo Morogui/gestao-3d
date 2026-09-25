@@ -669,9 +669,6 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
           </div>
         </div>
         <div className="relative z-10">
-        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-black/70">
-          Precificação
-        </p>
         <h2 className="mx-auto mt-3 max-w-2xl text-3xl font-extrabold leading-tight text-black sm:text-4xl">
           Sua precificação nas plataformas está correta?
         </h2>
