@@ -2009,6 +2009,10 @@ function PrinterCard({
   const [gramasPlaca, setGramasPlaca] = useState("");
   const [pecaDescricao, setPecaDescricao] = useState("");
   const [gramasPeca, setGramasPeca] = useState("");
+    const [ultimaProducao, setUltimaProducao] = useState<ProducaoRow | null>(null);
+    useEffect(() => {
+          if (producao) setUltimaProducao(producao);
+    }, [producao]);
   // Renomear impressora inline — pedido do Guilherme em 2026-08-04, ver
   // onRenomear (bate em PATCH /api/machines/[id]).
   const [editandoNome, setEditandoNome] = useState(false);
@@ -2302,6 +2306,15 @@ function PrinterCard({
           Impressora em manutencao - nao e possivel carregar producao.
          </div>
       ) : (
+                <>
+                  {ultimaProducao && (
+                              <button
+                                              onClick={() => onIniciar(ultimaProducao.placa_id, Number(ultimaProducao.quantidade_placas), (ultimaProducao.material as "PLA" | "PETG") ?? "PLA")}
+                                              className="mb-2 self-start rounded border border-blue-300 bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                                            >
+                                            Imprimir novamente: {placaPorId.get(ultimaProducao.placa_id)?.nome ?? ultimaProducao.placa_nome} ({ultimaProducao.quantidade_placas}x)
+                              </button>
+                          )}
          <CarregarPlacaForm
           machine={machine}
           filaPrioridade={filaPrioridade}
@@ -2311,6 +2324,7 @@ function PrinterCard({
           carregando={carregando}
           onIniciar={onIniciar}
         />
+                </>
       )}
     </div>
   );
