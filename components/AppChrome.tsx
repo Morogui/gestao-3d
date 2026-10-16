@@ -28,7 +28,7 @@ const RESERVED_TOP_SEGMENTS = new Set([
   "estoque", "financeiro", "relatorios", "analise", "precificacao",
   "mercadolivrecalculadora", "shopeecalculadora",
 ]);
-const CLIENTE_SUBPATHS = ["login", "vendas", "full"];
+const CLIENTE_SUBPATHS = ["login", "vendas", "full", "produtos", "precificacao"];
 
 function isClienteAreaPath(pathname: string): boolean {
   const parts = pathname.split("/").filter(Boolean);
