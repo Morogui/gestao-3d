@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import TabsNav from "@/components/TabsNav";
 import MorolarLogoutButton from "@/components/MorolarLogoutButton";
+import MensagensPopup from "@/components/MensagensPopup";
 
 // A "/painel" é a landing page pública do Escala 7x7 Ecommerce (marca de
 // serviço do Guilherme) e "/login" é a tela de acesso — nenhuma das duas
@@ -60,6 +61,8 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
       </header>
       <TabsNav />
       <main className="mt-6">{children}</main>
+      {/* 2026-10-15 -- pop-up global de mensagens/perguntas ML + Shopee */}
+      <MensagensPopup />
     </div>
   );
 }
