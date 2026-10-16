@@ -13,6 +13,7 @@ interface Conversa {
   naoLida: boolean;
   thumbnail?: string | null;
   respondida?: boolean;
+  cancelada?: boolean;
 }
 interface Mensagem {
   id: string;
@@ -247,14 +248,18 @@ export default function MensagensPage() {
                     onChange={(e) => setTexto(e.target.value)}
                     rows={3}
                     placeholder={
-                      sel.respondida ? "Pergunta ja respondida" : "Escreva a resposta..."
+                      sel.cancelada
+                        ? "Pedido cancelado - o ML nao permite responder"
+                        : sel.respondida
+                        ? "Pergunta ja respondida"
+                        : "Escreva a resposta..."
                     }
-                    disabled={sel.respondida}
+                    disabled={sel.respondida || sel.cancelada}
                     className="flex-1 rounded-md border border-gray-300 p-2 text-sm"
                   />
                   <button
                     onClick={enviar}
-                    disabled={enviando || !texto.trim() || sel.respondida}
+                    disabled={enviando || !texto.trim() || sel.respondida || sel.cancelada}
                     className="self-end rounded-md bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-50"
                   >
                     {enviando ? "Enviando..." : "Enviar"}
