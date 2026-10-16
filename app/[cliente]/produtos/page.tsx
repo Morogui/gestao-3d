@@ -59,28 +59,30 @@ export default function ClienteProdutosPage() {
   async function importarPlanilha() {
     if (!confirm("Importar " + BASE_GARIMPO.length + " SKUs da planilha PRECIFICAÇÃO CERTA? SKUs já cadastrados serão atualizados (nome, custo e peso).")) return;
     setSalvando(true);
-    const porSku = new Map<string, Produto>(produtos.map((p): [string, Produto] => [p.sku, p]));
-    let feitos = 0;
+    let ok = 0;
+    let falhas = 0;
+    let primeiroErro = "";
     for (const item of BASE_GARIMPO) {
-      const existente = porSku.get(item.sku);
-      if (existente) {
-        await fetch("/api/c/produtos/" + existente.id, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ nome: item.nome, custoProducao: item.custoProducao, pesoEnvioKg: item.pesoEnvioKg }),
-        });
-      } else {
-        await fetch("/api/c/produtos", {
+      try {
+        const res = await fetch("/api/c/produtos", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(item),
         });
+        if (res.ok) {
+          ok++;
+        } else {
+          falhas++;
+          if (!primeiroErro) primeiroErro = "HTTP " + res.status + " " + (await res.text()).slice(0, 120);
+        }
+      } catch (err) {
+        falhas++;
+        if (!primeiroErro) primeiroErro = String(err);
       }
-      feitos++;
-      setProgresso(feitos + " / " + BASE_GARIMPO.length);
+      setProgresso("Importando " + (ok + falhas) + " / " + BASE_GARIMPO.length);
     }
     setSalvando(false);
-    setProgresso("Concluído: " + feitos + " SKUs");
+    setProgresso("Concluído: " + ok + " ok, " + falhas + " falhas" + (primeiroErro ? " — " + primeiroErro : ""));
     carregar();
   }
 
