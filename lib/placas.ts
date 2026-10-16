@@ -33,6 +33,8 @@ export const CORES_FILAMENTO_TODAS = [
   "marrom-petg",
   "bege",
   "bege-petg",
+  "cinza",
+  "cinza-petg",
   "vermelho",
   "vermelho-petg",
 ] as const;
@@ -61,7 +63,7 @@ export function labelCorFilamento(cor: string): string {
   const base = petg ? cor.slice(0, -"-petg".length) : cor;
   const label = base.charAt(0).toUpperCase() + base.slice(1);
   if (petg) return `${label} (PETG)`;
-  if ((CORES_COM_PETG as readonly string[]).includes(base)) return `${label} (PLA)`;
+  if ((CORES_COM_PETG as readonly string[]).includes(base) || base === "cinza") return `${label} (PLA)`;
   return label;
 }
 
