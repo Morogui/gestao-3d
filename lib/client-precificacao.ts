@@ -44,6 +44,7 @@ export interface ClientProduto {
   pesoEnvioKg: number;
   precoVendaML: number | null;
   precoVendaShopee: number | null;
+  extras: Record<string, any>;
   criadoEm: string;
   atualizadoEm: string;
 }
@@ -79,6 +80,7 @@ async function garantirTabelas() {
       atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+  await sql`ALTER TABLE client_produtos ADD COLUMN IF NOT EXISTS extras JSONB NOT NULL DEFAULT '{}'::jsonb`;
   tabelasGarantidas = true;
 }
 
@@ -91,6 +93,7 @@ function mapProduto(r: any): ClientProduto {
     pesoEnvioKg: Number(r.peso_envio_kg),
     precoVendaML: r.preco_venda_ml === null ? null : Number(r.preco_venda_ml),
     precoVendaShopee: r.preco_venda_shopee === null ? null : Number(r.preco_venda_shopee),
+    extras: r.extras ?? {},
     criadoEm: r.criado_em,
     atualizadoEm: r.atualizado_em,
   };
@@ -99,7 +102,7 @@ function mapProduto(r: any): ClientProduto {
 export async function listarProdutosCliente(clientId: string): Promise<ClientProduto[]> {
   await garantirTabelas();
   const rows = (await sql`
-    SELECT id, sku, nome, custo_producao, peso_envio_kg, preco_venda_ml, preco_venda_shopee,
+    SELECT id, sku, nome, custo_producao, peso_envio_kg, preco_venda_ml, preco_venda_shopee, extras,
            criado_em::text AS criado_em, atualizado_em::text AS atualizado_em
     FROM client_produtos
     WHERE client_id = ${clientId}
@@ -137,11 +140,12 @@ export async function atualizarProdutoCliente(
     pesoEnvioKg: number;
     precoVendaML: number | null;
     precoVendaShopee: number | null;
+    extras: Record<string, any>;
   }>
 ): Promise<boolean> {
   await garantirTabelas();
   const atual = (await sql`
-    SELECT sku, nome, custo_producao, peso_envio_kg, preco_venda_ml, preco_venda_shopee
+    SELECT sku, nome, custo_producao, peso_envio_kg, preco_venda_ml, preco_venda_shopee, extras
     FROM client_produtos WHERE id = ${id} AND client_id = ${clientId}
   `) as any[];
   if (atual.length === 0) return false;
@@ -153,11 +157,12 @@ export async function atualizarProdutoCliente(
   const pesoEnvioKg = patch.pesoEnvioKg !== undefined ? patch.pesoEnvioKg : Number(a.peso_envio_kg);
   const precoVendaML = patch.precoVendaML !== undefined ? patch.precoVendaML : a.preco_venda_ml;
   const precoVendaShopee = patch.precoVendaShopee !== undefined ? patch.precoVendaShopee : a.preco_venda_shopee;
+  const extras = patch.extras !== undefined ? { ...(a.extras ?? {}), ...patch.extras } : (a.extras ?? {});
 
   const rows = (await sql`
     UPDATE client_produtos
     SET sku = ${sku}, nome = ${nome}, custo_producao = ${custoProducao}, peso_envio_kg = ${pesoEnvioKg},
-        preco_venda_ml = ${precoVendaML}, preco_venda_shopee = ${precoVendaShopee}, atualizado_em = now()
+        preco_venda_ml = ${precoVendaML}, preco_venda_shopee = ${precoVendaShopee}, extras = ${JSON.stringify(extras)}::jsonb, atualizado_em = now()
     WHERE id = ${id} AND client_id = ${clientId}
     RETURNING id
   `) as any[];
