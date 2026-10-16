@@ -1278,7 +1278,7 @@ async function corrigirTempo() {
                    <option value="">Vincular a placa...</option>
                    {placas.map((p) => (
                     <option key={p.id} value={p.id}>
-                     {p.nome}
+                     {p.skuOuKit || p.nome}
                     </option>
                    ))}
                   </select>
