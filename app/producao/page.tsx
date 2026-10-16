@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   PlacaRow,
   estoqueVendavel,
-  CORES_FILAMENTO,
+  CORES_FILAMENTO, CORES_FILAMENTO_TODAS, labelCorFilamento,
   CorFilamento,
   corFilamentoDaPlaca,
   corPetgDe,
@@ -1123,8 +1123,8 @@ async function corrigirTempo() {
         </p>
         {filamento ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-            {CORES_FILAMENTO.map((cor) => {
-              const valor = filamento[cor] ?? 0;
+            {CORES_FILAMENTO_TODAS.map((cor) => {
+              const valor = (filamento as unknown as Record<string, number>)[cor] ?? 0;
               const zerado = valor <= 0;
               return (
                 <div
@@ -1134,7 +1134,7 @@ async function corrigirTempo() {
                     (zerado ? "border-red-300 bg-red-50" : "border-gray-200 bg-gray-50")
                   }
                 >
-                  <p className="text-xs text-gray-500">{LABEL_COR_FILAMENTO[cor]}</p>
+                  <p className="text-xs text-gray-500">{labelCorFilamento(cor)}</p>
                   <p className={"text-lg font-semibold " + (zerado ? "text-red-700" : "text-gray-900")}>
                     {formatGramasEmKg(valor)} kg
                   </p>
@@ -1829,9 +1829,9 @@ function PerdaFilamentoForm({
             onChange={(e) => setCor(e.target.value as CorFilamento)}
             className="rounded border border-gray-300 px-2 py-1.5 text-sm"
           >
-            {CORES_FILAMENTO.map((c) => (
+            {CORES_FILAMENTO_TODAS.map((c) => (
               <option key={c} value={c}>
-                {LABEL_COR_FILAMENTO[c]}
+                {labelCorFilamento(c)}
               </option>
             ))}
           </select>
