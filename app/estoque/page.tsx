@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { PlacaRow, CORES_FILAMENTO, CorFilamento, estoqueVendavel } from "@/lib/placas";
-import { EstoqueFilamentoRow, formatGramasEmKg, parseKgParaGramas } from "@/lib/producao-types";
+import { PlacaRow, CORES_FILAMENTO_TODAS as CORES_FILAMENTO, CorFilamentoTodas as CorFilamento, estoqueVendavel, labelCorFilamento } from "@/lib/placas";
+import { formatGramasEmKg, parseKgParaGramas } from "@/lib/producao-types";
+
+type EstoqueFilamentoRow = Record<CorFilamento, number>;
 
 type EstoqueRow = PlacaRow & {
   atualizadoEm: string | null;
@@ -1026,18 +1028,12 @@ function OrigemBadge({ tipo }: { tipo: Movimento["tipo"] }) {
 // leitura; toda a edição (salvar estoque, registrar perda, ver
 // histórico) vive aqui. ---
 
-const LABEL_COR_FILAMENTO: Record<CorFilamento, string> = {
-  colorido: "Colorido",
-  preto: "Preto",
-  "preto-petg": "Preto (PETG)",
-  branco: "Branco",
-  "branco-petg": "Branco (PETG)",
-  prata: "Prata",
-  marrom: "Marrom",
-  bege: "Bege",
-  vermelho: "Vermelho",
-  "vermelho-petg": "Vermelho (PETG)",
-};
+// 2026-10-15: rotulos derivados de labelCorFilamento (lib/placas.ts) —
+// toda cor (exceto Colorido) tem PLA e PETG, entao o rotulo mostra
+// "Preto (PLA)" / "Preto (PETG)" etc.
+const LABEL_COR_FILAMENTO = Object.fromEntries(
+  CORES_FILAMENTO.map((c) => [c, labelCorFilamento(c)])
+) as Record<CorFilamento, string>;
 
 function FilamentoEditor({
   filamento,
@@ -1077,29 +1073,57 @@ function FilamentoEditor({
     }
   }
 
+  // 2026-10-15: divisoria — cores com estoque salvo > 0 ficam em "Em
+  // estoque"; as zeradas vao pra "Zerados (sem filamento)" pra nao
+  // confundir. Agrupa pelo valor SALVO (nao pelo que esta sendo digitado),
+  // senao o campo pularia de secao enquanto o usuario digita.
+  const emEstoque = CORES_FILAMENTO.filter((c) => (filamento[c] ?? 0) > 0);
+  const zeradas = CORES_FILAMENTO.filter((c) => (filamento[c] ?? 0) <= 0);
+
+  function campo(cor: CorFilamento) {
+    const zerado = parseKgParaGramas(valores[cor]) <= 0;
+    return (
+      <label key={cor} className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-gray-600">
+          {LABEL_COR_FILAMENTO[cor]} <span className="font-normal text-gray-400">(Kg)</span>
+        </span>
+        <input
+          type="text"
+          inputMode="decimal"
+          value={valores[cor]}
+          onChange={(e) => setValores((prev) => ({ ...prev, [cor]: e.target.value }))}
+          className={
+            "rounded border px-2 py-1.5 text-sm " +
+            (zerado ? "border-red-300 bg-red-50 text-red-700" : "border-gray-300")
+          }
+        />
+      </label>
+    );
+  }
+
   return (
     <div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-        {CORES_FILAMENTO.map((cor) => {
-          const zerado = parseKgParaGramas(valores[cor]) <= 0;
-          return (
-            <label key={cor} className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-gray-600">
-                {LABEL_COR_FILAMENTO[cor]} <span className="font-normal text-gray-400">(Kg)</span>
-              </span>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={valores[cor]}
-                onChange={(e) => setValores((prev) => ({ ...prev, [cor]: e.target.value }))}
-                className={
-                  "rounded border px-2 py-1.5 text-sm " +
-                  (zerado ? "border-red-300 bg-red-50 text-red-700" : "border-gray-300")
-                }
-              />
-            </label>
-          );
-        })}
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-green-700">
+        Em estoque ({emEstoque.length})
+      </p>
+      {emEstoque.length > 0 ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+          {emEstoque.map((cor) => campo(cor))}
+        </div>
+      ) : (
+        <p className="text-xs text-gray-400">Nenhuma cor com filamento em estoque.</p>
+      )}
+      <div className="mt-4 rounded-md border border-red-200 bg-red-50/40 p-3">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-red-700">
+          Zerados — sem filamento ({zeradas.length})
+        </p>
+        {zeradas.length > 0 ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+            {zeradas.map((cor) => campo(cor))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400">Nenhuma cor zerada.</p>
+        )}
       </div>
       <button
         onClick={salvar}
