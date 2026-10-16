@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { BASE_GARIMPO } from "./base-garimpo";
 
 interface Produto {
   id: number;
@@ -20,6 +21,7 @@ export default function ClienteProdutosPage() {
   const [novoCusto, setNovoCusto] = useState("");
   const [novoPeso, setNovoPeso] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [progresso, setProgresso] = useState("");
 
   function carregar() {
     setCarregando(true);
@@ -51,6 +53,34 @@ export default function ClienteProdutosPage() {
     setNovoCusto("");
     setNovoPeso("");
     setSalvando(false);
+    carregar();
+  }
+
+  async function importarPlanilha() {
+    if (!confirm("Importar " + BASE_GARIMPO.length + " SKUs da planilha PRECIFICAÇÃO CERTA? SKUs já cadastrados serão atualizados (nome, custo e peso).")) return;
+    setSalvando(true);
+    const porSku = new Map(produtos.map((p) => [p.sku, p]));
+    let feitos = 0;
+    for (const item of BASE_GARIMPO) {
+      const existente = porSku.get(item.sku);
+      if (existente) {
+        await fetch("/api/c/produtos/" + existente.id, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nome: item.nome, custoProducao: item.custoProducao, pesoEnvioKg: item.pesoEnvioKg }),
+        });
+      } else {
+        await fetch("/api/c/produtos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(item),
+        });
+      }
+      feitos++;
+      setProgresso(feitos + " / " + BASE_GARIMPO.length);
+    }
+    setSalvando(false);
+    setProgresso("Concluído: " + feitos + " SKUs");
     carregar();
   }
 
@@ -149,6 +179,22 @@ export default function ClienteProdutosPage() {
         >
           + Adicionar
         </button>
+        <button
+          onClick={importarPlanilha}
+          disabled={salvando}
+          style={{
+            background: "#1e293b",
+            color: "#fff",
+            border: "1px solid #f97316",
+            borderRadius: 4,
+            padding: "6px 16px",
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          Importar planilha ({BASE_GARIMPO.length} SKUs)
+        </button>
+        {progresso && <span style={{ color: "#94a3b8", alignSelf: "center", fontSize: 13 }}>{progresso}</span>}
       </div>
 
       {produtos.length === 0 ? (
