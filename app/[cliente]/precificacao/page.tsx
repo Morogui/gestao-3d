@@ -13,6 +13,7 @@ interface Extras {
   custoFlex?: number;
   embalagem?: number;
   margemDesejada?: number;
+  precoPromo?: number;
 }
 
 interface Produto {
@@ -214,9 +215,11 @@ export default function ClientePrecificacaoPage() {
                 <th style={th}>Ads</th>
                 <th style={th}>Afiliado</th>
                 <th style={th}>Flex</th>
-                <th style={th}>Preço ML</th>
+                <th style={th}>Preço POR</th>
+                <th style={th}>Preço promo</th>
                 <th style={th}>Lucro</th>
-                <th style={th}>Margem</th>
+                <th style={th}>Margem (POR)</th>
+                <th style={th}>Margem promo</th>
                 <th style={th}>Margem alvo %</th>
                 <th style={th}>Preço sugerido</th>
               </tr>
@@ -225,6 +228,8 @@ export default function ClientePrecificacaoPage() {
               {filtrados.map((p) => {
                 const preco = p.precoVendaML || 0;
                 const r = calcular(p, config, preco);
+                const promo = p.extras?.precoPromo || 0;
+                const rp = calcular(p, config, promo);
                 const q = r.q;
                 const sug = sugerido(p, config);
                 return (
@@ -275,8 +280,12 @@ export default function ClientePrecificacaoPage() {
                       <td style={td}>
                         <input key={"pr" + p.id + preco} style={{ ...inp, width: 80 }} defaultValue={p.precoVendaML ?? ""} placeholder="0,00" onBlur={(e) => salvarProduto(p.id, { precoVendaML: num(e.target.value) })} />
                       </td>
+                      <td style={td}>
+                        <input key={"pm" + p.id + promo} style={{ ...inp, width: 80 }} defaultValue={promo || ""} placeholder="0,00" onBlur={(e) => salvarProduto(p.id, { extras: { precoPromo: num(e.target.value) } })} />
+                      </td>
                       <td style={{ ...td, color: preco > 0 ? cor(r.margemPct) : "#64748b" }}>{preco > 0 ? brl(r.lucro) : "-"}</td>
                       <td style={{ ...td, color: preco > 0 ? cor(r.margemPct) : "#64748b", fontWeight: 600 }}>{preco > 0 ? r.margemPct.toFixed(1) + "%" : "-"}</td>
+                      <td style={{ ...td, color: promo > 0 ? cor(rp.margemPct) : "#64748b" }}>{promo > 0 ? rp.margemPct.toFixed(1) + "% (" + brl(rp.lucro) + ")" : "-"}</td>
                       <td style={td}>
                         <input key={"ma" + p.id + q.margemDesejada} style={{ ...inp, width: 50 }} defaultValue={q.margemDesejada} onBlur={(e) => salvarProduto(p.id, { extras: { margemDesejada: num(e.target.value) } })} />
                       </td>
@@ -298,10 +307,10 @@ export default function ClientePrecificacaoPage() {
                     </tr>
                     {aberto === p.id && (
                       <tr key={"d" + p.id}>
-                        <td colSpan={14} style={{ ...td, background: "#0b1220" }}>
+                        <td colSpan={16} style={{ ...td, background: "#0b1220" }}>
                           {preco > 0 ? (
                             <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13, color: "#cbd5e1" }}>
-                              <span>Preço: {brl(preco)}</span>
+                              <span>Preço POR: {brl(preco)}</span>
                               <span>Comissão ({q.comissaoPct}%): -{brl(r.comissao)}</span>
                               <span>Envio por peso ({p.pesoEnvioKg} kg): -{brl(r.taxaPeso)}</span>
                               <span>Imposto ({config.impostoPct}%): -{brl(r.imposto)}</span>
@@ -313,7 +322,7 @@ export default function ClientePrecificacaoPage() {
                               <span style={{ color: cor(r.margemPct), fontWeight: 700 }}>Lucro: {brl(r.lucro)} ({r.margemPct.toFixed(1)}%)</span>
                             </div>
                           ) : (
-                            <span style={{ color: "#64748b", fontSize: 13 }}>Informe o Preço ML ou use o preço sugerido para ver o detalhamento.</span>
+                            <span style={{ color: "#64748b", fontSize: 13 }}>Informe o Preço POR ou use o preço sugerido para ver o detalhamento.</span>
                           )}
                         </td>
                       </tr>
