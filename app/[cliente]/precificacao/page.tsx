@@ -1,6 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { taxaPesoML } from "@/lib/precificacao";
+
+interface Extras {
+  tipo?: "classico" | "premium";
+  comissaoPct?: number;
+  usaAds?: boolean;
+  usaAfiliado?: boolean;
+  afiliadoPct?: number;
+  flex?: boolean;
+  custoFlex?: number;
+  embalagem?: number;
+  margemDesejada?: number;
+}
 
 interface Produto {
   id: number;
@@ -9,69 +22,74 @@ interface Produto {
   custoProducao: number;
   pesoEnvioKg: number;
   precoVendaML: number | null;
-  precoVendaShopee: number | null;
+  extras: Extras;
 }
 
-interface ConfigPrecificacao {
+interface Config {
   impostoPct: number;
   adsPctML: number;
-  adsPctShopee: number;
-  afiliadoPctShopee: number;
   embalagemCusto: number;
   margemDesejadaPct: number;
 }
 
-const COMISSAO_ML_CLASSICO_PCT = 11.5;
+const COMISSAO_DEFAULT = { classico: 14, premium: 19 };
+const FAIXAS = [18.99, 48.99, 78.99, 99.99, 119.99, 149.99, 199.99, Infinity];
 
-function taxaPesoML(pesoKg: number): number {
-  if (!pesoKg || pesoKg <= 0.3) return 6.5;
-  if (pesoKg <= 0.6) return 6.65;
-  if (pesoKg <= 1) return 7.5;
-  if (pesoKg <= 1.5) return 8;
-  if (pesoKg <= 2.5) return 9.5;
-  return 12;
+function brl(v: number): string {
+  if (!Number.isFinite(v)) return "R$ 0,00";
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function comissaoShopeePct(preco: number): number {
-  return preco < 80 ? 20 : 14;
+function num(s: string): number {
+  return Number(String(s).replace(",", ".")) || 0;
 }
 
-function taxaFixaShopee(preco: number): number {
-  if (preco < 80) return 4;
-  if (preco < 100) return 16;
-  if (preco < 200) return 20;
-  return 26;
+function params(p: Produto, cfg: Config) {
+  const e = p.extras || {};
+  const tipo = e.tipo || "classico";
+  return {
+    tipo,
+    comissaoPct: e.comissaoPct ?? COMISSAO_DEFAULT[tipo],
+    usaAds: e.usaAds ?? true,
+    usaAfiliado: e.usaAfiliado ?? false,
+    afiliadoPct: e.afiliadoPct ?? 5,
+    flex: e.flex ?? false,
+    custoFlex: e.custoFlex ?? 6,
+    embalagem: e.embalagem ?? cfg.embalagemCusto,
+    margemDesejada: e.margemDesejada ?? cfg.margemDesejadaPct,
+  };
 }
 
-function formatBRL(value: number): string {
-  if (Number.isNaN(value) || !Number.isFinite(value)) return "R$ 0,00";
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function calcularMargemML(preco: number, pesoKg: number, custoProducao: number, config: ConfigPrecificacao) {
-  const comissao = preco * (COMISSAO_ML_CLASSICO_PCT / 100);
-  const taxaFixa = taxaPesoML(pesoKg);
-  const imposto = preco * (config.impostoPct / 100);
-  const ads = preco * (config.adsPctML / 100);
-  const embalagem = config.embalagemCusto;
-  const lucro = preco - comissao - taxaFixa - imposto - ads - embalagem - custoProducao;
+function calcular(p: Produto, cfg: Config, preco: number) {
+  const q = params(p, cfg);
+  const comissao = preco * (q.comissaoPct / 100);
+  const taxaPeso = preco > 0 ? taxaPesoML(p.pesoEnvioKg, preco) : 0;
+  const imposto = preco * (cfg.impostoPct / 100);
+  const ads = q.usaAds ? preco * (cfg.adsPctML / 100) : 0;
+  const afiliado = q.usaAfiliado ? preco * (q.afiliadoPct / 100) : 0;
+  const flex = q.flex ? q.custoFlex : 0;
+  const lucro = preco - comissao - taxaPeso - imposto - ads - afiliado - q.embalagem - flex - p.custoProducao;
   const margemPct = preco > 0 ? (lucro / preco) * 100 : 0;
-  return { lucro, margemPct };
+  return { q, comissao, taxaPeso, imposto, ads, afiliado, flex, lucro, margemPct };
 }
 
-function calcularMargemShopee(preco: number, custoProducao: number, config: ConfigPrecificacao) {
-  const comissao = preco * (comissaoShopeePct(preco) / 100);
-  const taxaFixa = taxaFixaShopee(preco);
-  const imposto = preco * (config.impostoPct / 100);
-  const ads = preco * (config.adsPctShopee / 100);
-  const afiliado = preco * (config.afiliadoPctShopee / 100);
-  const embalagem = config.embalagemCusto;
-  const lucro = preco - comissao - taxaFixa - imposto - ads - afiliado - embalagem - custoProducao;
-  const margemPct = preco > 0 ? (lucro / preco) * 100 : 0;
-  return { lucro, margemPct };
+function sugerido(p: Produto, cfg: Config): number | null {
+  const q = params(p, cfg);
+  const pct =
+    (q.comissaoPct + cfg.impostoPct + (q.usaAds ? cfg.adsPctML : 0) + (q.usaAfiliado ? q.afiliadoPct : 0) + q.margemDesejada) / 100;
+  if (pct >= 1) return null;
+  const fixo = q.embalagem + (q.flex ? q.custoFlex : 0) + p.custoProducao;
+  let lo = 0;
+  for (const hi of FAIXAS) {
+    const taxa = taxaPesoML(p.pesoEnvioKg, Number.isFinite(hi) ? hi : 1000);
+    const preco = (fixo + taxa) / (1 - pct);
+    if (preco > lo && preco <= hi) return Math.ceil(preco * 100) / 100;
+    lo = hi;
+  }
+  return null;
 }
 
-function corMargem(pct: number): string {
+function cor(pct: number): string {
   if (pct < 5) return "#ef4444";
   if (pct < 15) return "#eab308";
   return "#22c55e";
@@ -79,8 +97,10 @@ function corMargem(pct: number): string {
 
 export default function ClientePrecificacaoPage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
-  const [config, setConfig] = useState<ConfigPrecificacao | null>(null);
+  const [config, setConfig] = useState<Config | null>(null);
   const [carregando, setCarregando] = useState(true);
+  const [aberto, setAberto] = useState<number | null>(null);
+  const [busca, setBusca] = useState("");
 
   function carregar() {
     setCarregando(true);
@@ -88,9 +108,9 @@ export default function ClientePrecificacaoPage() {
       fetch("/api/c/produtos").then((r) => r.json()),
       fetch("/api/c/precificacao/config").then((r) => r.json()),
     ])
-      .then(([produtosData, configData]) => {
-        setProdutos(produtosData.produtos || []);
-        setConfig(configData.config);
+      .then(([pd, cd]) => {
+        setProdutos((pd.produtos || []).map((p: any) => ({ ...p, extras: p.extras || {} })));
+        setConfig(cd.config);
       })
       .finally(() => setCarregando(false));
   }
@@ -99,19 +119,25 @@ export default function ClientePrecificacaoPage() {
     carregar();
   }, []);
 
-  async function salvarPreco(id: number, campo: "precoVendaML" | "precoVendaShopee", valor: number) {
-    setProdutos((prev) => prev.map((p) => (p.id === id ? { ...p, [campo]: valor } : p)));
-    await fetch(`/api/c/produtos/${id}`, {
+  async function salvarProduto(id: number, patch: any) {
+    setProdutos((prev) =>
+      prev.map((p) => {
+        if (p.id !== id) return p;
+        const n: any = { ...p, ...patch };
+        if (patch.extras) n.extras = { ...(p.extras || {}), ...patch.extras };
+        return n;
+      })
+    );
+    await fetch("/api/c/produtos/" + id, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [campo]: valor }),
+      body: JSON.stringify(patch),
     });
   }
 
-  async function salvarConfig(campo: keyof ConfigPrecificacao, valor: number) {
+  async function salvarConfig(campo: keyof Config, valor: number) {
     if (!config) return;
-    const novo = { ...config, [campo]: valor };
-    setConfig(novo);
+    setConfig({ ...config, [campo]: valor });
     const resp = await fetch("/api/c/precificacao/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -125,147 +151,179 @@ export default function ClientePrecificacaoPage() {
     return <p style={{ color: "#94a3b8" }}>Carregando...</p>;
   }
 
-  const inputStyle: React.CSSProperties = {
+  const inp: React.CSSProperties = {
     background: "#0f172a",
     border: "1px solid #334155",
     borderRadius: 4,
     color: "#fff",
-    padding: "6px 8px",
-    width: 90,
+    padding: "5px 6px",
+    width: 64,
     fontSize: 13,
   };
-  const thStyle: React.CSSProperties = {
-    padding: 8,
-    textAlign: "left",
-    color: "#94a3b8",
-    fontWeight: 600,
-    fontSize: 13,
-  };
-  const tdStyle: React.CSSProperties = { padding: 8, borderBottom: "1px solid #1e293b" };
+  const th: React.CSSProperties = { padding: 6, textAlign: "left", color: "#94a3b8", fontWeight: 600, fontSize: 12, whiteSpace: "nowrap" };
+  const td: React.CSSProperties = { padding: 6, borderBottom: "1px solid #1e293b", fontSize: 13, verticalAlign: "middle" };
+
+  const filtrados = produtos.filter((p) => {
+    const t = busca.trim().toLowerCase();
+    return !t || p.nome.toLowerCase().includes(t) || p.sku.toLowerCase().includes(t);
+  });
 
   return (
     <div>
-      <h2 style={{ color: "#fff", fontSize: 20, marginBottom: 16 }}>Precificação</h2>
+      <h2 style={{ color: "#fff", fontSize: 20, marginBottom: 4 }}>Precificação — Mercado Livre</h2>
+      <p style={{ color: "#64748b", fontSize: 12, marginBottom: 12 }}>
+        Comissão padrão de Calçados, Roupas e Bolsas (Clássico 14% / Premium 19%) — ajustável por produto. A taxa de envio por peso usa a tabela oficial do ML.
+      </p>
 
-      <div
-        style={{
-          display: "flex",
-          gap: 16,
-          flexWrap: "wrap",
-          marginBottom: 24,
-          background: "#0f172a",
-          padding: 12,
-          borderRadius: 8,
-          border: "1px solid #1e293b",
-        }}
-      >
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 16, background: "#0f172a", padding: 12, borderRadius: 8, border: "1px solid #1e293b" }}>
         <label style={{ color: "#94a3b8", fontSize: 13 }}>
-          Imposto %
-          <br />
-          <input
-            style={inputStyle}
-            defaultValue={config.impostoPct}
-            onBlur={(e) => salvarConfig("impostoPct", Number(e.target.value.replace(",", ".")) || 0)}
-          />
+          Imposto %<br />
+          <input style={inp} defaultValue={config.impostoPct} onBlur={(e) => salvarConfig("impostoPct", num(e.target.value))} />
         </label>
         <label style={{ color: "#94a3b8", fontSize: 13 }}>
-          Ads ML %
-          <br />
-          <input
-            style={inputStyle}
-            defaultValue={config.adsPctML}
-            onBlur={(e) => salvarConfig("adsPctML", Number(e.target.value.replace(",", ".")) || 0)}
-          />
+          Ads ML %<br />
+          <input style={inp} defaultValue={config.adsPctML} onBlur={(e) => salvarConfig("adsPctML", num(e.target.value))} />
         </label>
         <label style={{ color: "#94a3b8", fontSize: 13 }}>
-          Ads Shopee %
-          <br />
-          <input
-            style={inputStyle}
-            defaultValue={config.adsPctShopee}
-            onBlur={(e) => salvarConfig("adsPctShopee", Number(e.target.value.replace(",", ".")) || 0)}
-          />
+          Embalagem padrão (R$)<br />
+          <input style={inp} defaultValue={config.embalagemCusto} onBlur={(e) => salvarConfig("embalagemCusto", num(e.target.value))} />
         </label>
         <label style={{ color: "#94a3b8", fontSize: 13 }}>
-          Afiliado Shopee %
-          <br />
-          <input
-            style={inputStyle}
-            defaultValue={config.afiliadoPctShopee}
-            onBlur={(e) => salvarConfig("afiliadoPctShopee", Number(e.target.value.replace(",", ".")) || 0)}
-          />
+          Margem desejada padrão %<br />
+          <input style={inp} defaultValue={config.margemDesejadaPct} onBlur={(e) => salvarConfig("margemDesejadaPct", num(e.target.value))} />
         </label>
         <label style={{ color: "#94a3b8", fontSize: 13 }}>
-          Embalagem (R$)
-          <br />
-          <input
-            style={inputStyle}
-            defaultValue={config.embalagemCusto}
-            onBlur={(e) => salvarConfig("embalagemCusto", Number(e.target.value.replace(",", ".")) || 0)}
-          />
+          Buscar<br />
+          <input style={{ ...inp, width: 180 }} value={busca} placeholder="SKU ou nome" onChange={(e) => setBusca(e.target.value)} />
         </label>
       </div>
 
       {produtos.length === 0 ? (
-        <p style={{ color: "#94a3b8" }}>
-          Nenhum produto cadastrado ainda. Cadastre produtos na aba Produtos primeiro.
-        </p>
+        <p style={{ color: "#94a3b8" }}>Nenhum produto cadastrado ainda. Cadastre produtos na aba Produtos primeiro.</p>
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", color: "#fff" }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid #334155" }}>
-              <th style={thStyle}>Produto</th>
-              <th style={thStyle}>Custo</th>
-              <th style={thStyle}>Preço ML</th>
-              <th style={thStyle}>Margem ML</th>
-              <th style={thStyle}>Preço Shopee</th>
-              <th style={thStyle}>Margem Shopee</th>
-            </tr>
-          </thead>
-          <tbody>
-            {produtos.map((p) => {
-              const precoML = p.precoVendaML || 0;
-              const precoShopee = p.precoVendaShopee || 0;
-              const ml = calcularMargemML(precoML, p.pesoEnvioKg, p.custoProducao, config);
-              const shopee = calcularMargemShopee(precoShopee, p.custoProducao, config);
-              return (
-                <tr key={p.id}>
-                  <td style={tdStyle}>
-                    <div style={{ fontWeight: 600 }}>{p.nome}</div>
-                    <div style={{ color: "#64748b", fontSize: 12 }}>{p.sku}</div>
-                  </td>
-                  <td style={tdStyle}>{formatBRL(p.custoProducao)}</td>
-                  <td style={tdStyle}>
-                    <input
-                      style={inputStyle}
-                      defaultValue={p.precoVendaML ?? ""}
-                      placeholder="0,00"
-                      onBlur={(e) =>
-                        salvarPreco(p.id, "precoVendaML", Number(e.target.value.replace(",", ".")) || 0)
-                      }
-                    />
-                  </td>
-                  <td style={{ ...tdStyle, color: precoML > 0 ? corMargem(ml.margemPct) : "#64748b" }}>
-                    {precoML > 0 ? `${ml.margemPct.toFixed(1)}% (${formatBRL(ml.lucro)})` : "-"}
-                  </td>
-                  <td style={tdStyle}>
-                    <input
-                      style={inputStyle}
-                      defaultValue={p.precoVendaShopee ?? ""}
-                      placeholder="0,00"
-                      onBlur={(e) =>
-                        salvarPreco(p.id, "precoVendaShopee", Number(e.target.value.replace(",", ".")) || 0)
-                      }
-                    />
-                  </td>
-                  <td style={{ ...tdStyle, color: precoShopee > 0 ? corMargem(shopee.margemPct) : "#64748b" }}>
-                    {precoShopee > 0 ? `${shopee.margemPct.toFixed(1)}% (${formatBRL(shopee.lucro)})` : "-"}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", color: "#fff" }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid #334155" }}>
+                <th style={th}>Produto</th>
+                <th style={th}>Custo</th>
+                <th style={th}>Peso kg</th>
+                <th style={th}>Embal. R$</th>
+                <th style={th}>Anúncio</th>
+                <th style={th}>Comissão %</th>
+                <th style={th}>Ads</th>
+                <th style={th}>Afiliado</th>
+                <th style={th}>Flex</th>
+                <th style={th}>Preço ML</th>
+                <th style={th}>Lucro</th>
+                <th style={th}>Margem</th>
+                <th style={th}>Margem alvo %</th>
+                <th style={th}>Preço sugerido</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtrados.map((p) => {
+                const preco = p.precoVendaML || 0;
+                const r = calcular(p, config, preco);
+                const q = r.q;
+                const sug = sugerido(p, config);
+                return (
+                  <>
+                    <tr key={p.id}>
+                      <td style={td}>
+                        <div style={{ fontWeight: 600, cursor: "pointer" }} onClick={() => setAberto(aberto === p.id ? null : p.id)}>
+                          {aberto === p.id ? "▾ " : "▸ "}
+                          {p.nome}
+                        </div>
+                        <div style={{ color: "#64748b", fontSize: 11 }}>{p.sku}</div>
+                      </td>
+                      <td style={td}>{brl(p.custoProducao)}</td>
+                      <td style={td}>
+                        <input key={"pe" + p.id + p.pesoEnvioKg} style={inp} defaultValue={p.pesoEnvioKg} onBlur={(e) => salvarProduto(p.id, { pesoEnvioKg: num(e.target.value) })} />
+                      </td>
+                      <td style={td}>
+                        <input key={"em" + p.id + q.embalagem} style={inp} defaultValue={q.embalagem} onBlur={(e) => salvarProduto(p.id, { extras: { embalagem: num(e.target.value) } })} />
+                      </td>
+                      <td style={td}>
+                        <select
+                          style={{ ...inp, width: 90 }}
+                          value={q.tipo}
+                          onChange={(e) => salvarProduto(p.id, { extras: { tipo: e.target.value, comissaoPct: COMISSAO_DEFAULT[e.target.value as "classico" | "premium"] } })}
+                        >
+                          <option value="classico">Clássico</option>
+                          <option value="premium">Premium</option>
+                        </select>
+                      </td>
+                      <td style={td}>
+                        <input key={"co" + p.id + q.comissaoPct} style={inp} defaultValue={q.comissaoPct} onBlur={(e) => salvarProduto(p.id, { extras: { comissaoPct: num(e.target.value) } })} />
+                      </td>
+                      <td style={td}>
+                        <input type="checkbox" checked={q.usaAds} onChange={(e) => salvarProduto(p.id, { extras: { usaAds: e.target.checked } })} />
+                      </td>
+                      <td style={td}>
+                        <input type="checkbox" checked={q.usaAfiliado} onChange={(e) => salvarProduto(p.id, { extras: { usaAfiliado: e.target.checked } })} />
+                        {q.usaAfiliado && (
+                          <input key={"af" + p.id + q.afiliadoPct} style={{ ...inp, width: 44, marginLeft: 4 }} defaultValue={q.afiliadoPct} onBlur={(e) => salvarProduto(p.id, { extras: { afiliadoPct: num(e.target.value) } })} />
+                        )}
+                      </td>
+                      <td style={td}>
+                        <input type="checkbox" checked={q.flex} onChange={(e) => salvarProduto(p.id, { extras: { flex: e.target.checked } })} />
+                        {q.flex && (
+                          <input key={"cf" + p.id + q.custoFlex} style={{ ...inp, width: 50, marginLeft: 4 }} defaultValue={q.custoFlex} onBlur={(e) => salvarProduto(p.id, { extras: { custoFlex: num(e.target.value) } })} />
+                        )}
+                      </td>
+                      <td style={td}>
+                        <input key={"pr" + p.id + preco} style={{ ...inp, width: 80 }} defaultValue={p.precoVendaML ?? ""} placeholder="0,00" onBlur={(e) => salvarProduto(p.id, { precoVendaML: num(e.target.value) })} />
+                      </td>
+                      <td style={{ ...td, color: preco > 0 ? cor(r.margemPct) : "#64748b" }}>{preco > 0 ? brl(r.lucro) : "-"}</td>
+                      <td style={{ ...td, color: preco > 0 ? cor(r.margemPct) : "#64748b", fontWeight: 600 }}>{preco > 0 ? r.margemPct.toFixed(1) + "%" : "-"}</td>
+                      <td style={td}>
+                        <input key={"ma" + p.id + q.margemDesejada} style={{ ...inp, width: 50 }} defaultValue={q.margemDesejada} onBlur={(e) => salvarProduto(p.id, { extras: { margemDesejada: num(e.target.value) } })} />
+                      </td>
+                      <td style={td}>
+                        {sug !== null ? (
+                          <span>
+                            {brl(sug)}{" "}
+                            <button
+                              style={{ background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 4, padding: "3px 8px", fontSize: 12, cursor: "pointer" }}
+                              onClick={() => salvarProduto(p.id, { precoVendaML: sug })}
+                            >
+                              Usar
+                            </button>
+                          </span>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                    </tr>
+                    {aberto === p.id && (
+                      <tr key={"d" + p.id}>
+                        <td colSpan={14} style={{ ...td, background: "#0b1220" }}>
+                          {preco > 0 ? (
+                            <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13, color: "#cbd5e1" }}>
+                              <span>Preço: {brl(preco)}</span>
+                              <span>Comissão ({q.comissaoPct}%): -{brl(r.comissao)}</span>
+                              <span>Envio por peso ({p.pesoEnvioKg} kg): -{brl(r.taxaPeso)}</span>
+                              <span>Imposto ({config.impostoPct}%): -{brl(r.imposto)}</span>
+                              <span>Ads ({q.usaAds ? config.adsPctML : 0}%): -{brl(r.ads)}</span>
+                              <span>Afiliado: -{brl(r.afiliado)}</span>
+                              <span>Embalagem: -{brl(q.embalagem)}</span>
+                              <span>Flex: -{brl(r.flex)}</span>
+                              <span>Custo produto: -{brl(p.custoProducao)}</span>
+                              <span style={{ color: cor(r.margemPct), fontWeight: 700 }}>Lucro: {brl(r.lucro)} ({r.margemPct.toFixed(1)}%)</span>
+                            </div>
+                          ) : (
+                            <span style={{ color: "#64748b", fontSize: 13 }}>Informe o Preço ML ou use o preço sugerido para ver o detalhamento.</span>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
