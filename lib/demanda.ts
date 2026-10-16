@@ -29,6 +29,14 @@ const DESPACHADO = new Set([
   "delivered",
   "completed",
   "to_confirm_receive",
+  // Devolução/cancelamento: a peça não vai mais ser despachada, então não
+  // pode contar como backlog urgente de impressão (Shopee TO_RETURN etc.).
+  "to_return",
+  "returned",
+  "not_delivered",
+  "cancelled",
+  "in_cancel",
+  "invalidated",
   ]);
 
 export function statusIndicaDespachado(
