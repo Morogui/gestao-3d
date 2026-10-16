@@ -25,6 +25,7 @@ export interface Conversa {
   naoLida: boolean;
   thumbnail?: string | null;
   respondida?: boolean;
+  cancelada?: boolean; // pos-venda de pedido cancelado: ML bloqueia resposta
 }
 
 export interface Mensagem {
@@ -81,6 +82,21 @@ async function mlTitulos(
   return map;
 }
 
+// true se o pedido/pacote esta cancelado (o ML bloqueia mensagens nesses casos)
+async function mlPedidoCancelado(id: string, token: string): Promise<boolean> {
+  const o = await mlGet(`/orders/${id}`, token);
+  if (o.ok) return o.data?.status === "cancelled";
+  const p = await mlGet(`/packs/${id}`, token);
+  if (!p.ok) return false;
+  if (p.data?.status === "cancelled") return true;
+  const orders: any[] = p.data?.orders ?? [];
+  if (orders.length === 0) return false;
+  const estados = await Promise.all(
+    orders.map(async (x) => (await mlGet(`/orders/${x.id}`, token)).data?.status)
+  );
+  return estados.every((s) => s === "cancelled");
+}
+
 export async function listarML(): Promise<ListaResultado> {
   const sessao = await getValidMLAccessToken();
   if (!sessao) return { conectado: false, conversas: [] };
@@ -129,15 +145,19 @@ export async function listarML(): Promise<ListaResultado> {
     for (const res of results) {
       const m = /packs\/(\d+)\/sellers\/(\d+)/.exec(String(res?.resource ?? ""));
       if (!m) continue;
+      const cancelada = await mlPedidoCancelado(m[1], accessToken);
       conversas.push({
         id: `p:${m[1]}/${m[2]}`,
         plataforma: "ml",
         tipo: "posvenda",
-        titulo: `Pos-venda - pedido ${m[1]}`,
+        titulo: `Pos-venda - pedido ${m[1]}${cancelada ? " (cancelado)" : ""}`,
         comprador: "Comprador",
-        ultimaMensagem: `${res?.count ?? 1} mensagem(ns) nao lida(s)`,
+        ultimaMensagem: cancelada
+          ? "Pedido cancelado - ML nao permite responder"
+          : `${res?.count ?? 1} mensagem(ns) nao lida(s)`,
         data: new Date().toISOString(),
-        naoLida: true,
+        naoLida: !cancelada,
+        cancelada,
       });
     }
   } else {
