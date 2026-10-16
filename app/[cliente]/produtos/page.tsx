@@ -59,7 +59,7 @@ export default function ClienteProdutosPage() {
   async function importarPlanilha() {
     if (!confirm("Importar " + BASE_GARIMPO.length + " SKUs da planilha PRECIFICAÇÃO CERTA? SKUs já cadastrados serão atualizados (nome, custo e peso).")) return;
     setSalvando(true);
-    const porSku = new Map(produtos.map((p) => [p.sku, p]));
+    const porSku = new Map<string, Produto>(produtos.map((p): [string, Produto] => [p.sku, p]));
     let feitos = 0;
     for (const item of BASE_GARIMPO) {
       const existente = porSku.get(item.sku);
