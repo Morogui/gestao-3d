@@ -14,6 +14,7 @@ interface Extras {
   embalagem?: number;
   margemDesejada?: number;
   precoPromo?: number;
+  rebate?: number;
 }
 
 interface Produto {
@@ -58,12 +59,14 @@ function params(p: Produto, cfg: Config) {
     custoFlex: e.custoFlex ?? 6,
     embalagem: e.embalagem ?? cfg.embalagemCusto,
     margemDesejada: e.margemDesejada ?? cfg.margemDesejadaPct,
+    rebate: e.rebate ?? 0,
   };
 }
 
 function calcular(p: Produto, cfg: Config, preco: number) {
   const q = params(p, cfg);
-  const comissao = preco * (q.comissaoPct / 100);
+  const comissaoBruta = preco * (q.comissaoPct / 100);
+  const comissao = Math.max(0, comissaoBruta - q.rebate);
   const taxaPeso = preco > 0 ? taxaPesoML(p.pesoEnvioKg, preco) : 0;
   const imposto = preco * (cfg.impostoPct / 100);
   const ads = q.usaAds ? preco * (cfg.adsPctML / 100) : 0;
@@ -79,7 +82,7 @@ function sugerido(p: Produto, cfg: Config): number | null {
   const pct =
     (q.comissaoPct + cfg.impostoPct + (q.usaAds ? cfg.adsPctML : 0) + (q.usaAfiliado ? q.afiliadoPct : 0) + q.margemDesejada) / 100;
   if (pct >= 1) return null;
-  const fixo = q.embalagem + (q.flex ? q.custoFlex : 0) + p.custoProducao;
+  const fixo = q.embalagem + (q.flex ? q.custoFlex : 0) + p.custoProducao - q.rebate;
   let lo = 0;
   for (const hi of FAIXAS) {
     const taxa = taxaPesoML(p.pesoEnvioKg, Number.isFinite(hi) ? hi : 1000);
@@ -215,21 +218,21 @@ export default function ClientePrecificacaoPage() {
                 <th style={th}>Ads</th>
                 <th style={th}>Afiliado</th>
                 <th style={th}>Flex</th>
-                <th style={th}>Preço POR</th>
-                <th style={th}>Preço promo</th>
+                <th style={th}>Preço cheio</th>
+                <th style={th}>Preço promo (venda)</th>
+                <th style={th}>Rebate R$</th>
                 <th style={th}>Lucro</th>
-                <th style={th}>Margem (POR)</th>
-                <th style={th}>Margem promo</th>
+                <th style={th}>Margem</th>
                 <th style={th}>Margem alvo %</th>
                 <th style={th}>Preço sugerido</th>
               </tr>
             </thead>
             <tbody>
               {filtrados.map((p) => {
-                const preco = p.precoVendaML || 0;
-                const r = calcular(p, config, preco);
+                const cheio = p.precoVendaML || 0;
                 const promo = p.extras?.precoPromo || 0;
-                const rp = calcular(p, config, promo);
+                const preco = promo > 0 ? promo : cheio;
+                const r = calcular(p, config, preco);
                 const q = r.q;
                 const sug = sugerido(p, config);
                 return (
@@ -278,14 +281,16 @@ export default function ClientePrecificacaoPage() {
                         )}
                       </td>
                       <td style={td}>
-                        <input key={"pr" + p.id + preco} style={{ ...inp, width: 80 }} defaultValue={p.precoVendaML ?? ""} placeholder="0,00" onBlur={(e) => salvarProduto(p.id, { precoVendaML: num(e.target.value) })} />
+                        <input key={"pr" + p.id + cheio} style={{ ...inp, width: 80 }} defaultValue={p.precoVendaML ?? ""} placeholder="0,00" onBlur={(e) => salvarProduto(p.id, { precoVendaML: num(e.target.value) })} />
                       </td>
                       <td style={td}>
                         <input key={"pm" + p.id + promo} style={{ ...inp, width: 80 }} defaultValue={promo || ""} placeholder="0,00" onBlur={(e) => salvarProduto(p.id, { extras: { precoPromo: num(e.target.value) } })} />
                       </td>
+                      <td style={td}>
+                        <input key={"rb" + p.id + q.rebate} style={{ ...inp, width: 64 }} defaultValue={q.rebate || ""} placeholder="0,00" onBlur={(e) => salvarProduto(p.id, { extras: { rebate: num(e.target.value) } })} />
+                      </td>
                       <td style={{ ...td, color: preco > 0 ? cor(r.margemPct) : "#64748b" }}>{preco > 0 ? brl(r.lucro) : "-"}</td>
                       <td style={{ ...td, color: preco > 0 ? cor(r.margemPct) : "#64748b", fontWeight: 600 }}>{preco > 0 ? r.margemPct.toFixed(1) + "%" : "-"}</td>
-                      <td style={{ ...td, color: promo > 0 ? cor(rp.margemPct) : "#64748b" }}>{promo > 0 ? rp.margemPct.toFixed(1) + "% (" + brl(rp.lucro) + ")" : "-"}</td>
                       <td style={td}>
                         <input key={"ma" + p.id + q.margemDesejada} style={{ ...inp, width: 50 }} defaultValue={q.margemDesejada} onBlur={(e) => salvarProduto(p.id, { extras: { margemDesejada: num(e.target.value) } })} />
                       </td>
@@ -295,7 +300,7 @@ export default function ClientePrecificacaoPage() {
                             {brl(sug)}{" "}
                             <button
                               style={{ background: "#1d4ed8", color: "#fff", border: "none", borderRadius: 4, padding: "3px 8px", fontSize: 12, cursor: "pointer" }}
-                              onClick={() => salvarProduto(p.id, { precoVendaML: sug })}
+                              onClick={() => salvarProduto(p.id, { extras: { precoPromo: sug } })}
                             >
                               Usar
                             </button>
@@ -310,8 +315,8 @@ export default function ClientePrecificacaoPage() {
                         <td colSpan={16} style={{ ...td, background: "#0b1220" }}>
                           {preco > 0 ? (
                             <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13, color: "#cbd5e1" }}>
-                              <span>Preço POR: {brl(preco)}</span>
-                              <span>Comissão ({q.comissaoPct}%): -{brl(r.comissao)}</span>
+                              <span>Preço de venda: {brl(preco)}</span>
+                              <span>Comissão ({q.comissaoPct}%{q.rebate > 0 ? " - rebate " + brl(q.rebate) : ""}): -{brl(r.comissao)}</span>
                               <span>Envio por peso ({p.pesoEnvioKg} kg): -{brl(r.taxaPeso)}</span>
                               <span>Imposto ({config.impostoPct}%): -{brl(r.imposto)}</span>
                               <span>Ads ({q.usaAds ? config.adsPctML : 0}%): -{brl(r.ads)}</span>
@@ -322,7 +327,7 @@ export default function ClientePrecificacaoPage() {
                               <span style={{ color: cor(r.margemPct), fontWeight: 700 }}>Lucro: {brl(r.lucro)} ({r.margemPct.toFixed(1)}%)</span>
                             </div>
                           ) : (
-                            <span style={{ color: "#64748b", fontSize: 13 }}>Informe o Preço POR ou use o preço sugerido para ver o detalhamento.</span>
+                            <span style={{ color: "#64748b", fontSize: 13 }}>Informe o Preço promo (ou cheio) ou use o preço sugerido para ver o detalhamento.</span>
                           )}
                         </td>
                       </tr>
