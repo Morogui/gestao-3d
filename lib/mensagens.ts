@@ -26,6 +26,7 @@ export interface Conversa {
   thumbnail?: string | null;
   respondida?: boolean;
   cancelada?: boolean; // pos-venda de pedido cancelado: ML bloqueia resposta
+  mediacao?: boolean; // pedido com reclamacao/mediacao: ML bloqueia o chat normal
 }
 
 export interface Mensagem {
@@ -97,6 +98,26 @@ async function mlPedidoCancelado(id: string, token: string): Promise<boolean> {
   return estados.every((s) => s === "cancelled");
 }
 
+// Reclamacoes (mediacoes) abertas do vendedor. Falha silenciosa: se a API
+// recusar, a deteccao cai no status da conversa.
+async function mlReclamacoesAbertas(token: string): Promise<any[]> {
+  try {
+    const r = await mlGet("/post-purchase/v1/claims/search?status=opened&limit=50", token);
+    if (!r.ok) return [];
+    return Array.isArray(r.data?.data) ? r.data.data : [];
+  } catch {
+    return [];
+  }
+}
+
+// true se a conversa de pos-venda esta bloqueada por mediacao
+async function mlConversaEmMediacao(pack: string, seller: string, token: string): Promise<boolean> {
+  const r = await mlGet("/messages/packs/" + pack + "/sellers/" + seller + "?tag=post_sale&mark_as_read=false", token);
+  if (!r.ok) return false;
+  const st = r.data?.conversation_status;
+  return String(st?.substatus ?? "").toLowerCase().includes("mediation");
+}
+
 export async function listarML(): Promise<ListaResultado> {
   const sessao = await getValidMLAccessToken();
   if (!sessao) return { conectado: false, conversas: [] };
@@ -138,6 +159,9 @@ export async function listarML(): Promise<ListaResultado> {
     }
   }
 
+  const reclamacoes = await mlReclamacoesAbertas(accessToken);
+  const usados = new Set<string>();
+
   // Pos-venda: conversas com mensagens nao lidas
   const un = await mlGet(`/messages/unread?role=seller&tag=post_sale`, accessToken);
   if (un.ok) {
@@ -146,6 +170,23 @@ export async function listarML(): Promise<ListaResultado> {
       const m = /packs\/(\d+)\/sellers\/(\d+)/.exec(String(res?.resource ?? ""));
       if (!m) continue;
       const cancelada = await mlPedidoCancelado(m[1], accessToken);
+      const reclamacao = reclamacoes.find((c) => String(c.resource_id) === m[1]);
+      const mediacao = !cancelada && (!!reclamacao || (await mlConversaEmMediacao(m[1], m[2], accessToken)));
+      if (mediacao) {
+        usados.add(m[1]);
+        conversas.push({
+          id: "p:" + m[1] + "/" + m[2],
+          plataforma: "ml",
+          tipo: "posvenda",
+          titulo: "Mediacao - pedido " + m[1],
+          comprador: "Comprador",
+          ultimaMensagem: "Em mediacao - responda pela reclamacao no ML",
+          data: new Date().toISOString(),
+          naoLida: true,
+          mediacao: true,
+        });
+        continue;
+      }
       conversas.push({
         id: `p:${m[1]}/${m[2]}`,
         plataforma: "ml",
@@ -162,6 +203,24 @@ export async function listarML(): Promise<ListaResultado> {
     }
   } else {
     erro = (erro ? erro + " | " : "") + `Pos-venda ML: HTTP ${un.status}`;
+  }
+
+  // Reclamacoes abertas que nao apareceram na lista de nao lidas
+  for (const rc of reclamacoes) {
+    const pedido = String(rc.resource_id ?? "");
+    if (!pedido || usados.has(pedido)) continue;
+    usados.add(pedido);
+    conversas.push({
+      id: "p:" + pedido + "/" + userId,
+      plataforma: "ml",
+      tipo: "posvenda",
+      titulo: "Mediacao - pedido " + pedido,
+      comprador: "Comprador",
+      ultimaMensagem: "Reclamacao aberta - responda pelo ML",
+      data: rc.last_updated ?? rc.date_created ?? new Date().toISOString(),
+      naoLida: true,
+      mediacao: true,
+    });
   }
 
   conversas.sort((a, b) => (a.data < b.data ? 1 : -1));
@@ -231,6 +290,9 @@ export async function responderML(id: string, texto: string): Promise<{ ok: bool
 
   if (id.startsWith("p:")) {
     const [pack, seller] = id.slice(2).split("/");
+    if (await mlConversaEmMediacao(pack, seller, accessToken)) {
+      return { ok: false, erro: "Pedido em mediacao: o ML bloqueia o chat. Responda pela reclamacao no painel do ML." };
+    }
     // descobre o id do comprador pela propria conversa
     const r = await mlGet(`/messages/packs/${pack}/sellers/${seller}?tag=post_sale&mark_as_read=false`, accessToken);
     const msgs: any[] = r.data?.messages ?? [];
