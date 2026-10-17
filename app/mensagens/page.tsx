@@ -14,6 +14,7 @@ interface Conversa {
   thumbnail?: string | null;
   respondida?: boolean;
   cancelada?: boolean;
+  mediacao?: boolean;
 }
 interface Mensagem {
   id: string;
@@ -27,7 +28,7 @@ interface Lista {
   conversas: Conversa[];
 }
 
-type Filtro = "todas" | "ml" | "shopee";
+type Filtro = "todas" | "ml" | "shopee" | "mediacao";
 
 const TIPO_LABEL: Record<string, string> = {
   pergunta: "Pergunta",
@@ -77,12 +78,14 @@ export default function MensagensPage() {
   const todas = useMemo(() => {
     const l = [...(ml?.conversas ?? []), ...(shopee?.conversas ?? [])];
     return l
-      .filter((c) => (filtro === "todas" ? true : c.plataforma === filtro))
+      .filter((c) => (filtro === "mediacao" ? !!c.mediacao : !c.mediacao))
+      .filter((c) => (filtro === "todas" || filtro === "mediacao" ? true : c.plataforma === filtro))
       .filter((c) => (soPendentes ? c.naoLida : true))
       .sort((a, b) => (a.data < b.data ? 1 : -1));
   }, [ml, shopee, filtro, soPendentes]);
 
-  const pendentesML = (ml?.conversas ?? []).filter((c) => c.naoLida).length;
+  const nMed = (ml?.conversas ?? []).filter((c) => c.mediacao).length;
+  const pendentesML = (ml?.conversas ?? []).filter((c) => c.naoLida && !c.mediacao).length;
   const pendentesShopee = (shopee?.conversas ?? []).filter((c) => c.naoLida).length;
 
   async function abrir(c: Conversa) {
@@ -142,6 +145,7 @@ export default function MensagensPage() {
               ["todas", "Todas"],
               ["ml", `Mercado Livre${pendentesML ? ` (${pendentesML})` : ""}`],
               ["shopee", `Shopee${pendentesShopee ? ` (${pendentesShopee})` : ""}`],
+              ["mediacao", "Mediação" + (nMed ? " (" + nMed + ")" : "")],
             ] as [Filtro, string][]
           ).map(([k, label]) => (
             <button
@@ -198,7 +202,7 @@ export default function MensagensPage() {
                       c.plataforma === "ml" ? "bg-yellow-100 text-yellow-800" : "bg-orange-100 text-orange-800"
                     }`}
                   >
-                    {c.plataforma === "ml" ? "ML" : "Shopee"} · {TIPO_LABEL[c.tipo]}
+                    {c.plataforma === "ml" ? "ML" : "Shopee"} · {c.mediacao ? "Mediação" : TIPO_LABEL[c.tipo]}
                   </span>
                   {c.naoLida && <span className="h-2 w-2 rounded-full bg-red-500" />}
                   <span className="ml-auto text-[11px] text-gray-400">{fmt(c.data)}</span>
@@ -240,6 +244,11 @@ export default function MensagensPage() {
                   </div>
                 ))}
               </div>
+              {sel.mediacao ? (
+                <div className="border-t border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  Pedido em mediação/reclamação: o Mercado Livre bloqueia o chat normal. Responda pela reclamação no painel do ML (Vendas → Reclamações).
+                </div>
+              ) : (
               <div className="border-t border-gray-100 p-3">
                 {erroEnvio && <div className="mb-2 text-sm text-red-600">{erroEnvio}</div>}
                 <div className="flex gap-2">
@@ -266,6 +275,7 @@ export default function MensagensPage() {
                   </button>
                 </div>
               </div>
+              )}
             </>
           )}
         </div>
