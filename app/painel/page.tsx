@@ -16,6 +16,8 @@ import ThemeToggle from "@/components/ThemeToggle";
 
 // Carrossel de fotos da secao "11 anos". Para reativar, mude para true.
 const SHOW_FOTOS_CARROSSEL = false;
+// Links Instagram/LinkedIn da secao "11 anos". Para reativar, mude para true.
+const SHOW_REDES_SOCIAIS = false;
 
 // Calculadora de custo e precificacao de impressao 3D - pedido do
 // Guilherme em 2026-08-19. Correcao importante feita no mesmo dia: a
@@ -774,7 +776,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
             É nisso que o Escala 7x7 Ecommerce foi construído.
           </p>
 
-          <div className="mt-5 flex items-center justify-center gap-4">
+          <div style={SHOW_REDES_SOCIAIS ? undefined : { display: "none" }} className="mt-5 flex items-center justify-center gap-4">
             <a
               href="https://www.instagram.com/_morogui/"
               target="_blank"
