@@ -14,6 +14,9 @@ import {
 } from "@/lib/precificacao";
 import ThemeToggle from "@/components/ThemeToggle";
 
+// Carrossel de fotos da secao "11 anos". Para reativar, mude para true.
+const SHOW_FOTOS_CARROSSEL = false;
+
 // Calculadora de custo e precificacao de impressao 3D - pedido do
 // Guilherme em 2026-08-19. Correcao importante feita no mesmo dia: a
 // primeira versao desta pagina era um painel de chao de fabrica ligado
@@ -712,7 +715,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
             uma tira fina da foto por cima do texto. Agora no mobile a
             faixa de fotos e uma secao propria, sem sobrepor nada, e o
             texto fica embaixo em fundo solido, sempre legivel. */}
-        <div className="overflow-hidden border-b border-gray-200 dark:border-[#1f1f26] py-4 sm:hidden">
+        <div className="overflow-hidden border-b border-gray-200 dark:border-[#1f1f26] py-4 sm:hidden" style={SHOW_FOTOS_CARROSSEL ? undefined : { display: "none" }}>
           <div className="flex w-max items-center gap-3" style={{ animation: "marqueeScrollLeft 40s linear infinite" }}>
             {["/carrossel-1.jpg","/carrossel-2.jpg","/carrossel-3.jpg","/carrossel-4.jpg","/carrossel-5.jpg","/carrossel-6.jpg","/carrossel-7.jpg","/carrossel-8.jpg","/carrossel-9.jpg","/carrossel-10.jpg","/carrossel-11.jpg","/carrossel-12.jpg","/carrossel-13.jpg","/carrossel-14.jpg","/carrossel-15.jpg","/carrossel-16.jpg","/carrossel-1.jpg","/carrossel-2.jpg","/carrossel-3.jpg","/carrossel-4.jpg","/carrossel-5.jpg","/carrossel-6.jpg","/carrossel-7.jpg","/carrossel-8.jpg","/carrossel-9.jpg","/carrossel-10.jpg","/carrossel-11.jpg","/carrossel-12.jpg","/carrossel-13.jpg","/carrossel-14.jpg","/carrossel-15.jpg","/carrossel-16.jpg"].map((src, i) => (
               // eslint-disable-next-line @next/next/no-img-element
@@ -729,7 +732,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
         {/* Desktop/tablet: colagem de fundo original (fotos atras, card de
             texto translucido flutuando por cima) — inalterada, so
             escondida no mobile porque e la que ela nao funcionava bem. */}
-        <div className="pointer-events-none absolute inset-0 hidden items-center overflow-hidden sm:flex">
+        <div className="pointer-events-none absolute inset-0 hidden items-center overflow-hidden sm:flex" style={SHOW_FOTOS_CARROSSEL ? undefined : { display: "none" }}>
           <div className="flex shrink-0 items-center gap-4" style={{ animation: "marqueeScrollLeft 96s linear infinite" }}>
             {["/carrossel-1.jpg","/carrossel-2.jpg","/carrossel-3.jpg","/carrossel-4.jpg","/carrossel-5.jpg","/carrossel-6.jpg","/carrossel-7.jpg","/carrossel-8.jpg","/carrossel-9.jpg","/carrossel-10.jpg","/carrossel-11.jpg","/carrossel-12.jpg","/carrossel-13.jpg","/carrossel-14.jpg","/carrossel-15.jpg","/carrossel-16.jpg","/carrossel-1.jpg","/carrossel-2.jpg","/carrossel-3.jpg","/carrossel-4.jpg","/carrossel-5.jpg","/carrossel-6.jpg","/carrossel-7.jpg","/carrossel-8.jpg","/carrossel-9.jpg","/carrossel-10.jpg","/carrossel-11.jpg","/carrossel-12.jpg","/carrossel-13.jpg","/carrossel-14.jpg","/carrossel-15.jpg","/carrossel-16.jpg"].map((src, i) => (
               // eslint-disable-next-line @next/next/no-img-element
@@ -742,7 +745,7 @@ setTimeout(() => document.getElementById("calculadora")?.scrollIntoView({ behavi
             ))}
           </div>
         </div>
-        <div className="pointer-events-none absolute inset-0 hidden bg-white/20 dark:bg-[#0d0d11]/20 sm:block" />
+        <div className="pointer-events-none absolute inset-0 hidden bg-white/20 dark:bg-[#0d0d11]/20 sm:block" style={SHOW_FOTOS_CARROSSEL ? undefined : { display: "none" }} />
 
         <div className="relative z-10 mx-auto max-w-2xl px-5 py-7 sm:rounded-2xl sm:bg-white/75 dark:sm:bg-[#0d0d11]/75 sm:px-10 sm:py-9 sm:backdrop-blur-md">
           <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white sm:text-4xl">
