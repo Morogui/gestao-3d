@@ -10,6 +10,7 @@ interface Produto {
   pesoEnvioKg: number;
   precoVendaML: number | null;
   precoVendaShopee: number | null;
+  extras?: any;
 }
 
 // SheetJS carregado sob demanda (CDN) so quando o cliente usa Excel.
@@ -105,12 +106,12 @@ export default function ClienteProdutosPage() {
   async function baixarModelo() {
     try {
       const XLSX = await carregarXLSX();
-      const cab = ["SKU", "Nome", "Custo (R$)", "Peso envio (kg)", "Preço ML (R$)", "Preço Shopee (R$)"];
+      const cab = ["SKU", "Nome", "Custo (R$)", "Peso envio (kg)", "Preço cheio ML (R$)", "Preço promo ML (R$)", "Preço Shopee (R$)"];
       const linhas = produtos.length
-        ? produtos.map((p) => [p.sku, p.nome, p.custoProducao, p.pesoEnvioKg, p.precoVendaML ?? "", p.precoVendaShopee ?? ""])
-        : [["EXEMPLO-001", "Produto de exemplo", 10, 0.3, 59.9, 59.9]];
+        ? produtos.map((p) => [p.sku, p.nome, p.custoProducao, p.pesoEnvioKg, p.precoVendaML ?? "", p.extras?.precoPromo ?? "", p.precoVendaShopee ?? ""])
+        : [["EXEMPLO-001", "Produto de exemplo", 10, 0.3, 59.9, 44.9, 59.9]];
       const ws = XLSX.utils.aoa_to_sheet([cab, ...linhas]);
-      ws["!cols"] = [{ wch: 22 }, { wch: 40 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 18 }];
+      ws["!cols"] = [{ wch: 22 }, { wch: 40 }, { wch: 12 }, { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Produtos");
       XLSX.writeFile(wb, "modelo-produtos.xlsx");
@@ -138,7 +139,8 @@ export default function ClienteProdutosPage() {
       const iNome = col("nome");
       const iCusto = col("custo");
       const iPeso = col("peso");
-      const iML = col("precoml", "precomercadolivre");
+      const iML = col("precoml", "precocheio", "precomercadolivre");
+      const iPromo = col("precopromo");
       const iSH = col("precoshopee");
       if (iSku < 0) {
         setProgresso("Coluna SKU nao encontrada. Baixe o modelo e use as mesmas colunas.");
@@ -157,6 +159,7 @@ export default function ClienteProdutosPage() {
         const custo = (iCusto >= 0 ? num(r[iCusto]) : null) ?? ex?.custoProducao ?? 0;
         const peso = (iPeso >= 0 ? num(r[iPeso]) : null) ?? ex?.pesoEnvioKg ?? 0;
         const pML = (iML >= 0 ? num(r[iML]) : null) ?? ex?.precoVendaML ?? null;
+        const pPromo = (iPromo >= 0 ? num(r[iPromo]) : null) ?? ex?.extras?.precoPromo ?? null;
         const pSH = (iSH >= 0 ? num(r[iSH]) : null) ?? ex?.precoVendaShopee ?? null;
         setProgresso("Importando " + (k + 1) + " de " + dados.length + "...");
         try {
@@ -168,11 +171,11 @@ export default function ClienteProdutosPage() {
           const j = await res.json();
           const id = j?.produto?.id;
           if (!res.ok || !id) throw new Error("falha");
-          if (pML !== null || pSH !== null) {
+          if (pML !== null || pSH !== null || pPromo !== null) {
             await fetch("/api/c/produtos/" + id, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ precoVendaML: pML, precoVendaShopee: pSH }),
+              body: JSON.stringify({ precoVendaML: pML, precoVendaShopee: pSH, ...(pPromo !== null ? { extras: { ...(ex?.extras || {}), precoPromo: pPromo } } : {}) }),
             });
           }
           ok++;
