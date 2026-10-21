@@ -57,6 +57,7 @@ function params(p: Produto, cfg: Config) {
     afiliadoPct: e.afiliadoPct ?? 5,
     flex: e.flex ?? false,
     custoFlex: e.custoFlex ?? 6,
+    reembolsoFlex: e.reembolsoFlex ?? 0,
     embalagem: e.embalagem ?? cfg.embalagemCusto,
     margemDesejada: e.margemDesejada ?? cfg.margemDesejadaPct,
     rebate: e.rebate ?? 0,
@@ -71,7 +72,7 @@ function calcular(p: Produto, cfg: Config, preco: number) {
   const imposto = preco * (cfg.impostoPct / 100);
   const ads = q.usaAds ? preco * (cfg.adsPctML / 100) : 0;
   const afiliado = q.usaAfiliado ? preco * (q.afiliadoPct / 100) : 0;
-  const flex = q.flex ? q.custoFlex : 0;
+  const flex = q.flex ? q.custoFlex - q.reembolsoFlex : 0;
   const lucro = preco - comissao - taxaPeso - imposto - ads - afiliado - q.embalagem - flex - p.custoProducao;
   const margemPct = preco > 0 ? (lucro / preco) * 100 : 0;
   return { q, comissao, taxaPeso, imposto, ads, afiliado, flex, lucro, margemPct };
@@ -82,7 +83,7 @@ function sugerido(p: Produto, cfg: Config): number | null {
   const pct =
     (q.comissaoPct + cfg.impostoPct + (q.usaAds ? cfg.adsPctML : 0) + (q.usaAfiliado ? q.afiliadoPct : 0) + q.margemDesejada) / 100;
   if (pct >= 1) return null;
-  const fixo = q.embalagem + (q.flex ? q.custoFlex : 0) + p.custoProducao - q.rebate;
+  const fixo = q.embalagem + (q.flex ? q.custoFlex - q.reembolsoFlex : 0) + p.custoProducao - q.rebate;
   let lo = 0;
   for (const hi of FAIXAS) {
     const taxa = taxaPesoML(p.pesoEnvioKg, Number.isFinite(hi) ? hi : 1000);
@@ -217,7 +218,7 @@ export default function ClientePrecificacaoPage() {
                 <th style={th}>Comissão %</th>
                 <th style={th}>Ads</th>
                 <th style={th}>Afiliado</th>
-                <th style={th}>Flex</th>
+                <th style={th}>Flex (custo / reembolso)</th>
                 <th style={th}>Preço cheio</th>
                 <th style={th}>Preço promo (venda)</th>
                 <th style={th}>Rebate R$</th>
@@ -278,6 +279,7 @@ export default function ClientePrecificacaoPage() {
                         <input type="checkbox" checked={q.flex} onChange={(e) => salvarProduto(p.id, { extras: { flex: e.target.checked } })} />
                         {q.flex && (
                           <input key={"cf" + p.id + q.custoFlex} style={{ ...inp, width: 50, marginLeft: 4 }} defaultValue={q.custoFlex} onBlur={(e) => salvarProduto(p.id, { extras: { custoFlex: num(e.target.value) } })} />
+                  <input key={"rf" + p.id + q.reembolsoFlex} title="Reembolso Flex (R$)" placeholder="reemb." style={{ ...inp, width: 56, marginLeft: 4 }} defaultValue={q.reembolsoFlex || ""} onBlur={(e) => salvarProduto(p.id, { extras: { reembolsoFlex: num(e.target.value) } })} />
                         )}
                       </td>
                       <td style={td}>
