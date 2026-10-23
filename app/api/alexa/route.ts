@@ -56,7 +56,7 @@ function fala(texto: string, encerrar = true) {
 // "impressora 3" -> maquina cujo nome tem o numero 3; senao usa a posicao.
 async function acharMaquina(n: number) {
   const maquinas = (await sql`SELECT id, nome FROM machines ORDER BY id`) as { id: number; nome: string }[];
-  const porNome = maquinas.filter((m) => new RegExp(`(^|\\D)${n}(\\D|$)`).test(m.nome));
+  const porNome = maquinas.filter((m) => new RegExp(`-\\s*${n}\\s*$`).test(m.nome.trim()));
   if (porNome.length === 1) return porNome[0];
   if (porNome.length === 0 && maquinas[n - 1]) return maquinas[n - 1];
   return null;
