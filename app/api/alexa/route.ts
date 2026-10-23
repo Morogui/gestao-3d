@@ -228,13 +228,17 @@ async function sugerirEscolha(n: number, termo: string) {
       const ok = tokens.filter((t) => tokenCasa(t, nn)).length;
       return { p, score: ok / tokens.length };
     })
-    .filter((x) => x.score === 1)
-    .sort((a, b) => (a.p.estoque ?? 0) - (b.p.estoque ?? 0));
-  if (pontuadas.length === 0) return fala(`Não achei nenhuma placa com ${termo}. Tente de novo ou diga: o que imprimir na impressora ${n}.`, false, { maq: n });
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score || (a.p.estoque ?? 0) - (b.p.estoque ?? 0));
+  if (pontuadas.length === 0) return fala(`Não achei nenhuma placa com ${termo}. Diga de novo começando com colocar, por exemplo: colocar suporte orelha.`, false, { maq: n });
+  const melhor = pontuadas[0].score;
+  const parcial = melhor < 1;
+  pontuadas.splice(0, pontuadas.length, ...pontuadas.filter((x) => x.score === melhor));
   const achadas = pontuadas.slice(0, 8);
   const ids = achadas.map((x) => x.p.id as number);
   const nomes = Object.fromEntries(achadas.map((x) => [String(x.p.id), x.p.nome as string]));
-  return fala(`Para a impressora ${n}: ${falavel(nomes[String(ids[0])])}. Carrego?`, false, { maq: n, ids, nomes, i: 0 });
+  const aviso = parcial ? `Não achei exatamente ${termo}, o mais parecido é ` : "";
+  return fala(`Para a impressora ${n}: ${aviso}${falavel(nomes[String(ids[0])])}. Carrego?`, false, { maq: n, ids, nomes, i: 0 });
 }
 
 async function concluir(n: number, falha: boolean) {
