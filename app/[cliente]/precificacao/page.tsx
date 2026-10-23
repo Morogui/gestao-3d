@@ -10,7 +10,7 @@ interface Extras {
   usaAfiliado?: boolean;
   afiliadoPct?: number;
   flex?: boolean;
-  custoFlex?: number;
+  custoFlex?: number; reembolsoFlex?: number;
   embalagem?: number;
   margemDesejada?: number;
   precoPromo?: number;
@@ -277,9 +277,9 @@ export default function ClientePrecificacaoPage() {
                       </td>
                       <td style={td}>
                         <input type="checkbox" checked={q.flex} onChange={(e) => salvarProduto(p.id, { extras: { flex: e.target.checked } })} />
-                        {q.flex && (
+                        {q.flex && (<>
                           <input key={"cf" + p.id + q.custoFlex} style={{ ...inp, width: 50, marginLeft: 4 }} defaultValue={q.custoFlex} onBlur={(e) => salvarProduto(p.id, { extras: { custoFlex: num(e.target.value) } })} />
-                  <input key={"rf" + p.id + q.reembolsoFlex} title="Reembolso Flex (R$)" placeholder="reemb." style={{ ...inp, width: 56, marginLeft: 4 }} defaultValue={q.reembolsoFlex || ""} onBlur={(e) => salvarProduto(p.id, { extras: { reembolsoFlex: num(e.target.value) } })} />
+                  <input key={"rf" + p.id + q.reembolsoFlex} title="Reembolso Flex (R$)" placeholder="reemb." style={{ ...inp, width: 56, marginLeft: 4 }} defaultValue={q.reembolsoFlex || ""} onBlur={(e) => salvarProduto(p.id, { extras: { reembolsoFlex: num(e.target.value) } })} /></>
                         )}
                       </td>
                       <td style={td}>
