@@ -197,6 +197,46 @@ async function sugerir(n: number, prefixo: string, listaPronta?: number[], nomes
   });
 }
 
+// ---- Escolha manual de produto por voz ("colocar orelha mickey") ----
+const semAcento = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+const STOP = new Set(["o", "a", "os", "as", "de", "do", "da", "dos", "das", "um", "uma", "na", "no", "em", "para", "pra", "placa", "impressora"]);
+
+function tokenCasa(t: string, nomeNorm: string): boolean {
+  if (nomeNorm.split(" ").some((w) => w === t || (t.length >= 4 && (w.startsWith(t) || t.startsWith(w) && w.length >= 4)))) return true;
+  return t.length >= 5 && nomeNorm.includes(t.slice(0, t.length - 1));
+}
+
+async function sugerirEscolha(n: number, termo: string) {
+  const m = await acharMaquina(n);
+  if (!m) return fala(`Não encontrei a impressora ${n}.`);
+  const ocupada = (await sql`SELECT 1 FROM producoes WHERE machine_id = ${m.id} AND status = 'em_andamento' LIMIT 1`) as any[];
+  if (ocupada.length > 0) return fala(`A impressora ${n} já tem uma placa em andamento.`);
+
+  const tokens = semAcento(termo).split(" ").filter((t) => t && !STOP.has(t));
+  if (tokens.length === 0) return fala("Qual produto?", false, { maq: n });
+  const placas = (await lerJson(getPlacas)) as any[];
+  const pontuadas = placas
+    .map((p) => {
+      const nn = semAcento(p.nome);
+      const ok = tokens.filter((t) => tokenCasa(t, nn)).length;
+      return { p, score: ok / tokens.length };
+    })
+    .filter((x) => x.score === 1)
+    .sort((a, b) => (a.p.estoque ?? 0) - (b.p.estoque ?? 0));
+  if (pontuadas.length === 0) return fala(`Não achei nenhuma placa com ${termo}. Tente de novo ou diga: o que imprimir na impressora ${n}.`, false, { maq: n });
+  const achadas = pontuadas.slice(0, 8);
+  const ids = achadas.map((x) => x.p.id as number);
+  const nomes = Object.fromEntries(achadas.map((x) => [String(x.p.id), x.p.nome as string]));
+  return fala(`Para a impressora ${n}: ${falavel(nomes[String(ids[0])])}. Carrego?`, false, { maq: n, ids, nomes, i: 0 });
+}
+
 async function concluir(n: number, falha: boolean) {
   const m = await acharMaquina(n);
   if (!m) return fala(`Não encontrei a impressora ${n}.`);
@@ -291,6 +331,14 @@ export async function POST(req: NextRequest) {
       const n = parseInt(r.intent?.slots?.numero?.value, 10);
       if (!n) return fala("Para qual impressora?", false, sessao);
       return await sugerir(n, "");
+    }
+
+    if (nome === "CarregarIntent") {
+      const n = parseInt(r.intent?.slots?.numero?.value, 10) || Number(sessao.maq);
+      const termo = String(r.intent?.slots?.produto?.value || "");
+      if (!termo) return fala("Qual produto?", false, sessao);
+      if (!n) return fala("Em qual impressora?", false, sessao);
+      return await sugerirEscolha(n, termo);
     }
 
     if (nome === "AMAZON.YesIntent") {
