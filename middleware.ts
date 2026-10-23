@@ -100,6 +100,7 @@ const PUBLIC_STATIC_FILE = /\.(png|jpe?g|svg|webp|gif|ico)$/i;
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"))) return true;
   if (PUBLIC_API_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"))) return true;
+  if (pathname === "/api/alexa") return true;
   if (PUBLIC_STATIC_FILE.test(pathname)) return true;
   return false;
 }
