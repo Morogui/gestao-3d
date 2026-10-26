@@ -350,10 +350,8 @@ export async function POST(req: NextRequest) {
       const pid = sessao.ids[sessao.i];
       const nomePlaca = sessao.nomes?.[String(pid)] ?? "";
       const cor = corFilamentoDaPlaca(nomePlaca);
-      if (cor && (CORES_COM_PETG as readonly string[]).includes(cor)) {
-        return fala("PLA ou PETG?", false, { ...sessao, aguardaMaterial: true });
-      }
-      return await carregar(sessao, "PLA");
+      const petg = !!cor && (CORES_COM_PETG as readonly string[]).includes(cor);
+      return await carregar(sessao, petg ? "PETG" : "PLA");
     }
 
     if (nome === "MaterialIntent") {
