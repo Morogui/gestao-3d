@@ -109,7 +109,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const materialNormalizado = material === "PETG" ? "PETG" : null;
+  // 2026-10-26: sistema opera somente com PETG — cores com variante PETG sempre usam PETG.
+  let materialNormalizado: "PETG" | null = null;
   // Trava de seguranca - pedido do Guilherme em 2026-08-21: bloquear
   // carregamento de producao quando o estoque de filamento da cor+material
   // escolhido estiver zerado (corFilamentoDaPlaca usa a mesma logica ja
@@ -119,6 +120,7 @@ export async function POST(request: NextRequest) {
   const nomePlaca = placaRows[0]?.nome as string | undefined;
   if (nomePlaca) {
     const cor = corFilamentoDaPlaca(nomePlaca);
+    if (cor && (CORES_COM_PETG as readonly string[]).includes(cor)) materialNormalizado = "PETG";
     if (cor && cor !== "colorido") {
       const corParaChecar =
         materialNormalizado === "PETG" && (CORES_COM_PETG as readonly string[]).includes(cor)
