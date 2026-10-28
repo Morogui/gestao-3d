@@ -8,6 +8,7 @@ import {
   TipoAnuncioML,
   formatBRL,
 } from "@/lib/precificacao";
+import PrecificacaoTikTok from "@/components/PrecificacaoTikTok";
 
 const c = React.createElement;
 
@@ -55,7 +56,7 @@ interface CaixaEnvio {
   ativa: boolean;
 }
 
-type AbaPlataforma = "todos" | "ml" | "shopee";
+type AbaPlataforma = "todos" | "ml" | "shopee" | "tiktok";
 
 // 14/09/2026 -- campos booleanos que podem ser marcados/restaurados em
 // massa por coluna (botão "marcar todos" no cabeçalho). Ads e Afiliado
@@ -367,10 +368,11 @@ export default function PrecificacaoPage() {
     { id: "todos", label: "Todos" },
     { id: "ml", label: "Mercado Livre" },
     { id: "shopee", label: "Shopee" },
+    { id: "tiktok", label: "TikTok Shop" },
   ];
 
-  const mostrarML = aba !== "shopee";
-  const mostrarShopee = aba !== "ml";
+  const mostrarML = aba === "todos" || aba === "ml";
+  const mostrarShopee = aba === "todos" || aba === "shopee";
   // 14/09/2026 -- "Todos" agora é uma visão somente-leitura: reflete o
   // estado combinado das duas plataformas, mas não deixa editar nada
   // por ali (edição só nas abas Mercado Livre / Shopee, onde fica
@@ -571,7 +573,23 @@ export default function PrecificacaoPage() {
             "Visão somente leitura — combina o estado das duas plataformas. Pra editar, use a aba Mercado Livre ou Shopee."
           )
         : null,
-      produtosVisiveis.length === 0
+      aba === "tiktok"
+        ? c(PrecificacaoTikTok, {
+            produtos: produtos.map((p) => ({
+              id: p.id,
+              nome: p.nome,
+              sku: p.sku,
+              custoProducao: p.custoProducao,
+              embalagemCusto: p.embalagemCusto,
+              precoVendaML: p.precoVendaML,
+              precoAnunciadoML: p.precoAnunciadoML,
+            })),
+            impostoPct: config.impostoPct,
+            margemPadraoPct: config.margemDesejadaPct,
+            busca,
+            mostrarInativos,
+          })
+        : produtosVisiveis.length === 0
         ? c(
             "div",
             {
