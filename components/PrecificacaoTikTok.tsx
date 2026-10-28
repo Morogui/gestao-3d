@@ -24,6 +24,7 @@ export interface ProdutoTikTokBase {
 
 interface ItemTikTok {
   sku: string;
+  precoCheio: number | null;
   precoVenda: number | null;
   ativo: boolean;
   usaAds: boolean;
@@ -38,6 +39,7 @@ function chaveSku(p: ProdutoTikTokBase): string {
 function itemPadrao(sku: string): ItemTikTok {
   return {
     sku,
+    precoCheio: null,
     precoVenda: null,
     ativo: true,
     usaAds: false,
@@ -270,6 +272,21 @@ export default function PrecificacaoTikTok({
             type: "number",
             step: 0.01,
             min: 0,
+            value: it.precoCheio ?? "",
+            placeholder: "—",
+            onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+              atualizar(p, { precoCheio: e.target.value ? parseFloat(e.target.value) : null }, false),
+            onBlur: () => gravarAtual(p),
+            className: "w-24 rounded border border-gray-200 px-2 py-1 text-right text-sm",
+          })
+        ),
+        c(
+          "td",
+          { className: "px-3 py-2 text-right" },
+          c("input", {
+            type: "number",
+            step: 0.01,
+            min: 0,
             value: it.precoVenda ?? "",
             placeholder: "\u2014",
             onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -357,7 +374,7 @@ export default function PrecificacaoTikTok({
           { key: k + "-det", className: "bg-gray-50" },
           c(
             "td",
-            { colSpan: 14, className: "px-3 py-3" },
+            { colSpan: 15, className: "px-3 py-3" },
             res
               ? c(
                   "div",
@@ -467,7 +484,8 @@ export default function PrecificacaoTikTok({
                 th("Custo produ\u00e7\u00e3o"),
                 th("Embalagem"),
                 th("Ref. ML", "text-right", "Pre\u00e7o cheio do an\u00fancio no Mercado Livre (ou o praticado, se n\u00e3o houver)"),
-                th("Pre\u00e7o TikTok"),
+                th("Pre\u00e7o cheio TikTok", "text-right", "Pre\u00e7o \"De\" (cheio) do an\u00fancio no TikTok"),
+                th("Pre\u00e7o vendido (promo)", "text-right", "Pre\u00e7o praticado na promo\u00e7\u00e3o; \u00e9 a base do c\u00e1lculo de comiss\u00e3o e margem"),
                 th("Ads", "text-center", "Usa Ads (TikTok Ads) neste produto"),
                 th("Afiliado", "text-center", "Usa comiss\u00e3o de afiliado neste produto"),
                 th("Frete gr\u00e1tis", "text-center", "Participa do Programa de Frete Gr\u00e1tis"),
