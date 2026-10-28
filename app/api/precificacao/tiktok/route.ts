@@ -20,6 +20,7 @@ async function ensureTables() {
       atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+  await sql`ALTER TABLE precificacao_tiktok ADD COLUMN IF NOT EXISTS preco_cheio NUMERIC`;
   await sql`
     CREATE TABLE IF NOT EXISTS precificacao_tiktok_config (
       id INTEGER PRIMARY KEY DEFAULT 1,
@@ -34,6 +35,7 @@ async function ensureTables() {
 
 type ItemRow = {
   sku: string;
+  preco_cheio: string | null;
   preco_venda: string | null;
   ativo: boolean;
   usa_ads: boolean;
@@ -66,11 +68,12 @@ export async function GET() {
   await ensureTables();
   const config = await lerConfig();
   const rows = (await sql`
-    SELECT sku, preco_venda, ativo, usa_ads, usa_afiliado, usa_frete
+    SELECT sku, preco_cheio, preco_venda, ativo, usa_ads, usa_afiliado, usa_frete
     FROM precificacao_tiktok
   `) as ItemRow[];
   const itens = rows.map((r) => ({
     sku: r.sku,
+    precoCheio: r.preco_cheio != null ? Number(r.preco_cheio) : null,
     precoVenda: r.preco_venda != null ? Number(r.preco_venda) : null,
     ativo: r.ativo !== false,
     usaAds: r.usa_ads === true,
@@ -99,8 +102,9 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ ok: true, config: await lerConfig() });
   }
 
-  const { sku, precoVenda, ativo, usaAds, usaAfiliado, usaFrete } = body as {
+  const { sku, precoCheio, precoVenda, ativo, usaAds, usaAfiliado, usaFrete } = body as {
     sku?: string;
+    precoCheio?: number | null;
     precoVenda?: number | null;
     ativo?: boolean;
     usaAds?: boolean;
@@ -111,15 +115,17 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "sku e obrigatorio" }, { status: 400 });
   }
   const preco = precoVenda != null ? precoVenda : null;
+  const cheio = precoCheio != null ? precoCheio : null;
   const ativoFinal = ativo !== false;
   const adsFinal = usaAds === true;
   const afiliadoFinal = usaAfiliado === true;
   const freteFinal = usaFrete === true;
   await sql`
-    INSERT INTO precificacao_tiktok (sku, preco_venda, ativo, usa_ads, usa_afiliado, usa_frete, atualizado_em)
-    VALUES (${sku}, ${preco}, ${ativoFinal}, ${adsFinal}, ${afiliadoFinal}, ${freteFinal}, now())
+    INSERT INTO precificacao_tiktok (sku, preco_cheio, preco_venda, ativo, usa_ads, usa_afiliado, usa_frete, atualizado_em)
+    VALUES (${sku}, ${cheio}, ${preco}, ${ativoFinal}, ${adsFinal}, ${afiliadoFinal}, ${freteFinal}, now())
     ON CONFLICT (sku) DO UPDATE
-    SET preco_venda = ${preco},
+    SET preco_cheio = ${cheio},
+        preco_venda = ${preco},
         ativo = ${ativoFinal},
         usa_ads = ${adsFinal},
         usa_afiliado = ${afiliadoFinal},
