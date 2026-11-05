@@ -195,6 +195,10 @@ interface EnvioFullPendente {
   faltantePlaca: number;
 }
 
+function normBusca(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
 export default function ProducaoPage() {
   const [status, setStatus] = useState<Status>("loading");
   const [placas, setPlacas] = useState<PlacaRow[]>([]);
@@ -203,6 +207,7 @@ export default function ProducaoPage() {
   const [demanda, setDemanda] = useState<DemandaResult | null>(null);
   const [vinculandoItem, setVinculandoItem] = useState<Record<string, boolean>>({});
   const [placaEscolhida, setPlacaEscolhida] = useState<Record<string, string>>({});
+  const [buscaPlaca, setBuscaPlaca] = useState<Record<string, string>>({});
   const [consumo, setConsumo] = useState<ConsumoResult | null>(null);
   const [janela, setJanela] = useState<Janela>(JANELA_PADRAO);
   // Estoque de filamento por cor (gramas) — pedido do Guilherme em
@@ -1268,7 +1273,14 @@ async function corrigirTempo() {
                   Não vendemos mais
                 </button>
                  <div className="flex shrink-0 items-center gap-1.5">
-                  <select
+                  <input
+ type="text"
+ value={buscaPlaca[a.titulo + a.sku] ?? ""}
+ onChange={(e) => setBuscaPlaca((prev) => ({ ...prev, [a.titulo + a.sku]: e.target.value }))}
+ placeholder="Buscar placa..."
+ className="w-32 rounded border border-gray-300 px-1.5 py-0.5 text-xs"
+ />
+ <select
                    value={placaEscolhida[a.titulo + a.sku] ?? ""}
                    onChange={(e) =>
                     setPlacaEscolhida((prev) => ({ ...prev, [a.titulo + a.sku]: e.target.value }))
@@ -1276,7 +1288,9 @@ async function corrigirTempo() {
                    className="rounded border border-gray-300 px-1 py-0.5 text-xs"
                   >
                    <option value="">Vincular a placa...</option>
-                   {placas.map((p) => (
+                   {placas
+ .filter((p) => String(p.id) === placaEscolhida[a.titulo + a.sku] || normBusca(p.nome).includes(normBusca(buscaPlaca[a.titulo + a.sku] ?? "").trim()))
+ .map((p) => (
                     <option key={p.id} value={p.id}>
                      {p.skuOuKit || p.nome}
                     </option>
