@@ -4,6 +4,7 @@
 //
 // ML  - perguntas (pre-venda):  GET /questions/search, POST /answers
 //     - pos-venda:              GET /messages/unread, GET/POST /messages/packs/{pack}/sellers/{seller}
+//     - reclamacoes/mediacoes NAO entram na lista (ficam so no painel do ML)
 // Shopee - chat do vendedor:    /api/v2/sellerchat/*  (exige a permissao
 //          "Chat" habilitada no app do Shopee Open Platform)
 import { getValidMLAccessToken } from "./ml-auth";
@@ -160,9 +161,9 @@ export async function listarML(): Promise<ListaResultado> {
   }
 
   const reclamacoes = await mlReclamacoesAbertas(accessToken);
-  const usados = new Set<string>();
 
-  // Pos-venda: conversas com mensagens nao lidas
+  // Pos-venda (chat): conversas com mensagens nao lidas.
+  // Pedidos com reclamacao/mediacao sao ignorados: ficam so no painel do ML.
   const un = await mlGet(`/messages/unread?role=seller&tag=post_sale`, accessToken);
   if (un.ok) {
     const results: any[] = un.data?.results ?? [];
@@ -172,21 +173,7 @@ export async function listarML(): Promise<ListaResultado> {
       const cancelada = await mlPedidoCancelado(m[1], accessToken);
       const reclamacao = reclamacoes.find((c) => String(c.resource_id) === m[1]);
       const mediacao = !cancelada && (!!reclamacao || (await mlConversaEmMediacao(m[1], m[2], accessToken)));
-      if (mediacao) {
-        usados.add(m[1]);
-        conversas.push({
-          id: "p:" + m[1] + "/" + m[2],
-          plataforma: "ml",
-          tipo: "posvenda",
-          titulo: "Mediacao - pedido " + m[1],
-          comprador: "Comprador",
-          ultimaMensagem: "Em mediacao - responda pela reclamacao no ML",
-          data: new Date().toISOString(),
-          naoLida: true,
-          mediacao: true,
-        });
-        continue;
-      }
+      if (mediacao) continue;
       conversas.push({
         id: `p:${m[1]}/${m[2]}`,
         plataforma: "ml",
@@ -203,24 +190,6 @@ export async function listarML(): Promise<ListaResultado> {
     }
   } else {
     erro = (erro ? erro + " | " : "") + `Pos-venda ML: HTTP ${un.status}`;
-  }
-
-  // Reclamacoes abertas que nao apareceram na lista de nao lidas
-  for (const rc of reclamacoes) {
-    const pedido = String(rc.resource_id ?? "");
-    if (!pedido || usados.has(pedido)) continue;
-    usados.add(pedido);
-    conversas.push({
-      id: "p:" + pedido + "/" + userId,
-      plataforma: "ml",
-      tipo: "posvenda",
-      titulo: "Mediacao - pedido " + pedido,
-      comprador: "Comprador",
-      ultimaMensagem: "Reclamacao aberta - responda pelo ML",
-      data: rc.last_updated ?? rc.date_created ?? new Date().toISOString(),
-      naoLida: true,
-      mediacao: true,
-    });
   }
 
   conversas.sort((a, b) => (a.data < b.data ? 1 : -1));
