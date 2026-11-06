@@ -117,6 +117,18 @@ function corDoTexto(texto: string): string | null {
   return ultima;
 }
 
+// Kits "(kit 1/2/3)": quando o casamento é por texto (sem SKU/item_id exato), o
+// número do kit vem do título ("... Kit 3") e vale como multiplicador de peças.
+export function multiplicadorKit(
+  placa: PlacaRow,
+  item: { title: string; sku: string; hasCustomSku: boolean }
+): number {
+  if (!/kit\s*1\s*\/\s*2\s*\/\s*3/i.test(placa.nome)) return 1;
+  const re = /\bkit\s*([123])\b/i;
+  const m = re.exec(item.title) ?? (item.hasCustomSku ? re.exec(item.sku) : null);
+  return m ? Number(m[1]) : 1;
+}
+
 export function correspondeAoItem(placa: PlacaRow, tituloOuSku: string): boolean {
   const bateu =
     textoCorresponde(placa.skuOuKit, tituloOuSku) ||
@@ -275,7 +287,7 @@ for (const item of order.items) {
         correspondeAoItem(placa, item.title) ||
         (item.hasCustomSku && correspondeAoItem(placa, item.sku))
         ) {
-        somar(placa.id, item.quantity);
+        somar(placa.id, item.quantity * multiplicadorKit(placa, item));
       }
     }
   }
@@ -376,7 +388,7 @@ for (const order of orders) {
         casou = true;
         somar(
           placa.id,
-          item.quantity,
+          item.quantity * multiplicadorKit(placa, item),
           isFull,
           order.dateCreated,
           pendenteDespacho
