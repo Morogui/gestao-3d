@@ -345,7 +345,7 @@ const somar = (
 for (const order of orders) {
   const isFull = order.shippingMode === "Full";
   const pendenteDespacho =
-    pedidoFoiVendido(order) && pedidoAindaNaoDespachado(order);
+    pedidoFoiVendido(order) && !isFull && pedidoAindaNaoDespachado(order);
   for (const item of order.items) {
     let casou = false;
 
