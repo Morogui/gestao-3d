@@ -5,8 +5,9 @@
 // é uma entrada própria (ex: "preto" = PLA, "preto-petg" = PETG).
 // CORES_FILAMENTO/CorFilamento = lista ANTIGA (usada pela página de
 // Produção, que tem Record<CorFilamento,...>). CORES_FILAMENTO_TODAS =
-// lista completa com PLA e PETG pra TODAS as cores (pedido do Guilherme em
-// 2026-10-15: "todos tem PLA e PETG") — usada no estoque e nas APIs.
+// lista usada no estoque e nas APIs.
+// 2026-11-08: o Guilherme passou a trabalhar SÓ com PETG — CORES_FILAMENTO_TODAS
+// não tem mais as entradas PLA (ficam só "colorido" e as "-petg").
 export const CORES_FILAMENTO = [
   "colorido",
   "preto",
@@ -23,26 +24,18 @@ export type CorFilamento = (typeof CORES_FILAMENTO)[number];
 
 export const CORES_FILAMENTO_TODAS = [
   "colorido",
-  "preto",
   "preto-petg",
-  "branco",
   "branco-petg",
-  "prata",
   "prata-petg",
-  "marrom",
   "marrom-petg",
-  "bege",
   "bege-petg",
-  "cinza",
   "cinza-petg",
-  "vermelho",
   "vermelho-petg",
 ] as const;
 export type CorFilamentoTodas = (typeof CORES_FILAMENTO_TODAS)[number];
 
-// Cores com duas opções de material (PLA e PETG) em estoque separado. O
-// operador escolhe PLA/PETG ao carregar a máquina (producoes.material) e
-// corPetgDe() resolve qual entrada de estoque descontar.
+// Cores com variante PETG em estoque separado. corPetgDe() resolve qual
+// entrada de estoque descontar (hoje, sempre a PETG).
 export const CORES_COM_PETG: readonly CorFilamento[] = [
   "preto",
   "branco",
@@ -56,13 +49,13 @@ export function corPetgDe(cor: CorFilamento): CorFilamento {
   return `${cor}-petg` as CorFilamento;
 }
 
-// Rótulo de exibição: "preto" -> "Preto (PLA)", "preto-petg" -> "Preto
-// (PETG)", "colorido" -> "Colorido".
+// Rótulo de exibição: "preto-petg" -> "Preto", "colorido" -> "Colorido".
+// (Sem sufixo de material: só existe PETG.)
 export function labelCorFilamento(cor: string): string {
   const petg = cor.endsWith("-petg");
   const base = petg ? cor.slice(0, -"-petg".length) : cor;
   const label = base.charAt(0).toUpperCase() + base.slice(1);
-  if (petg) return `${label} (PETG)`;
+  if (petg) return label;
   if ((CORES_COM_PETG as readonly string[]).includes(base) || base === "cinza") return `${label} (PLA)`;
   return label;
 }
