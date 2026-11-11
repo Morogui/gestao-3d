@@ -14,7 +14,11 @@ import { buildAuthorizationUrl } from "@/lib/mercadolivre";
 export async function GET(req: NextRequest) {
   try {
     const cliente = req.nextUrl.searchParams.get("cliente");
-    const state = cliente ? `cliente:${cliente}` : undefined;
+    // 2026-11-11: ?conta=macanhome conecta uma 2a conta ML (mesmo estoque) sem
+    // sobrescrever a conta principal -- ver app/api/mercadolivre/callback.
+    const conta = req.nextUrl.searchParams.get("conta");
+    const contaValida = conta && /^[a-z0-9_-]{2,30}$/.test(conta) ? conta : null;
+    const state = cliente ? "cliente:" + cliente : contaValida ? "conta:" + contaValida : undefined;
     const url = buildAuthorizationUrl(state);
     return NextResponse.redirect(url);
   } catch (err) {
