@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exchangeCodeForToken } from "@/lib/mercadolivre";
-import { salvarTokensML } from "@/lib/ml-auth";
+import { salvarTokensML, salvarTokensMLConta } from "@/lib/ml-auth";
 import { salvarTokensClienteML } from "@/lib/client-ml-auth";
 
 // Recebe o "code" que a ML manda depois do usuario autorizar o app, troca
@@ -32,6 +32,15 @@ export async function GET(req: NextRequest) {
 
   try {
     const token = await exchangeCodeForToken(code);
+
+        // 2026-11-11: conta extra (ex: Macan Home). O authorize manda
+        // state="conta:<slug>"; nesse caso grava em ml_auth_contas e NAO mexe na
+        // conta principal (Morolar).
+        if (state && state.startsWith("conta:")) {
+          const conta = state.slice(6);
+          await salvarTokensMLConta(conta, token);
+          return NextResponse.redirect(new URL("/vendas?conectado=" + conta, req.url));
+        }
 
     if (clienteSlug) {
       await salvarTokensClienteML(clienteSlug, token);
