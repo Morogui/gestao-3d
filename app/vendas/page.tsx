@@ -12,6 +12,7 @@ import {
   getOrdersRangeML,
   getOrdersRangeShopee,
   getDailyTotalsRangeML,
+  getDailyTotalsRangeMLConta,
   getDailyTotalsRangeShopee,
 } from "@/lib/pedidos-cache";
 import { formatBRL } from "@/lib/custo";
@@ -29,10 +30,12 @@ import TopProdutosCardToggle from "@/components/TopProdutosCardToggle";
 
 export const dynamic = "force-dynamic";
 
-type Plataforma = "ml" | "shopee" | "todas";
+type Plataforma = "ml" | "ml_morolar" | "ml_macan" | "shopee" | "todas";
 
 function parsePlataforma(valor: string | undefined): Plataforma {
   if (valor === "shopee") return "shopee";
+  if (valor === "ml_morolar") return "ml_morolar";
+  if (valor === "ml_macan") return "ml_macan";
   if (valor === "ml") return "ml";
   return "todas";
 }
@@ -56,11 +59,34 @@ function statusDe(result: OrdersResult): StatusConta {
 // num só array, ordenado por data — é o que permite a tela mostrar
 // faturamento/pedidos/ranking somados das duas lojas, com um filtro pra
 // separar por plataforma quando precisar conferir uma de cada vez.
+// Contas do Mercado Livre: "ml" = geral (Morolar + Macan Home juntas),
+// "ml_morolar" e "ml_macan" separam por conta de origem do pedido.
+function contaDaPlataforma(p: Plataforma): string | null {
+  if (p === "ml_morolar") return "morolar";
+  if (p === "ml_macan") return "macanhome";
+  return null;
+}
+
+async function totaisML(plataforma: Plataforma, de: string, ate: string): Promise<DailyTotalsResult> {
+  const conta = contaDaPlataforma(plataforma);
+  if (conta) return getDailyTotalsRangeMLConta(de, ate, conta);
+  return getDailyTotalsRangeML(de, ate);
+}
+
 async function buscarOrders(
   plataforma: Plataforma,
   de: string,
   ate: string
 ): Promise<BuscaResult> {
+  const contaFiltro = contaDaPlataforma(plataforma);
+  if (contaFiltro) {
+    const r = await getOrdersRangeML(de, ate);
+    return {
+      orders: r.connected && !r.error ? r.orders.filter((o) => (o.conta ?? "morolar") === contaFiltro) : [],
+      mlStatus: statusDe(r),
+      shopeeStatus: "n/a",
+    };
+  }
   if (plataforma === "ml") {
     const r = await getOrdersRangeML(de, ate);
     return {
@@ -226,6 +252,12 @@ function RangeFilter({
         </Link>
         <Link href={hrefPlataforma("ml")} className={quickBtnClass(plataforma === "ml")}>
           Mercado Livre
+        </Link>
+        <Link href={hrefPlataforma("ml_morolar")} className={quickBtnClass(plataforma === "ml_morolar")}>
+          ML Morolar
+        </Link>
+        <Link href={hrefPlataforma("ml_macan")} className={quickBtnClass(plataforma === "ml_macan")}>
+          ML Macan
         </Link>
       </div>
       <form className="flex flex-wrap items-center gap-2" method="GET">
@@ -773,7 +805,7 @@ export default async function VendasPage({
       isRangeSemana ? Promise.resolve(principal) : buscarOrders(plataforma, semanaInicio, hoje),
       isRangeMes ? Promise.resolve(principal) : buscarOrders(plataforma, mesInicio, hoje),
       plataforma !== "shopee"
-        ? getDailyTotalsRangeML(noventaDiasInicio, hoje)
+        ? totaisML(plataforma, noventaDiasInicio, hoje)
         : Promise.resolve({ connected: false } as DailyTotalsResult),
       plataforma !== "ml"
         ? getDailyTotalsRangeShopee(noventaDiasInicio, hoje)
