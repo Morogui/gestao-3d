@@ -253,7 +253,8 @@ export function comissaoShopeePct(preco: number): number {
 }
 
 export function taxaFixaShopee(preco: number): number {
-  if (preco < 80) return 4;
+  // Desde 01/10/2026 a taxa fixa dos itens ate R$ 79,99 subiu de R$ 4,00 para R$ 4,50.
+  if (preco < 80) return 4.5;
   if (preco < 100) return 16;
   if (preco < 200) return 20;
   return 26;
