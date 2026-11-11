@@ -135,3 +135,69 @@ export async function mlEstaConectado(): Promise<boolean> {
 }
 
 
+
+
+// ---- Contas ML extras (ex: Macan Home) -- 2026-11-11 ----
+// Pedido do Guilherme: a Macan Home (2a conta ML, mesmo estoque fisico da
+// Morolar) precisa contar vendas e entrar na fila de producao. A tabela
+// ml_auth acima segue sendo so a conta principal (Morolar, id=1); as
+// demais contas ficam em ml_auth_contas, uma linha por "conta" (slug).
+async function garantirTabelaContas() {
+    await sql`
+        CREATE TABLE IF NOT EXISTS ml_auth_contas (
+            conta TEXT PRIMARY KEY,
+            access_token TEXT NOT NULL,
+            refresh_token TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            expires_at TIMESTAMPTZ NOT NULL,
+            atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    `;
+}
+
+export async function salvarTokensMLConta(conta: string, token: MLTokenResponse): Promise<void> {
+    await garantirTabelaContas();
+    const expiresAt = new Date(Date.now() + token.expires_in * 1000).toISOString();
+    await sql`
+        INSERT INTO ml_auth_contas (conta, access_token, refresh_token, user_id, expires_at, atualizado_em)
+        VALUES (${conta}, ${token.access_token}, ${token.refresh_token}, ${String(token.user_id)}, ${expiresAt}, now())
+        ON CONFLICT (conta) DO UPDATE SET
+            access_token = EXCLUDED.access_token,
+            refresh_token = EXCLUDED.refresh_token,
+            user_id = EXCLUDED.user_id,
+            expires_at = EXCLUDED.expires_at,
+            atualizado_em = now()
+    `;
+}
+
+// Devolve token valido (renovando se preciso) de cada conta extra salva.
+// Conta que falhar na renovacao e simplesmente ignorada -- nunca derruba a
+// conta principal.
+export async function getValidMLAccessTokensExtras(): Promise<
+    { conta: string; accessToken: string; userId: string }[]
+> {
+    await garantirTabelaContas();
+    const rows = (await sql`
+        SELECT conta, access_token, refresh_token, user_id, expires_at::text AS expires_at
+        FROM ml_auth_contas
+    `) as (MLAuthRow & { conta: string })[];
+    const out: { conta: string; accessToken: string; userId: string }[] = [];
+    for (const row of rows) {
+        const expiraEm = new Date(row.expires_at).getTime();
+        if (expiraEm - Date.now() > MARGEM_SEGURANCA_MS) {
+            out.push({ conta: row.conta, accessToken: row.access_token, userId: row.user_id });
+            continue;
+        }
+        const renovado = await refreshAccessToken(row.refresh_token);
+        if (!renovado) continue;
+        await salvarTokensMLConta(row.conta, renovado);
+        out.push({ conta: row.conta, accessToken: renovado.access_token, userId: String(renovado.user_id) });
+    }
+    return out;
+}
+
+export async function mlContasExtrasConectadas(): Promise<string[]> {
+    await garantirTabelaContas();
+    const rows = (await sql`SELECT conta FROM ml_auth_contas`) as { conta: string }[];
+    return rows.map((r) => r.conta);
+}
