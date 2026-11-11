@@ -30,10 +30,11 @@ import TopProdutosCardToggle from "@/components/TopProdutosCardToggle";
 
 export const dynamic = "force-dynamic";
 
-type Plataforma = "ml" | "ml_morolar" | "ml_macan" | "shopee" | "todas";
+type Plataforma = "morolar" | "ml" | "ml_morolar" | "ml_macan" | "shopee" | "todas";
 
 function parsePlataforma(valor: string | undefined): Plataforma {
   if (valor === "shopee") return "shopee";
+  if (valor === "morolar") return "morolar";
   if (valor === "ml_morolar") return "ml_morolar";
   if (valor === "ml_macan") return "ml_macan";
   if (valor === "ml") return "ml";
@@ -62,7 +63,7 @@ function statusDe(result: OrdersResult): StatusConta {
 // Contas do Mercado Livre: "ml" = geral (Morolar + Macan Home juntas),
 // "ml_morolar" e "ml_macan" separam por conta de origem do pedido.
 function contaDaPlataforma(p: Plataforma): string | null {
-  if (p === "ml_morolar") return "morolar";
+  if (p === "ml_morolar" || p === "morolar") return "morolar";
   if (p === "ml_macan") return "macanhome";
   return null;
 }
@@ -73,6 +74,15 @@ function btnConta(ativo: boolean): string {
     (ativo
       ? "border-blue-600 bg-blue-600 text-white"
       : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50")
+  );
+}
+
+function btnSub(ativo: boolean): string {
+  return (
+    "rounded-md border px-2.5 py-1 text-[11px] font-medium " +
+    (ativo
+      ? "border-gray-800 bg-gray-800 text-white"
+      : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50")
   );
 }
 
@@ -87,6 +97,14 @@ async function buscarOrders(
   de: string,
   ate: string
 ): Promise<BuscaResult> {
+  if (plataforma === "morolar") {
+    const [rm, rs] = await Promise.all([getOrdersRangeML(de, ate), getOrdersRangeShopee(de, ate)]);
+    const ordersM = [
+      ...(rm.connected && !rm.error ? rm.orders.filter((o) => (o.conta ?? "morolar") === "morolar") : []),
+      ...(rs.connected && !rs.error ? rs.orders : []),
+    ].sort((a, b) => new Date(b.dateCreated).getTime() - new Date(a.dateCreated).getTime());
+    return { orders: ordersM, mlStatus: statusDe(rm), shopeeStatus: statusDe(rs) };
+  }
   const contaFiltro = contaDaPlataforma(plataforma);
   if (contaFiltro) {
     const r = await getOrdersRangeML(de, ate);
@@ -752,7 +770,7 @@ export default async function VendasPage({
   // quando o ML ou Shopee expirar a conexão ele aparecer pra eu logar"),
   // em vez de só um aviso em texto sem ação.
   const avisoPlataforma =
-    plataforma === "todas"
+    (plataforma === "todas" || plataforma === "morolar")
       ? principal.mlStatus !== "ok"
         ? {
             texto: "Mercado Livre não conectado ou sessão expirada — mostrando só Shopee.",
@@ -833,7 +851,9 @@ export default async function VendasPage({
     de === ate ? formatDiaBR(de) : `${formatDiaBR(de)} até ${formatDiaBR(ate)}`;
 
   const rotuloPlataforma =
-    plataforma === "todas"
+    plataforma === "morolar"
+      ? "Morolar (Mercado Livre + Shopee)"
+      : plataforma === "todas"
       ? "Todas as plataformas"
       : plataforma === "shopee"
       ? "Shopee"
@@ -924,7 +944,7 @@ export default async function VendasPage({
     margensPedidosView.map((m) => [m.order.plataforma + m.order.id, m])
   );
 
-  const mostrarPlataforma = plataforma === "todas";
+  const mostrarPlataforma = (plataforma === "todas" || plataforma === "morolar");
 
   const resumo = (
     <div className="flex flex-col gap-4">
@@ -1268,18 +1288,33 @@ export default async function VendasPage({
     <div className="flex flex-col gap-4">
       <OcultarNumeros
         esquerda={
-          <div className="flex gap-1.5">
-            <Link href={`/vendas?de=${de}&ate=${ate}&plataforma=ml`} className={btnConta(plataforma === "ml")}>
-              Geral (Morolar + Macan)
-            </Link>
-            <Link href={`/vendas?de=${de}&ate=${ate}&plataforma=ml_morolar`} className={btnConta(plataforma === "ml_morolar")}>
-              Morolar
-            </Link>
-            <Link href={`/vendas?de=${de}&ate=${ate}&plataforma=ml_macan`} className={btnConta(plataforma === "ml_macan")}>
-              Macan
-            </Link>
-          </div>
-        }
+<div className="flex flex-col gap-1.5">
+<div className="flex gap-1.5">
+<Link href={`/vendas?de=${de}&ate=${ate}&plataforma=todas`} className={btnConta(plataforma === "todas" || plataforma === "ml")}>
+Geral (todas as contas)
+</Link>
+<Link href={`/vendas?de=${de}&ate=${ate}&plataforma=morolar`} className={btnConta((plataforma === "morolar" || plataforma === "ml_morolar" || plataforma === "shopee"))}>
+Morolar
+</Link>
+<Link href={`/vendas?de=${de}&ate=${ate}&plataforma=ml_macan`} className={btnConta(plataforma === "ml_macan")}>
+Macan
+</Link>
+</div>
+{(plataforma === "morolar" || plataforma === "ml_morolar" || plataforma === "shopee") && (
+<div className="flex gap-1.5">
+<Link href={`/vendas?de=${de}&ate=${ate}&plataforma=morolar`} className={btnSub(plataforma === "morolar")}>
+Mercado Livre + Shopee
+</Link>
+<Link href={`/vendas?de=${de}&ate=${ate}&plataforma=ml_morolar`} className={btnSub(plataforma === "ml_morolar")}>
+Só Mercado Livre
+</Link>
+<Link href={`/vendas?de=${de}&ate=${ate}&plataforma=shopee`} className={btnSub(plataforma === "shopee")}>
+Só Shopee
+</Link>
+</div>
+)}
+</div>
+}
       >
         {resumo}
       </OcultarNumeros>
