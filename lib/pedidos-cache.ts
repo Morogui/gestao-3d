@@ -136,8 +136,8 @@ async function queryRange(
                    total_amount, status, shipping_mode, shipping_status, conta
                        FROM pedidos_cache
                            WHERE plataforma = ${plataforma}
-                                 AND data_criado >= (${fromDay}::date)
-                                       AND data_criado < ((${toDay}::date) + INTERVAL '1 day')
+                                 AND data_criado >= ((${fromDay}::date)::timestamp AT TIME ZONE 'America/Sao_Paulo')
+                                       AND data_criado < (((${toDay}::date) + INTERVAL '1 day')::timestamp AT TIME ZONE 'America/Sao_Paulo')
                                            ORDER BY data_criado DESC
                                              `) as PedidoCacheRow[];
     return rows.map(rowToOrder);
@@ -188,8 +188,8 @@ async function dailyTotals(
                                                           COUNT(*)::int AS pedidos
                                                                     FROM pedidos_cache
                                                                               WHERE plataforma = 'ml'
-                                                                                          AND data_criado >= (${fromDay}::date)
-                                                                                                      AND data_criado < ((${toDay}::date) + INTERVAL '1 day')
+                                                                                          AND data_criado >= ((${fromDay}::date)::timestamp AT TIME ZONE 'America/Sao_Paulo')
+                                                                                                      AND data_criado < (((${toDay}::date) + INTERVAL '1 day')::timestamp AT TIME ZONE 'America/Sao_Paulo')
                                                                                                                   AND (status IS NULL OR status NOT IN ('cancelled', 'invalidated'))
                                                                                                                             GROUP BY dia
                                                                                                                                     `
@@ -200,8 +200,8 @@ async function dailyTotals(
                                                           COUNT(*)::int AS pedidos
                                                                     FROM pedidos_cache
                                                                               WHERE plataforma = 'shopee'
-                                                                                          AND data_criado >= (${fromDay}::date)
-                                                                                                      AND data_criado < ((${toDay}::date) + INTERVAL '1 day')
+                                                                                          AND data_criado >= ((${fromDay}::date)::timestamp AT TIME ZONE 'America/Sao_Paulo')
+                                                                                                      AND data_criado < (((${toDay}::date) + INTERVAL '1 day')::timestamp AT TIME ZONE 'America/Sao_Paulo')
                                                                                                                   AND (status IS NULL OR status NOT IN ('CANCELLED', 'IN_CANCEL'))
                                                                                                                             GROUP BY dia
                                                                                                                                     `
@@ -253,8 +253,8 @@ export async function getDailyTotalsRangeMLConta(
         FROM pedidos_cache
         WHERE plataforma = 'ml'
           AND COALESCE(conta, 'morolar') = ${conta}
-          AND data_criado >= (${fromDay}::date)
-          AND data_criado < ((${toDay}::date) + INTERVAL '1 day')
+          AND data_criado >= ((${fromDay}::date)::timestamp AT TIME ZONE 'America/Sao_Paulo')
+          AND data_criado < (((${toDay}::date) + INTERVAL '1 day')::timestamp AT TIME ZONE 'America/Sao_Paulo')
           AND (status IS NULL OR status NOT IN ('cancelled', 'invalidated'))
         GROUP BY dia
     `) as DiaTotal[];
