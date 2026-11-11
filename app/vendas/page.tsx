@@ -67,6 +67,15 @@ function contaDaPlataforma(p: Plataforma): string | null {
   return null;
 }
 
+function btnConta(ativo: boolean): string {
+  return (
+    "rounded-md border px-3 py-1.5 text-xs font-medium " +
+    (ativo
+      ? "border-blue-600 bg-blue-600 text-white"
+      : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50")
+  );
+}
+
 async function totaisML(plataforma: Plataforma, de: string, ate: string): Promise<DailyTotalsResult> {
   const conta = contaDaPlataforma(plataforma);
   if (conta) return getDailyTotalsRangeMLConta(de, ate, conta);
@@ -252,12 +261,6 @@ function RangeFilter({
         </Link>
         <Link href={hrefPlataforma("ml")} className={quickBtnClass(plataforma === "ml")}>
           Mercado Livre
-        </Link>
-        <Link href={hrefPlataforma("ml_morolar")} className={quickBtnClass(plataforma === "ml_morolar")}>
-          ML Morolar
-        </Link>
-        <Link href={hrefPlataforma("ml_macan")} className={quickBtnClass(plataforma === "ml_macan")}>
-          ML Macan
         </Link>
       </div>
       <form className="flex flex-wrap items-center gap-2" method="GET">
@@ -1263,7 +1266,23 @@ export default async function VendasPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <OcultarNumeros>{resumo}</OcultarNumeros>
+      <OcultarNumeros
+        esquerda={
+          <div className="flex gap-1.5">
+            <Link href={`/vendas?de=${de}&ate=${ate}&plataforma=ml`} className={btnConta(plataforma === "ml")}>
+              Geral (Morolar + Macan)
+            </Link>
+            <Link href={`/vendas?de=${de}&ate=${ate}&plataforma=ml_morolar`} className={btnConta(plataforma === "ml_morolar")}>
+              Morolar
+            </Link>
+            <Link href={`/vendas?de=${de}&ate=${ate}&plataforma=ml_macan`} className={btnConta(plataforma === "ml_macan")}>
+              Macan
+            </Link>
+          </div>
+        }
+      >
+        {resumo}
+      </OcultarNumeros>
       <VendasTabSwitch pedidosView={pedidosView} rankingView={rankingView} margemView={margemView} />
     </div>
   );
