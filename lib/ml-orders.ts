@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { ML_API_BASE, labelLogisticType } from "./mercadolivre";
-import { getValidMLAccessToken } from "./ml-auth";
+import { getValidMLAccessToken, getValidMLAccessTokensExtras } from "./ml-auth";
 
 export interface OrderItemSummary {
     itemId: string;
@@ -355,7 +355,45 @@ async function fetchOrdersInRange(
     dateFrom: string,
     dateTo: string
   ): Promise<OrdersResult> {
-    const auth = await getValidMLAccessToken();
+    // Conta principal (Morolar) + contas extras (ex: Macan Home) -- mesmo
+    // estoque fisico, entao os pedidos de todas as contas entram juntos no
+    // cache de pedidos (pedidos_cache) e contam na demanda/producao.
+    const principal = await fetchOrdersInRangeAuth(dateFrom, dateTo, await getValidMLAccessToken());
+    if (!principal.connected || principal.error) return principal;
+    let extras: { conta: string; accessToken: string; userId: string }[] = [];
+    try {
+        extras = await getValidMLAccessTokensExtras();
+    } catch (err) {
+        console.error("[ML orders] falha ao ler contas extras:", err);
+    }
+    if (extras.length === 0) return principal;
+    const todos = [...principal.orders];
+    const vistos = new Set(todos.map((o) => String(o.id)));
+    for (const extra of extras) {
+        try {
+            const r = await fetchOrdersInRangeAuth(dateFrom, dateTo, extra);
+            if (!r.connected || r.error) {
+                console.error("[ML orders] conta extra indisponivel: " + extra.conta);
+                continue;
+            }
+            for (const o of r.orders) {
+                if (vistos.has(String(o.id))) continue;
+                vistos.add(String(o.id));
+                todos.push(o);
+            }
+        } catch (err) {
+            console.error("[ML orders] erro na conta extra " + extra.conta + ":", err);
+        }
+    }
+    todos.sort((a, b) => (a.dateCreated < b.dateCreated ? 1 : -1));
+    return { connected: true, error: false, orders: todos };
+}
+
+async function fetchOrdersInRangeAuth(
+    dateFrom: string,
+    dateTo: string,
+    auth: { accessToken: string; userId: string } | null
+  ): Promise<OrdersResult> {
     if (!auth) {
           return { connected: false };
     }
