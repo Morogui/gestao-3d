@@ -24,6 +24,8 @@ export interface OrderSummary {
   // Vendas, o ranking de produtos e o cálculo de demanda sem duplicar
   // lógica por plataforma.
   id: number | string;
+  // Conta ML de origem: "morolar" (principal) ou o slug da conta extra (ex: "macanhome").
+  conta?: string;
     dateCreated: string;
     buyerNickname: string;
     items: OrderItemSummary[];
@@ -366,8 +368,8 @@ async function fetchOrdersInRange(
     } catch (err) {
         console.error("[ML orders] falha ao ler contas extras:", err);
     }
-    if (extras.length === 0) return principal;
-    const todos = [...principal.orders];
+    if (extras.length === 0) return { connected: true, error: false, orders: principal.orders.map((o) => ({ ...o, conta: "morolar" })) };
+    const todos = principal.orders.map((o) => ({ ...o, conta: "morolar" }));
     const vistos = new Set(todos.map((o) => String(o.id)));
     for (const extra of extras) {
         try {
@@ -379,7 +381,7 @@ async function fetchOrdersInRange(
             for (const o of r.orders) {
                 if (vistos.has(String(o.id))) continue;
                 vistos.add(String(o.id));
-                todos.push(o);
+                todos.push({ ...o, conta: extra.conta });
             }
         } catch (err) {
             console.error("[ML orders] erro na conta extra " + extra.conta + ":", err);
