@@ -107,6 +107,7 @@ interface PedidoCacheRow {
     status: string | null;
     shipping_mode: string | null;
     shipping_status: string | null;
+    conta: string | null;
 }
 
 function rowToOrder(row: PedidoCacheRow): OrderSummary {
@@ -120,6 +121,7 @@ function rowToOrder(row: PedidoCacheRow): OrderSummary {
           shippingMode: row.shipping_mode ?? "—",
           shippingStatus: row.shipping_status ?? "—",
           plataforma: row.plataforma,
+        conta: row.conta ?? (row.plataforma === "ml" ? "morolar" : undefined),
     };
 }
 
@@ -128,9 +130,10 @@ async function queryRange(
     toDay: string,
     plataforma: Plataforma
   ): Promise<OrderSummary[]> {
+    await garantirColunaConta();
     const rows = (await sql`
         SELECT plataforma, pedido_id, data_criado, buyer_nickname, itens,
-                   total_amount, status, shipping_mode, shipping_status
+                   total_amount, status, shipping_mode, shipping_status, conta
                        FROM pedidos_cache
                            WHERE plataforma = ${plataforma}
                                  AND data_criado >= (${fromDay}::date)
@@ -226,20 +229,54 @@ export async function getDailyTotalsRangeShopee(
     return { connected: true, error: false, porDia };
 }
 
+let colunaContaGarantida = false;
+async function garantirColunaConta() {
+    if (colunaContaGarantida) return;
+    await sql`ALTER TABLE pedidos_cache ADD COLUMN IF NOT EXISTS conta TEXT`;
+    colunaContaGarantida = true;
+}
+
+// Totais por dia do ML filtrados por conta ("morolar" ou o slug da conta extra,
+// ex: "macanhome"). Pedidos antigos sem conta gravada contam como "morolar".
+export async function getDailyTotalsRangeMLConta(
+    fromDay: string,
+    toDay: string,
+    conta: string
+): Promise<DailyTotalsResult> {
+    if (!(await mlConectado())) return { connected: false };
+    if ((await statusSyncPersistido("ml")) === "erro") return { connected: true, error: true };
+    await garantirColunaConta();
+    const rows = (await sql`
+        SELECT (data_criado AT TIME ZONE 'America/Sao_Paulo')::date::text AS dia,
+               COALESCE(SUM(total_amount), 0)::float8 AS faturamento,
+               COUNT(*)::int AS pedidos
+        FROM pedidos_cache
+        WHERE plataforma = 'ml'
+          AND COALESCE(conta, 'morolar') = ${conta}
+          AND data_criado >= (${fromDay}::date)
+          AND data_criado < ((${toDay}::date) + INTERVAL '1 day')
+          AND (status IS NULL OR status NOT IN ('cancelled', 'invalidated'))
+        GROUP BY dia
+    `) as DiaTotal[];
+    return { connected: true, error: false, porDia: rows };
+}
+
 async function upsertPedidos(orders: OrderSummary[]): Promise<number> {
+    await garantirColunaConta();
     let gravados = 0;
     for (const o of orders) {
           await sql`
                 INSERT INTO pedidos_cache (
                         plataforma, pedido_id, data_criado, buyer_nickname, itens,
-                                total_amount, status, shipping_mode, shipping_status, atualizado_em
+                                total_amount, status, shipping_mode, shipping_status, conta, atualizado_em
                                       )
                                             VALUES (
                                                     ${o.plataforma}, ${String(o.id)}, ${o.dateCreated}, ${o.buyerNickname},
                                                             ${JSON.stringify(o.items)}, ${o.totalAmount}, ${o.status},
-                                                                    ${o.shippingMode}, ${o.shippingStatus}, now()
+                                                                    ${o.shippingMode}, ${o.shippingStatus}, ${o.conta ?? null}, now()
                                                                           )
                                                                                 ON CONFLICT (plataforma, pedido_id) DO UPDATE SET
+                conta = EXCLUDED.conta,
                                                                                         data_criado = EXCLUDED.data_criado,
                                                                                                 buyer_nickname = EXCLUDED.buyer_nickname,
                                                                                                         itens = EXCLUDED.itens,
