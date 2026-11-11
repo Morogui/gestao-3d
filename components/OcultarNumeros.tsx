@@ -9,12 +9,19 @@ import { useState } from "react";
 // elementos sensíveis com a classe "valor-sensivel" (nos cards de
 // resumo/recorde/mais vendidos) e aplicando blur via seletor filho
 // quando o botão está ativo.
-export default function OcultarNumeros({ children }: { children: React.ReactNode }) {
+export default function OcultarNumeros({
+  children,
+  esquerda,
+}: {
+  children: React.ReactNode;
+  esquerda?: React.ReactNode;
+}) {
   const [oculto, setOculto] = useState(false);
 
   return (
     <div>
-      <div className="mb-2 flex justify-end">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div>{esquerda}</div>
         <button
           onClick={() => setOculto((v) => !v)}
           className={
