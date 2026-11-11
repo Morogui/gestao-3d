@@ -2498,7 +2498,7 @@ function CarregarPlacaForm({
           <option value="">Selecione uma placa</option>
           {filaPrioridade.map((item) => (
             <option key={item.placa.id} value={item.placa.id}>
-              {item.placa.nome} — a produzir: {item.aProduzirEfetivo}
+              {item.placa.nome}{(() => { const c = corFilamentoDaPlaca(item.placa.nome); return c && !item.placa.nome.includes("(") ? " (" + labelCorFilamento(c).replace(" (PLA)", "") + ")" : ""; })()} — a produzir: {item.aProduzirEfetivo}
               {item.emProducao > 0 ? ` (${item.emProducao} já em produção)` : ""}
             </option>
           ))}
