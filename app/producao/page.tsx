@@ -2433,7 +2433,7 @@ function CarregarPlacaForm({
 
   const placaSelecionada = placaId ? placaPorId.get(placaId) : undefined;
   const corBase = placaSelecionada ? corFilamentoDaPlaca(placaSelecionada.nome) : null;
-  const temOpcaoPetg = corBase !== null && CORES_COM_PETG.includes(corBase);
+  const temOpcaoPetg = false;
   const placaExtraSelecionada = placaSelecionada?.saidaExtraPlacaId
     ? placaPorId.get(placaSelecionada.saidaExtraPlacaId)
     : undefined;
