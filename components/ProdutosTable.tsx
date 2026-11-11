@@ -35,10 +35,10 @@ interface ProdutosTableProps {
   onEdit: (produto: ProdutoInput) => void;
   onDelete: (id: string) => void;
   /** Pedido do Guilherme em 2026-09-18: quando ele cadastra uma nova
-   * variaÃ§Ã£o de cor de um produto que jÃ¡ tem a placa cadastrada (ex:
+   * variação de cor de um produto que já tem a placa cadastrada (ex:
    * "STAM-01 Vermelho" usa a MESMA placa do "STAM-01 Bege"), precisa
-   * ser fÃ¡cil vincular o SKU novo sem redigitar peso/tempo/peÃ§as â
-   * "Nova cor" sÃ³ adiciona o SKU aos mesmos vÃ­nculos que o produto jÃ¡
+   * ser fácil vincular o SKU novo sem redigitar peso/tempo/peças —
+   * "Nova cor" só adiciona o SKU aos mesmos vínculos que o produto já
    * tem (placa principal + adicionais), reaproveitando tudo. */
   onNovaCor: (produto: ProdutoInput) => void;
   /** Pedido do Guilherme em 2026-08-18: avisar quando o SKU cadastrado
@@ -58,7 +58,7 @@ export default function ProdutosTable({
   if (produtos.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-500">
-        Nenhum produto cadastrado ainda. Use o formulÃ¡rio acima para adicionar
+        Nenhum produto cadastrado ainda. Use o formulário acima para adicionar
         o primeiro.
       </div>
     );
@@ -71,12 +71,12 @@ export default function ProdutosTable({
           <tr>
             <th className="px-4 py-3">Produto</th>
             <th className="px-4 py-3">SKU</th>
-            <th className="px-4 py-3">ProduÃ§Ã£o</th>
+            <th className="px-4 py-3">Produção</th>
             <th className="px-4 py-3 text-right">Peso placa (g)</th>
             <th className="px-4 py-3 text-right">Tempo (h)</th>
-            <th className="px-4 py-3 text-right">PeÃ§as/placa</th>
-            <th className="px-4 py-3 text-right">Custo unitÃ¡rio</th>
-            <th className="px-4 py-3 text-right">Custo unitÃ¡rio (A2L)</th>
+            <th className="px-4 py-3 text-right">Peças/placa</th>
+            <th className="px-4 py-3 text-right">Custo unitário</th>
+            <th className="px-4 py-3 text-right">Custo unitário (A2L)</th>
             <th className="px-4 py-3"></th>
           </tr>
         </thead>
@@ -108,11 +108,11 @@ export default function ProdutosTable({
                         .join(", ")}`}
                       className="ml-2 inline-flex cursor-help items-center rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-700"
                     >
-                      composto Â· {numComponentes + 1} placas
+                      composto · {numComponentes + 1} placas
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-gray-500">{produto.sku || "â"}</td>
+                <td className="px-4 py-3 text-gray-500">{produto.sku || "—"}</td>
                 <td className="px-4 py-3">
                   {produto.placaId ? (
                     <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
@@ -120,7 +120,7 @@ export default function ProdutosTable({
                     </span>
                   ) : (
                     <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
-                      NÃ£o vinculado
+                      Não vinculado
                     </span>
                   )}
                   {divergencias?.[produto.id] && (
@@ -128,7 +128,7 @@ export default function ProdutosTable({
                       title={`Venda real "${divergencias?.[produto.id].titulo}" usa o SKU "${divergencias?.[produto.id].sku}", diferente do SKU cadastrado aqui ("${produto.sku || produto.nome}"). A venda pode continuar aparecendo como nao identificada na Producao.`}
                       className="ml-1 inline-flex cursor-help items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700"
                     >
-                      â  SKU pode divergir
+                      ⚠ SKU pode divergir
                     </span>
                   )}
                 </td>
@@ -140,12 +140,12 @@ export default function ProdutosTable({
                   <SetaCustoDelta produtoId={produto.id} valor={custo.custoUnitario} />
                 </td>
                 <td className="px-4 py-3 text-right text-gray-700">
-                  {custoA2l !== null ? formatBRL(custoA2l) : "â"}
+                  {custoA2l !== null ? formatBRL(custoA2l) : "—"}
                 </td>
                 <td className="px-4 py-3 text-right whitespace-nowrap">
                   <button
                     onClick={() => onNovaCor(produto)}
-                    title="Vincular uma nova cor/SKU a esta MESMA placa, sem redigitar peso/tempo/peÃ§as"
+                    title="Vincular uma nova cor/SKU a esta MESMA placa, sem redigitar peso/tempo/peças"
                     className="mr-3 text-emerald-600 hover:underline"
                   >
                     + Nova cor
