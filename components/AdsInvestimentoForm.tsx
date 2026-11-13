@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 interface AdsInvestimentoFormProps {
@@ -9,9 +9,16 @@ interface AdsInvestimentoFormProps {
   shopeeInicial: number;
 }
 
-// Formulário pequeno pra lançar manualmente quanto foi investido em Ads
-// (Mercado Ads / Shopee Ads) no dia de hoje. Ver lib/ads-investimento.ts
-// pra entender por que isso é manual e não puxado direto da API.
+interface SyncResp {
+  shopee?: { ok: boolean; motivo?: string; dias?: { dia: string; gasto: number; receita: number }[] };
+  ml?: { ok: boolean; motivo?: string };
+}
+
+// Investimento em Ads do dia. A Shopee agora e puxada AUTOMATICAMENTE da
+// API de Ads (lib/ads-sync.ts) toda vez que a aba abre; o Mercado Livre
+// continua manual ate o app do ML receber a permissao de Product Ads
+// (a API devolve 403 hoje). O que for digitado e salvo aqui vale ate a
+// proxima sincronizacao automatica da plataforma correspondente.
 export default function AdsInvestimentoForm({
   dia,
   mlInicial,
@@ -22,6 +29,25 @@ export default function AdsInvestimentoForm({
   const [shopee, setShopee] = useState(String(shopeeInicial || ""));
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
+  const [sync, setSync] = useState<SyncResp | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    fetch("/api/ads/sincronizar")
+      .then((r) => r.json())
+      .then((j: SyncResp) => {
+        if (!vivo) return;
+        setSync(j);
+        const hoje = j.shopee?.dias?.find((d) => d.dia === dia);
+        if (j.shopee?.ok && hoje) setShopee(String(hoje.gasto));
+        if (j.shopee?.ok) router.refresh();
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function salvar() {
     setSalvando(true);
@@ -82,6 +108,16 @@ export default function AdsInvestimentoForm({
           <span className="text-green-600">Salvo ✓</span>
         )}
       </div>
+      {sync && (
+        <div className="text-xs text-neutral-500">
+          Shopee:{" "}
+          {sync.shopee?.ok
+            ? "automático (API de Ads)"
+            : `manual (${sync.shopee?.motivo ?? "sem dados"})`}
+          {" · "}
+          Mercado Livre: manual ({sync.ml?.motivo ?? "sem dados"})
+        </div>
+      )}
     </div>
   );
 }
