@@ -4,25 +4,26 @@
 // peso, imposto, embalagem), pra saber quanto sobrou de verdade em cada
 // venda. Pedido do Guilherme em 2026-09-08.
 //
-// O que este arquivo NÃO tenta resolver (e por quê):
-//   - Custo real do Full no Mercado Livre: ainda não temos o valor exato
-//     que a ML cobra de armazenagem/fulfillment do Full (mesma situação
-//     do "Custo Flex ML" na Precificação, que também ficou em R$0 até o
-//     Guilherme levantar o número real). CUSTO_FULL_ML abaixo fica em
-//     R$0 por padrão — ajustável aqui quando esse valor aparecer.
-//   - Ads/Afiliado por pedido individual: a API de pedidos da ML/Shopee
-//     não diz se UM pedido específico veio de anúncio patrocinado ou
-//     não (isso só existe nos relatórios de Ads, que ainda não estão
-//     integrados ao sistema — ver lib/ads-investimento.ts). Por isso a
-//     margem "real" abaixo NÃO desconta Ads/Afiliado — ela é o número
-//     confiável. Vai junto um segundo número "com Ads/Afiliado
-//     (estimado)" usando o mesmo % médio configurado na Precificação,
-//     só como referência — não é o custo real daquele pedido específico.
-//   - Custo de produção de linhas de kit/composto: herda a mesma
-//     limitação já conhecida na Precificação (ver tarefa em aberto sobre
-//     custoProducao de linhas compostas) — se o catálogo ainda não tiver
-//     o SKU do kit calculado corretamente, o item entra em
-//     `itensSemCusto` e a margem do pedido fica marcada como parcial.
+// 2026-11-13 (pedido do Guilherme):
+//   - Tarifa de venda REAL: quando o pedido ML traz order.saleFee
+//     (order_items[].sale_fee), usa esse valor em vez da estimativa por
+//     tabela (comissão % + tarifa por peso).
+//   - Reembolso do Flex ("Bônus por envio"): só existe em pedidos da
+//     modalidade FLEX. A API pública do ML NÃO traz esse valor por pedido
+//     (não está no pagamento, nem no faturamento, nem no custo do envio —
+//     só aparece como crédito solto "CASHBACK" no extrato do Mercado
+//     Pago, sem número de pedido). Por isso o bônus entra como ESTIMADO
+//     (FLEX_BONUS_ESTIMADO ou config.reembolsoFlexML, se preenchido) e a
+//     margem do pedido Flex é marcada com flexEstimado = true. Média real
+//     de outubro/2026: R$ 10,80 por pedido (104 créditos, R$ 1.125,81).
+//
+// O que este arquivo NÃO tenta resolver:
+//   - Custo real do Full no ML (CUSTO_FULL_ML = 0 até levantar o valor).
+//   - Ads/Afiliado por pedido individual: a API de pedidos não diz se UM
+//     pedido veio de anúncio. A margem "real" NÃO desconta Ads/Afiliado;
+//     vai junto um segundo número "com Ads/Afiliado (estimado)".
+//   - Custo de produção de kit/composto sem SKU calculado: o item entra
+//     em `itensSemCusto` e a margem do pedido fica parcial.
 
 import { sql } from "./db";
 import { DEFAULT_PARAMS, GlobalParams, calcularCusto } from "./custo";
@@ -38,6 +39,14 @@ import { OrderSummary } from "./ml-orders";
 
 // Custo extra de envio Full no ML — ver nota no topo do arquivo.
 export const CUSTO_FULL_ML = 0;
+
+// Bônus por envio do Flex (estorno) — média real de outubro/2026 (R$ 7,99
+// a R$ 10,99 por pedido). Só vale pra pedidos Flex.
+export const FLEX_BONUS_ESTIMADO = 10.8;
+
+export function pedidoEhFlex(order: OrderSummary): boolean {
+  return order.plataforma === "ml" && /flex/i.test(order.shippingMode ?? "");
+}
 
 export interface CustoSkuInfo {
   nome: string;
@@ -75,11 +84,7 @@ interface ConfigRow {
   margem_desejada_pct: string;
 }
 
-// Monta um mapa SKU -> custo unitário/peso de envio, cruzando o catálogo
-// (produtos), os parâmetros de custo (parametros_globais) e os overrides
-// de peso de envio já cadastrados na Precificação (precificacao_produtos)
-// — mesma fonte de dados que a aba Precificação usa, pra os dois lugares
-// baterem o mesmo número.
+// Mapa SKU -> custo unitário/peso de envio (mesma fonte da Precificação).
 export async function getCustoPorSku(): Promise<Map<string, CustoSkuInfo>> {
   const produtos = (await sql`
     SELECT id, nome, sku, peso_placa_g, tempo_placa_h, pecas_na_placa
@@ -106,7 +111,6 @@ export async function getCustoPorSku(): Promise<Map<string, CustoSkuInfo>> {
       SELECT produto_id, peso_envio_kg FROM precificacao_produtos
     `) as OverrideRow[];
   } catch {
-    // tabela pode não existir ainda em algum ambiente — segue sem overrides
     overrides = [];
   }
   const overrideMap = new Map(overrides.map((o) => [o.produto_id, o]));
@@ -137,9 +141,7 @@ export async function getCustoPorSku(): Promise<Map<string, CustoSkuInfo>> {
   return mapa;
 }
 
-// Mesma config usada na aba Precificação (imposto, % de ads médio, %
-// afiliado médio, embalagem) — reaproveitada aqui pra não duplicar
-// número/fonte de verdade entre as duas telas.
+// Mesma config usada na aba Precificação.
 export async function getConfigPrecificacao(): Promise<ConfigPrecificacao> {
   try {
     const rows = (await sql`
@@ -179,14 +181,19 @@ export interface MargemPedido {
   adsEstimado: number;
   afiliadoEstimado: number;
   margemComAdsEstimado: number;
+  // true = tarifa de venda é a real do ML (order.saleFee); false = estimada
+  tarifaReal: boolean;
+  // Bônus por envio do Flex somado à margem (0 se o pedido não é Flex)
+  flexBonus: number;
+  // true = o bônus Flex é estimado (a API não traz o valor por pedido)
+  flexEstimado: boolean;
+  // Custo do envio Flex pago por nós (config.custoFlexML), já descontado
+  custoFlex: number;
 }
 
-// Calcula a margem real de UM pedido já vendido (ver pedidoFoiVendido em
-// lib/ml-orders.ts — passar só pedidos já filtrados pra cá). Soma o
-// custo de produção de cada item pelo SKU batido no catálogo; itens sem
-// SKU cadastrado (ainda não confirmado na aba Custo/Precificação) entram
-// em `itensSemCusto` e NÃO travam o cálculo dos outros itens do mesmo
-// pedido — só deixam a margem daquele pedido marcada como parcial.
+// Margem real de UM pedido já vendido (passar só pedidos filtrados por
+// pedidoFoiVendido). Itens sem SKU cadastrado entram em `itensSemCusto`
+// e deixam a margem do pedido marcada como parcial.
 export function calcularMargemPedido(
   order: OrderSummary,
   custoPorSku: Map<string, CustoSkuInfo>,
@@ -209,9 +216,17 @@ export function calcularMargemPedido(
   const preco = order.totalAmount;
   let comissao: number;
   let taxaFixa: number;
+  let tarifaReal = false;
   if (order.plataforma === "ml") {
-    comissao = preco * (COMISSAO_ML_CLASSICO_PCT / 100);
-    taxaFixa = taxaPesoML(pesoTotalKg);
+    if (order.saleFee != null && order.saleFee > 0) {
+      // Tarifa real cobrada pelo ML (comissão + custo fixo juntos)
+      comissao = order.saleFee;
+      taxaFixa = 0;
+      tarifaReal = true;
+    } else {
+      comissao = preco * (COMISSAO_ML_CLASSICO_PCT / 100);
+      taxaFixa = taxaPesoML(pesoTotalKg);
+    }
   } else {
     comissao = preco * (comissaoShopeePct(preco) / 100);
     taxaFixa = taxaFixaShopee(preco);
@@ -221,6 +236,16 @@ export function calcularMargemPedido(
   const custoEnvioExtra =
     order.plataforma === "ml" && order.shippingMode === "Full" ? CUSTO_FULL_ML : 0;
 
+  // Flex: só nesses pedidos existe o bônus por envio (estorno do ML) e o
+  // custo do entregador. Os dois são parametrizáveis na Precificação.
+  const ehFlex = pedidoEhFlex(order);
+  const flexBonus = ehFlex
+    ? config.reembolsoFlexML > 0
+      ? config.reembolsoFlexML
+      : FLEX_BONUS_ESTIMADO
+    : 0;
+  const custoFlex = ehFlex ? config.custoFlexML : 0;
+
   const margemReal =
     preco -
     comissao -
@@ -228,7 +253,9 @@ export function calcularMargemPedido(
     imposto -
     embalagem -
     custoProdutoTotal -
-    custoEnvioExtra;
+    custoEnvioExtra -
+    custoFlex +
+    flexBonus;
   const margemPct = preco > 0 ? (margemReal / preco) * 100 : 0;
 
   const adsPct = order.plataforma === "ml" ? config.adsPctML : config.adsPctShopee;
@@ -252,5 +279,9 @@ export function calcularMargemPedido(
     adsEstimado,
     afiliadoEstimado,
     margemComAdsEstimado,
+    tarifaReal,
+    flexBonus,
+    flexEstimado: ehFlex,
+    custoFlex,
   };
 }
