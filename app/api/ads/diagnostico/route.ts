@@ -41,9 +41,12 @@ export async function GET(request: NextRequest) {
       if (advId) {
         const h2 = { Authorization: `Bearer ${tk.accessToken}`, "Api-Version": "2" };
         const metrics = "clicks,prints,ctr,cost,cpc,acos,roas,direct_amount,indirect_amount,total_amount,units_quantity";
+        const q = `date_from=${de}&date_to=${ate}&metrics=${metrics}&limit=50&offset=0`;
         const urls: Record<string, string> = {
-          campanhas_resumo: `https://api.mercadolibre.com/advertising/${siteId}/advertisers/${advId}/product_ads/campaigns?date_from=${de}&date_to=${ate}&metrics=${metrics}&metrics_summary=true&limit=50&offset=0`,
-          campanhas_diario: `https://api.mercadolibre.com/advertising/${siteId}/advertisers/${advId}/product_ads/campaigns?date_from=${de}&date_to=${ate}&metrics=${metrics}&aggregation_type=DAILY&limit=50&offset=0`,
+          a_search_mkt: `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advId}/product_ads/campaigns/search?${q}&metrics_summary=true`,
+          b_search_mkt_daily: `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advId}/product_ads/campaigns/search?${q}&aggregation_type=DAILY`,
+          c_search_adv: `https://api.mercadolibre.com/advertising/${siteId}/advertisers/${advId}/product_ads/campaigns/search?${q}&metrics_summary=true`,
+          d_old: `https://api.mercadolibre.com/advertising/advertisers/${advId}/product_ads/campaigns?${q}&metrics_summary=true`,
         };
         for (const [k, u] of Object.entries(urls)) {
           const r = await fetch(u, { headers: h2, cache: "no-store" });
