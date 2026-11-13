@@ -42,7 +42,7 @@ export const CUSTO_FULL_ML = 0;
 
 // Bônus por envio do Flex (estorno) — média real de outubro/2026 (R$ 7,99
 // a R$ 10,99 por pedido). Só vale pra pedidos Flex.
-export const FLEX_BONUS_ESTIMADO = 10.8;
+export const FLEX_BONUS_ESTIMADO = 8.99;
 
 export function pedidoEhFlex(order: OrderSummary): boolean {
   return order.plataforma === "ml" && /flex/i.test(order.shippingMode ?? "");

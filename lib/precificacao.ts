@@ -165,8 +165,9 @@ export interface ConfigPrecificacao {
   armazenagemFullML: number;
 }
 
-// Media real do "Bonus por envio" do Flex (ML) em outubro/2026.
-export const FLEX_BONUS_MEDIO = 10.8;
+// Bonus por envio do Flex (ML) adotado na precificacao: R$ 8,99 (definido
+// pelo Guilherme em 13/11/2026; media real de outubro foi R$ 10,80).
+export const FLEX_BONUS_MEDIO = 8.99;
 
 export const DEFAULT_CONFIG_PRECIFICACAO: ConfigPrecificacao = {
   impostoPct: 6,
