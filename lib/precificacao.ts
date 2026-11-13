@@ -10,8 +10,8 @@
 // - % de comissao de afiliados na Shopee (se ele participar do programa)
 // - aliquota exata de imposto (confirmar com a contadora, CF Contabil)
 // - custo real do Mercado Envios Flex: Guilherme confirmou que o ML
-//   reembolsa uma parte e ele tem um custo real que paga pelo Flex --
-//   default R$0 editavel (config.custoFlexML, ainda global).
+// reembolsa uma parte e ele tem um custo real que paga pelo Flex --
+// default R$0 editavel (config.custoFlexML, ainda global).
 //
 // Embalagem (04/09/2026): deixou de ser um valor unico global e virou
 // um campo por produto (ver precificacao_produtos.embalagem_custo em
@@ -38,6 +38,16 @@
 // quando o produto ainda nao tem um override proprio cadastrado) e por
 // compatibilidade com registros antigos no banco -- nao e mais editado
 // na secao "Configuracao geral" da tela.
+//
+// Reembolso Flex ML -- media real (13/11/2026): o "Bonus por envio" do
+// Flex NAO vem na API por pedido; so aparece como credito "CASHBACK"
+// solto no extrato do Mercado Pago. Media real de outubro/2026: R$ 10,80
+// por pedido (104 creditos, R$ 1.125,81; faixa R$ 7,99 a R$ 10,99).
+// Por isso o default de fallback passou a ser FLEX_BONUS_MEDIO (10,80),
+// e o calculo de calcularML deixou de limitar o custo Flex em zero: o
+// bonus pode ser MAIOR que o custo Flex e a sobra e lucro real (antes,
+// com custoFlexML = 0, o reembolso era descartado e a margem de
+// produtos Flex ficava subestimada).
 //
 // Ads/Afiliado por produto (08/09/2026): Guilherme perguntou se a
 // Margem ML/Shopee mostrada ja considerava Ads e Afiliado, e pediu um
@@ -79,13 +89,13 @@
 // desses produtos no Full"). Fui conferir a regra real direto na conta
 // dele (Central de Vendedores -> Vendas -> Detalhe da venda -> Tarifas
 // e cancelamentos), em 2 pedidos Full reais de hoje:
-//   - Venda #2000015024198461 (preco R$43,64): Tarifa de venda
-//     R$5,02 = 43,64 x 11,5% (comissao Classico normal) + Envios
-//     R$6,95 = exatamente taxaPesoML(peso ~0,3-0,5kg, faixa de preco
-//     18,99-48,99) -- a MESMA tabela por peso ja usada pra Flex.
-//   - Venda #2000015026067711 (2un, preco total R$45,98): Tarifa
-//     R$5,28 = 45,98 x 11,5%; Envios R$13,71 = 2x taxaPesoML(peso
-//     <=0,3kg, mesma faixa de preco) = 2x 6,85.
+// - Venda #2000015024198461 (preco R$43,64): Tarifa de venda
+// R$5,02 = 43,64 x 11,5% (comissao Classico normal) + Envios
+// R$6,95 = exatamente taxaPesoML(peso ~0,3-0,5kg, faixa de preco
+// 18,99-48,99) -- a MESMA tabela por peso ja usada pra Flex.
+// - Venda #2000015026067711 (2un, preco total R$45,98): Tarifa
+// R$5,28 = 45,98 x 11,5%; Envios R$13,71 = 2x taxaPesoML(peso
+// <=0,3kg, mesma faixa de preco) = 2x 6,85.
 // Ou seja: o Full NAO tem uma tabela de comissao/tarifa por peso
 // diferente -- e a mesma comissao (Classico/Premium) + a mesma
 // taxaPesoML ja calculada por calcularML no caminho padrao (quando
@@ -109,13 +119,13 @@
 // campanha "Com redução de tarifas") pra entender o mecanismo antes de
 // mexer, conforme pedido. Confirmado com 2 variações reais do Suporte
 // Organizador Universal Parede:
-//   - "Preto Com Parafuso" (#684141288, preço anunciado R$64,99):
-//     na promoção "Com redução de tarifas" (ativa 16/jul-30/set),
-//     preço final R$22,99, texto explícito "Reduzimos R$0,91 das
-//     suas tarifas por cada venda".
-//   - "Preto" (#684141284, preço anunciado R$61,99): mesma promoção,
-//     preço final R$22,30, "Reduzimos R$0,89 das suas tarifas por
-//     cada venda".
+// - "Preto Com Parafuso" (#684141288, preço anunciado R$64,99):
+// na promoção "Com redução de tarifas" (ativa 16/jul-30/set),
+// preço final R$22,99, texto explícito "Reduzimos R$0,91 das
+// suas tarifas por cada venda".
+// - "Preto" (#684141284, preço anunciado R$61,99): mesma promoção,
+// preço final R$22,30, "Reduzimos R$0,89 das suas tarifas por
+// cada venda".
 // Ou seja: em certas campanhas (não em todas -- "Com redução de
 // tarifas" especificamente) o próprio Mercado Livre reduz a comissão
 // que cobra do vendedor por venda, em R$ fixo por listagem/variação
@@ -126,17 +136,17 @@
 // global -- não faz sentido um único valor de rebate pra conta
 // inteira): 2 campos novos por produto em precificacao_produtos /
 // precificacao_sku_virtual --
-//   - preco_anunciado_ml: o preço "De" (cheio) do anúncio, editável,
-//     só informativo -- NÃO entra em calcularML, é só pra Guilherme
-//     comparar com o preço que está de fato cobrando (que continua
-//     sendo precoVendaML/"Preço ML", o preço realmente praticado --
-//     promocional quando há promoção ativa, porque é esse valor que
-//     define comissão/imposto/margem de verdade).
-//   - rebate_ml: o valor em R$ que o ML reduz da própria comissão
-//     nesta venda (0 por padrão -- só usa quando o produto está numa
-//     promoção com redução de tarifas confirmada na conta). Entra em
-//     calcularML como parâmetro explícito rebateML e é subtraído da
-//     comissão bruta (nunca deixa a comissão líquida ficar negativa).
+// - preco_anunciado_ml: o preço "De" (cheio) do anúncio, editável,
+// só informativo -- NÃO entra em calcularML, é só pra Guilherme
+// comparar com o preço que está de fato cobrando (que continua
+// sendo precoVendaML/"Preço ML", o preço realmente praticado --
+// promocional quando há promoção ativa, porque é esse valor que
+// define comissão/imposto/margem de verdade).
+// - rebate_ml: o valor em R$ que o ML reduz da própria comissão
+// nesta venda (0 por padrão -- só usa quando o produto está numa
+// promoção com redução de tarifas confirmada na conta). Entra em
+// calcularML como parâmetro explícito rebateML e é subtraído da
+// comissão bruta (nunca deixa a comissão líquida ficar negativa).
 // ResultadoPlataforma ganhou os campos comissaoBruta e rebateML pra
 // tela mostrar o caminho completo (comissão cheia -> rebate do ML ->
 // comissão líquida usada na conta), igual o padrão já usado pra
@@ -155,6 +165,9 @@ export interface ConfigPrecificacao {
   armazenagemFullML: number;
 }
 
+// Media real do "Bonus por envio" do Flex (ML) em outubro/2026.
+export const FLEX_BONUS_MEDIO = 10.8;
+
 export const DEFAULT_CONFIG_PRECIFICACAO: ConfigPrecificacao = {
   impostoPct: 6,
   adsPctML: 5,
@@ -163,7 +176,7 @@ export const DEFAULT_CONFIG_PRECIFICACAO: ConfigPrecificacao = {
   afiliadoPctShopee: 0,
   embalagemCusto: 1.1,
   margemDesejadaPct: 20,
-  reembolsoFlexML: 0,
+  reembolsoFlexML: FLEX_BONUS_MEDIO,
   custoFlexML: 0,
   armazenagemFullML: 0,
 };
@@ -310,9 +323,12 @@ export function calcularML(
   // Full sempre zera o custo de Flex (quem despacha e o Mercado Livre,
   // nao o Guilherme) -- mesmo que o override de Flex ainda esteja
   // marcado por engano, Full tem prioridade.
+  // 13/11/2026: sem Math.max(0, ...) -- o bonus por envio do Flex pode
+  // ser maior que o custo Flex (que hoje e R$0); a sobra e lucro real
+  // e entra como credito (flexCusto negativo).
   const flexCusto =
     !enviadoPorFull && enviadoPorFlex
-      ? Math.max(0, config.custoFlexML - reembolsoFlexML)
+      ? config.custoFlexML - reembolsoFlexML
       : 0;
   const armazenagemFull = enviadoPorFull ? config.armazenagemFullML : 0;
   const lucro =

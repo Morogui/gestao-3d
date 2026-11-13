@@ -82,6 +82,8 @@ interface ConfigRow {
   afiliado_pct_shopee: string;
   embalagem_custo: string;
   margem_desejada_pct: string;
+  reembolso_flex_ml: string | null;
+  custo_flex_ml: string | null;
 }
 
 // Mapa SKU -> custo unitário/peso de envio (mesma fonte da Precificação).
@@ -145,7 +147,7 @@ export async function getCustoPorSku(): Promise<Map<string, CustoSkuInfo>> {
 export async function getConfigPrecificacao(): Promise<ConfigPrecificacao> {
   try {
     const rows = (await sql`
-      SELECT imposto_pct, ads_pct_ml, ads_pct_shopee, afiliado_pct_shopee, embalagem_custo, margem_desejada_pct
+      SELECT imposto_pct, ads_pct_ml, ads_pct_shopee, afiliado_pct_shopee, embalagem_custo, margem_desejada_pct, reembolso_flex_ml, custo_flex_ml
       FROM precificacao_config ORDER BY id DESC LIMIT 1
     `) as ConfigRow[];
     if (!rows.length) return DEFAULT_CONFIG_PRECIFICACAO;
@@ -157,8 +159,8 @@ export async function getConfigPrecificacao(): Promise<ConfigPrecificacao> {
       afiliadoPctShopee: Number(rows[0].afiliado_pct_shopee),
       embalagemCusto: Number(rows[0].embalagem_custo),
       margemDesejadaPct: Number(rows[0].margem_desejada_pct),
-      reembolsoFlexML: DEFAULT_CONFIG_PRECIFICACAO.reembolsoFlexML,
-      custoFlexML: DEFAULT_CONFIG_PRECIFICACAO.custoFlexML,
+      reembolsoFlexML: Number(rows[0].reembolso_flex_ml ?? DEFAULT_CONFIG_PRECIFICACAO.reembolsoFlexML),
+      custoFlexML: Number(rows[0].custo_flex_ml ?? DEFAULT_CONFIG_PRECIFICACAO.custoFlexML),
       armazenagemFullML: DEFAULT_CONFIG_PRECIFICACAO.armazenagemFullML,
     };
   } catch {
