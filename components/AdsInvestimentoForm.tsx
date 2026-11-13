@@ -11,7 +11,7 @@ interface AdsInvestimentoFormProps {
 
 interface SyncResp {
   shopee?: { ok: boolean; motivo?: string; dias?: { dia: string; gasto: number; receita: number }[] };
-  ml?: { ok: boolean; motivo?: string };
+  ml?: { ok: boolean; motivo?: string; dias?: { dia: string; gasto: number; receita: number }[] };
 }
 
 // Investimento em Ads do dia. A Shopee agora e puxada AUTOMATICAMENTE da
@@ -40,7 +40,9 @@ export default function AdsInvestimentoForm({
         setSync(j);
         const hoje = j.shopee?.dias?.find((d) => d.dia === dia);
         if (j.shopee?.ok && hoje) setShopee(String(hoje.gasto));
-        if (j.shopee?.ok) router.refresh();
+        const hojeMl = j.ml?.dias?.find((d) => d.dia === dia);
+        if (j.ml?.ok && hojeMl) setMl(String(hojeMl.gasto));
+        if (j.shopee?.ok || j.ml?.ok) router.refresh();
       })
       .catch(() => {});
     return () => {
@@ -115,7 +117,10 @@ export default function AdsInvestimentoForm({
             ? "automático (API de Ads)"
             : `manual (${sync.shopee?.motivo ?? "sem dados"})`}
           {" · "}
-          Mercado Livre: manual ({sync.ml?.motivo ?? "sem dados"})
+          Mercado Livre:{" "}
+          {sync.ml?.ok
+            ? "automático (API de Ads)"
+            : `manual (${sync.ml?.motivo ?? "sem dados"})`}
         </div>
       )}
     </div>
