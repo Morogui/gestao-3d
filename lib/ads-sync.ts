@@ -32,7 +32,7 @@ async function garantirTabela() {
 
 export interface ResultadoSyncAds {
   shopee: { ok: boolean; motivo?: string; dias?: { dia: string; gasto: number; receita: number }[] };
-  ml: { ok: boolean; motivo?: string };
+  ml: { ok: boolean; motivo?: string; dias?: { dia: string; gasto: number; receita: number }[] };
 }
 
 function diasEntre(de: string, ate: string): string[] {
@@ -118,9 +118,13 @@ async function sincronizarShopee(de: string, ate: string): Promise<ResultadoSync
   return { ok: true, dias };
 }
 
-// ML: so verifica se a permissao de Product Ads ja foi liberada. Quando
-// liberar, a escrita sera ligada aqui (formato da resposta a confirmar).
-async function statusML(): Promise<ResultadoSyncAds["ml"]> {
+// ML: Product Ads API. Valida ao vivo em 2026-11-13:
+// GET /marketplace/advertising/{site}/advertisers/{id}/product_ads/campaigns/search
+//   ?date_from&date_to&metrics=... (Api-Version 2) -> results[].metrics{cost,...}
+// O gasto do dia = soma de metrics.cost de todas as campanhas. So grava o dia
+// quando a chamada daquele dia deu certo (nunca sobrescreve com zero por erro).
+async function sincronizarML(de: string, ate: string): Promise<ResultadoSyncAds["ml"]> {
+  const dias: { dia: string; gasto: number; receita: number }[] = [];
   try {
     const tk = await getValidMLAccessToken();
     if (!tk) return { ok: false, motivo: "ML desconectado" };
@@ -130,7 +134,48 @@ async function statusML(): Promise<ResultadoSyncAds["ml"]> {
     });
     if (r.status === 403) return { ok: false, motivo: "app do ML sem permissao de Product Ads" };
     if (!r.ok) return { ok: false, motivo: `ML HTTP ${r.status}` };
-    return { ok: false, motivo: "permissao liberada, falta ligar a leitura de custos" };
+    const adv = (await r.json())?.advertisers?.[0];
+    if (!adv) return { ok: false, motivo: "ML sem conta de Product Ads" };
+    const advId = String(adv.advertiser_id);
+    const site = adv.site_id ?? "MLB";
+    const metrics = "clicks,prints,cost,total_amount";
+    let gravados = 0;
+    for (const dia of diasEntre(de, ate)) {
+      let gasto = 0, receita = 0, cliques = 0, imp = 0, offset = 0, falhou = false;
+      for (let pagina = 0; pagina < 10; pagina++) {
+        const u =
+          `https://api.mercadolibre.com/marketplace/advertising/${site}/advertisers/${advId}/product_ads/campaigns/search` +
+          `?date_from=${dia}&date_to=${dia}&metrics=${metrics}&limit=50&offset=${offset}`;
+        const rc = await fetch(u, {
+          headers: { Authorization: `Bearer ${tk.accessToken}`, "Api-Version": "2" },
+          cache: "no-store",
+        });
+        if (!rc.ok) { falhou = true; break; }
+        const j = await rc.json();
+        const res: { metrics?: { cost?: number; total_amount?: number; clicks?: number; prints?: number } }[] =
+          Array.isArray(j?.results) ? j.results : [];
+        for (const c of res) {
+          gasto += Number(c.metrics?.cost ?? 0);
+          receita += Number(c.metrics?.total_amount ?? 0);
+          cliques += Number(c.metrics?.clicks ?? 0);
+          imp += Number(c.metrics?.prints ?? 0);
+        }
+        offset += res.length;
+        if (res.length === 0 || offset >= Number(j?.paging?.total ?? 0)) break;
+      }
+      if (falhou) continue;
+      await sql`
+        INSERT INTO ads_investimento_diario
+          (dia, plataforma, valor, receita_atribuida, cliques, impressoes, origem, atualizado_em)
+        VALUES (${dia}::date, 'ml', ${gasto}, ${receita}, ${cliques}, ${imp}, 'api', now())
+        ON CONFLICT (dia, plataforma) DO UPDATE SET
+          valor = ${gasto}, receita_atribuida = ${receita}, cliques = ${cliques},
+          impressoes = ${imp}, origem = 'api', atualizado_em = now()
+      `;
+      gravados++;
+      dias.push({ dia, gasto, receita });
+    }
+    return gravados > 0 ? { ok: true, dias } : { ok: false, motivo: "ML: nenhum dia lido" };
   } catch (e) {
     return { ok: false, motivo: String(e) };
   }
@@ -140,7 +185,7 @@ export async function sincronizarAds(de: string, ate: string): Promise<Resultado
   await garantirTabela();
   const [shopee, ml] = await Promise.all([
     sincronizarShopee(de, ate).catch((e) => ({ ok: false, motivo: String(e) })),
-    statusML(),
+    sincronizarML(de, ate),
   ]);
   return { shopee, ml };
 }
