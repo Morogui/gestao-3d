@@ -32,6 +32,7 @@ import {
   DEFAULT_CONFIG_PRECIFICACAO,
   COMISSAO_ML_CLASSICO_PCT,
   taxaPesoML,
+  TAXA_FIXA_FLEX_ML,
   comissaoShopeePct,
   taxaFixaShopee,
 } from "./precificacao";
@@ -227,7 +228,10 @@ export function calcularMargemPedido(
       tarifaReal = true;
     } else {
       comissao = preco * (COMISSAO_ML_CLASSICO_PCT / 100);
-      taxaFixa = taxaPesoML(pesoTotalKg);
+      taxaFixa =
+        pedidoEhFlex(order) && preco < 79
+          ? TAXA_FIXA_FLEX_ML
+          : taxaPesoML(pesoTotalKg);
     }
   } else {
     comissao = preco * (comissaoShopeePct(preco) / 100);

@@ -210,11 +210,13 @@ export const CATEGORIAS_ML: CategoriaML[] = [
 
 export const COMISSAO_ML_PREMIUM_PCT = 16.5;
 
+// Taxa fixa real cobrada pelo ML em pedidos Flex < R$ 79 (medida em
+// vendas reais em 13/11/2026: R$ 6,65 em R$ 22,99 / 24,99 / 45,98).
+export const TAXA_FIXA_FLEX_ML = 6.65;
+
 export function taxaFixaMLSemFreteGratis(preco: number): number {
   if (preco < 12.5) return 0;
-  if (preco < 29) return 6.25;
-  if (preco < 50) return 6.5;
-  if (preco < 79) return 6.75;
+  if (preco < 79) return TAXA_FIXA_FLEX_ML;
   return 0;
 }
 
@@ -316,7 +318,13 @@ export function calcularML(
   // Tarifa por peso: a MESMA tabela vale pra Full (ver comentario
   // acima, verificado com vendas reais) -- nao muda com
   // enviadoPorFull, so a linha do Flex abaixo muda.
-  const taxaFixa = taxaPesoML(pesoKg, preco);
+  // 13/11/2026: nos pedidos Flex abaixo de R$ 79 o sale_fee real do ML
+  // traz comissao + taxa fixa de R$ 6,65 (3 pedidos reais: R$ 22,99,
+  // R$ 24,99 e R$ 45,98). Usa isso no lugar da tarifa por peso.
+  const taxaFixa =
+    !enviadoPorFull && enviadoPorFlex && preco > 0 && preco < 79
+      ? TAXA_FIXA_FLEX_ML
+      : taxaPesoML(pesoKg, preco);
   const imposto = preco * (config.impostoPct / 100);
   const ads = usaAdsML ? preco * (config.adsPctML / 100) : 0;
   const afiliado = usaAfiliadoML ? preco * (config.afiliadoPctML / 100) : 0;
