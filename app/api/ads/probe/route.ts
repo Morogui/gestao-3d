@@ -3,42 +3,37 @@ import { getValidMLAccessToken } from "@/lib/ml-auth";
 
 export const dynamic = "force-dynamic";
 
-// ROTA TEMPORARIA — sonda de custos/reembolso de envio e atribuicao de Ads
-// por pedido. GET /api/ads/probe?order=ID
+// ROTA TEMPORARIA — sonda RESTRITA do faturamento do ML (somente leitura).
+// Nao e proxy livre: so monta 3 URLs fixas de /billing/integration com
+// parametros validados. Sera removida apos o teste.
+//   ?a=periods&group=ML&doc=BILL
+//   ?a=details&key=AAAA-MM-DD&group=ML&doc=BILL&limit=50&from=0
+//   ?a=summary&key=AAAA-MM-DD&group=ML&doc=BILL
 export async function GET(request: NextRequest) {
-  const orderId = request.nextUrl.searchParams.get("order");
-  const tk = await getValidMLAccessToken();
-  if (!tk || !orderId) return NextResponse.json({ erro: "sem token/order" });
-  const h = { Authorization: `Bearer ${tk.accessToken}` };
-  const g = async (u: string, extra?: Record<string, string>) => {
-    const r = await fetch(`https://api.mercadolibre.com${u}`, {
-      headers: { ...h, ...(extra ?? {}) },
-      cache: "no-store",
-    });
-    return { status: r.status, body: (await r.text()).slice(0, 2500) };
-  };
-  const out: Record<string, unknown> = {};
-  const o = await fetch(`https://api.mercadolibre.com/orders/${orderId}`, { headers: h, cache: "no-store" });
-  const oj = await o.json();
-  out.order_tags = oj?.tags;
-  out.order_keys = Object.keys(oj ?? {});
-  out.payments = (oj?.payments ?? []).map((p: Record<string, unknown>) => ({
-    total_paid_amount: p.total_paid_amount,
-    marketplace_fee: p.marketplace_fee,
-    shipping_cost: p.shipping_cost,
-    taxes_amount: p.taxes_amount,
-  }));
-  out.order_items = (oj?.order_items ?? []).map((i: Record<string, unknown>) => ({
-    sale_fee: i.sale_fee,
-    full_unit_price: i.full_unit_price,
-    unit_price: i.unit_price,
-  }));
-  const sid = oj?.shipping?.id;
-  out.shipping_id = sid;
-  if (sid) {
-    out.costs = await g(`/shipments/${sid}/costs`);
-    out.shipment = await g(`/shipments/${sid}`);
+  const q = request.nextUrl.searchParams;
+  const a = q.get("a");
+  const group = q.get("group") === "MP" ? "MP" : "ML";
+  const doc = q.get("doc") === "CREDIT_NOTE" ? "CREDIT_NOTE" : "BILL";
+  const key = q.get("key") ?? "";
+  const limit = Math.min(Math.max(Number(q.get("limit") ?? 50) || 50, 1), 150);
+  const from = Math.max(Number(q.get("from") ?? 0) || 0, 0);
+  let path = "";
+  if (a === "periods") {
+    path = `/billing/integration/monthly/periods?group=${group}&document_type=${doc}&limit=12`;
+  } else if ((a === "details" || a === "summary") && /^\d{4}-\d{2}-\d{2}$/.test(key)) {
+    path =
+      a === "details"
+        ? `/billing/integration/periods/key/${key}/group/${group}/details?document_type=${doc}&limit=${limit}&from=${from}`
+        : `/billing/integration/periods/key/${key}/group/${group}/summary?document_type=${doc}`;
+  } else {
+    return NextResponse.json({ erro: "parametros invalidos" }, { status: 400 });
   }
-  out.discounts = await g(`/orders/${orderId}/discounts`);
-  return NextResponse.json(out);
+  const tk = await getValidMLAccessToken();
+  if (!tk) return NextResponse.json({ erro: "sem token" }, { status: 401 });
+  const r = await fetch(`https://api.mercadolibre.com${path}`, {
+    headers: { Authorization: `Bearer ${tk.accessToken}` },
+    cache: "no-store",
+  });
+  const t = await r.text();
+  return NextResponse.json({ status: r.status, len: t.length, body: t.slice(0, 4000) });
 }
