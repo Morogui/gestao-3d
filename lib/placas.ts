@@ -72,8 +72,11 @@ function normalizeCor(s: string): string {
 // Descobre a cor de filamento de uma placa a partir do nome ("Nome (Cor)").
 // Cinza/laranja não têm estoque próprio -> null (sem restrição). Placas sem
 // cor no nome assumem "colorido".
+// 2026-11-16: faltava "branca" (feminino) -- placas como "KIT 2 VASCULANTES
+// BRANCA" caíam em "colorido" (filamento errado na baixa/trava de estoque).
 const CORES_CONHECIDAS_NO_NOME = [
   "branco",
+  "branca",
   "preto",
   "preta",
   "cinza",
@@ -88,7 +91,14 @@ export function corFilamentoDaPlaca(nome: string): CorFilamento | null {
   const tokens = new Set(normalizeCor(nome).split(" "));
   for (const cor of CORES_CONHECIDAS_NO_NOME) {
     if (tokens.has(cor)) {
-      const mapeada = cor === "preta" ? "preto" : cor === "vermelha" ? "vermelho" : cor;
+      const mapeada =
+        cor === "preta"
+          ? "preto"
+          : cor === "vermelha"
+          ? "vermelho"
+          : cor === "branca"
+          ? "branco"
+          : cor;
       return (CORES_FILAMENTO as readonly string[]).includes(mapeada)
         ? (mapeada as CorFilamento)
         : null;
