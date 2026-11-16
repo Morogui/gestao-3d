@@ -11,13 +11,12 @@ export const dynamic = "force-dynamic";
 //
 // Estendido em 2026-07-31 (papel + pecasPorPlaca editaveis).
 //
-// Estendido em 2026-08-11 (frasesCorrespondencia editavel) - pedido do
-// Guilherme apos a aba Analise mostrar dezenas de anuncios "sem match"
-// que na verdade ja estavam cadastrados. O titulo real do anuncio no
-// Mercado Livre e copy de marketing, quase nunca igual ao nome/SKU
-// cadastrado no catalogo. frasesCorrespondencia ja existia no schema
-// (lib/placas.ts) e no motor de match (lib/demanda.ts), so faltava uma
-// forma de editar sem precisar de migracao manual no banco.
+// Estendido em 2026-08-11 (frasesCorrespondencia editavel).
+//
+// Estendido em 2026-11-16 (tempoPlacaHoras editavel) - pedido do
+// Guilherme: separar corpo e gancho do Suporte Universal (placa de
+// corpo 3un / placa de gancho 10un), o que exige atualizar peso e
+// tempo da placa de corpo sem a saida extra de ganchos.
 export async function PATCH(
     request: NextRequest,
   { params }: { params: { id: string } }
@@ -30,6 +29,7 @@ export async function PATCH(
   const body = await request.json();
     const {
           pesoPlacaGramas,
+          tempoPlacaHoras,
           saidaExtraPlacaId,
           saidaExtraPecas,
           papel,
@@ -46,6 +46,7 @@ export async function PATCH(
           dadosConfirmadosA2l,
     } = body as {
           pesoPlacaGramas?: number | null;
+          tempoPlacaHoras?: number;
           saidaExtraPlacaId?: number | null;
           saidaExtraPecas?: number | null;
           papel?: "corpo" | "gancho" | null;
@@ -72,6 +73,15 @@ export async function PATCH(
           { status: 400 }
               );
   }
+    if (
+          tempoPlacaHoras !== undefined &&
+          (!Number.isFinite(tempoPlacaHoras) || tempoPlacaHoras <= 0)
+        ) {
+          return NextResponse.json(
+            { error: "tempoPlacaHoras precisa ser um numero > 0" },
+            { status: 400 }
+                );
+    }
     if (
           saidaExtraPlacaId !== null &&
           saidaExtraPlacaId !== undefined &&
@@ -135,6 +145,7 @@ export async function PATCH(
   }
 
   const temPeso = pesoPlacaGramas !== undefined;
+    const temTempo = tempoPlacaHoras !== undefined;
     const temSaidaId = saidaExtraPlacaId !== undefined;
     const temSaidaPecas = saidaExtraPecas !== undefined;
     const temPapel = papel !== undefined;
@@ -154,6 +165,7 @@ export async function PATCH(
       UPDATE placas
           SET
                 peso_placa_gramas = CASE WHEN ${temPeso} THEN ${pesoPlacaGramas ?? null} ELSE peso_placa_gramas END,
+                      tempo_placa_horas = CASE WHEN ${temTempo} THEN ${tempoPlacaHoras ?? null} ELSE tempo_placa_horas END,
                       saida_extra_placa_id = CASE WHEN ${temSaidaId} THEN ${saidaExtraPlacaId ?? null} ELSE saida_extra_placa_id END,
                             saida_extra_pecas = CASE WHEN ${temSaidaPecas} THEN ${saidaExtraPecas ?? null} ELSE saida_extra_pecas END,
                                   papel = CASE WHEN ${temPapel} THEN ${papel ?? null} ELSE papel END,
@@ -169,10 +181,11 @@ export async function PATCH(
                 peso_placa_gramas_a2l = CASE WHEN ${temPesoPlacaGramasA2l} THEN ${pesoPlacaGramasA2l ?? null} ELSE peso_placa_gramas_a2l END,
                 dados_confirmados_a2l = CASE WHEN ${temDadosConfirmadosA2l} THEN ${dadosConfirmadosA2l ?? false} ELSE dados_confirmados_a2l END
                                                         WHERE id = ${id}
-                                                            RETURNING id, peso_placa_gramas, saida_extra_placa_id, saida_extra_pecas, papel, pecas_por_placa, descontinuada, frases_correspondencia, dados_confirmados, tipo, grupo_composto, tier
+                                                            RETURNING id, peso_placa_gramas, tempo_placa_horas, saida_extra_placa_id, saida_extra_pecas, papel, pecas_por_placa, descontinuada, frases_correspondencia, dados_confirmados, tipo, grupo_composto, tier
                                                               , pecas_por_placa_a2l, tempo_placa_horas_a2l, peso_placa_gramas_a2l, dados_confirmados_a2l`) as {
         id: number;
         peso_placa_gramas: string | null;
+        tempo_placa_horas: string | null;
         saida_extra_placa_id: number | null;
         saida_extra_pecas: string | null;
         papel: string | null;
