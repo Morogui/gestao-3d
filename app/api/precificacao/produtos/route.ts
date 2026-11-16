@@ -356,19 +356,107 @@ export async function GET() {
   const caixas = await listarCaixas();
   const caixaMap = new Map<number, CaixaEnvio>(caixas.map((cx) => [cx.id, cx]));
 
+  const skuJaEmProdutos = new Set(
+    produtos
+      .map((p) => (p.sku ? normalizarTexto(p.sku) : null))
+      .filter((s): s is string => !!s)
+  );
+
+  // 16/11/2026 -- pedido do Guilherme: o custo do produto tem que vir
+  // das PLACAS ("pegar o que utiliza de cada placa e montar"). A
+  // composição por SKU (tabela sku_placa: cada SKU -> placas que ele usa
+  // e quantas peças de cada) agora é montada ANTES de calcular as linhas
+  // de produtos, e vale tanto pras linhas virtuais (SKU que só existe em
+  // sku_placa) quanto pras linhas de produtos cadastrados cujo SKU também
+  // está em sku_placa (ex.: kits "1/2/3 SUPORTE BOX", que antes usavam só
+  // os dados de placeholder da própria linha de produto -- 0,01 h, 1
+  // peça -- e davam custo errado).
+  const linhasSkuPlaca = (await sql`
+    SELECT sp.sku, sp.pecas_por_unidade,
+           pl.peso_placa_gramas, pl.tempo_placa_horas, pl.pecas_por_placa
+    FROM sku_placa sp
+    JOIN placas pl ON pl.id = sp.placa_id
+    WHERE pl.descontinuada = false
+  `) as SkuPlacaRow[];
+
+  const composicaoCompleta = new Map<
+    string,
+    { skuOriginal: string; custoProducao: number; pesoEnvioKg: number }
+  >();
+  for (const linha of linhasSkuPlaca) {
+    const chave = normalizarTexto(linha.sku);
+    if (/^mlb\d+$/i.test(linha.sku.trim())) continue;
+    if (/^\d+$/.test(linha.sku.trim())) continue;
+    // 18/09/2026 -- mesmo motivo do filtro "+" lá em cima (produto 23
+    // "Suporte Cortina C (com parafuso)"): existe uma linha em
+    // sku_placa com esse SKU combinado ("... + ...") ligada à placa
+    // 103. Antes ela ficava escondida só porque o produto 23 (com o
+    // mesmo texto de SKU) já estava em skuJaEmProdutos -- ao tirar o
+    // produto 23 da lista normal (filtro acima), essa linha de
+    // sku_placa passou a gerar uma linha "virtual" com o MESMO
+    // problema (nome/SKU combinado, duplicando "Suporte Cortina C
+    // Branco 1un/2un" e "PAR DE GANCHOS CORTINA COM PARAFUSO
+    // BRANCO/PRETO" que já aparecem certos em linhas próprias). Então
+    // ignora aqui também qualquer linha de sku_placa cujo SKU
+    // combine múltiplos itens com "+".
+    if (/\s\+\s/.test(linha.sku)) continue;
+    const pecasPorPlaca = Number(linha.pecas_por_placa) || 1;
+    const custoUnitarioPlaca = calcularCusto(
+      {
+        pesoPlacaG: Number(linha.peso_placa_gramas ?? 0),
+        tempoPlacaH: Number(linha.tempo_placa_horas),
+        pecasNaPlaca: pecasPorPlaca,
+      },
+      params
+    ).custoUnitario;
+    const pecasPorUnidade = Number(linha.pecas_por_unidade) || 1;
+    const pesoUnitarioPlacaKg =
+      (Number(linha.peso_placa_gramas ?? 0) / pecasPorPlaca) / 1000;
+
+    const acumulado = composicaoCompleta.get(chave) ?? {
+      skuOriginal: linha.sku,
+      custoProducao: 0,
+      pesoEnvioKg: 0,
+    };
+    acumulado.custoProducao += custoUnitarioPlaca * pecasPorUnidade;
+    acumulado.pesoEnvioKg += pesoUnitarioPlacaKg * pecasPorUnidade;
+    composicaoCompleta.set(chave, acumulado);
+  }
+
+  // Linhas "virtuais" = SKUs de sku_placa que NÃO têm linha própria em
+  // produtos (comportamento antigo, inalterado).
+  const composicaoPorSku = new Map<
+    string,
+    { skuOriginal: string; custoProducao: number; pesoEnvioKg: number }
+  >();
+  for (const [chave, comp] of composicaoCompleta.entries()) {
+    if (skuJaEmProdutos.has(chave)) continue;
+    composicaoPorSku.set(chave, comp);
+  }
+
   const resultado: ProdutoPrecificacaoResposta[] = produtos.map((p) => {
-    const custoCalculado = calcularCusto(
+    const custoCalculadoPlacaPrincipal = calcularCusto(
       {
         pesoPlacaG: Number(p.peso_placa_g),
         tempoPlacaH: Number(p.tempo_placa_h),
         pecasNaPlaca: Number(p.pecas_na_placa),
       },
       params
-    );
+    ).custoUnitario;
+
+    // Se o SKU do produto tem composição em sku_placa, o custo (e o peso
+    // de envio) vêm da soma das placas usadas; senão cai no cálculo da
+    // placa principal do próprio cadastro (comportamento anterior).
+    const composicao = p.sku ? composicaoCompleta.get(normalizarTexto(p.sku)) : undefined;
+    const custoCalculadoUnitario = composicao
+      ? composicao.custoProducao
+      : custoCalculadoPlacaPrincipal;
 
     const override = overrideMap.get(p.id);
     const pecas = Number(p.pecas_na_placa) || 1;
-    const pesoEnvioPadrao = Number(p.peso_placa_g) / pecas / 1000;
+    const pesoEnvioPadrao = composicao
+      ? composicao.pesoEnvioKg
+      : Number(p.peso_placa_g) / pecas / 1000;
     const caixaEnvioId = override?.caixa_envio_id ?? null;
     const caixaSelecionada = caixaEnvioId != null ? caixaMap.get(caixaEnvioId) ?? null : null;
     const pesoCaixaKg = caixaSelecionada?.pesoCaixaG != null ? caixaSelecionada.pesoCaixaG / 1000 : 0;
@@ -376,10 +464,10 @@ export async function GET() {
       override?.peso_envio_kg != null
         ? Number(override.peso_envio_kg)
         : pesoEnvioPadrao + pesoCaixaKg;
-    const custoProducao =
-      override?.custo_producao_manual != null
-        ? Number(override.custo_producao_manual)
-        : custoCalculado.custoUnitario;
+    // 16/11/2026 -- o custo de produção vem SEMPRE das placas. O valor
+    // antigo salvo à mão (custo_producao_manual) fica guardado no banco,
+    // mas não é mais usado no cálculo.
+    const custoProducao = custoCalculadoUnitario;
     const precoVendaML =
       override?.preco_venda_ml != null ? Number(override.preco_venda_ml) : null;
     const precoAnunciadoML =
@@ -428,7 +516,7 @@ export async function GET() {
       nome: p.nome,
       sku: p.sku ?? "",
       custoProducao,
-      custoProducaoCalculado: custoCalculado.custoUnitario,
+      custoProducaoCalculado: custoCalculadoUnitario,
       pesoEnvioKg,
       embalagemCusto,
       caixaEnvioId,
@@ -451,64 +539,6 @@ export async function GET() {
       resultadoShopee,
     };
   });
-  const skuJaEmProdutos = new Set(
-    produtos
-      .map((p) => (p.sku ? normalizarTexto(p.sku) : null))
-      .filter((s): s is string => !!s)
-  );
-
-  const linhasSkuPlaca = (await sql`
-    SELECT sp.sku, sp.pecas_por_unidade,
-           pl.peso_placa_gramas, pl.tempo_placa_horas, pl.pecas_por_placa
-    FROM sku_placa sp
-    JOIN placas pl ON pl.id = sp.placa_id
-    WHERE pl.descontinuada = false
-  `) as SkuPlacaRow[];
-
-  const composicaoPorSku = new Map<
-    string,
-    { skuOriginal: string; custoProducao: number; pesoEnvioKg: number }
-  >();
-  for (const linha of linhasSkuPlaca) {
-    const chave = normalizarTexto(linha.sku);
-    if (skuJaEmProdutos.has(chave)) continue;
-    if (/^mlb\d+$/i.test(linha.sku.trim())) continue;
-    if (/^\d+$/.test(linha.sku.trim())) continue;
-    // 18/09/2026 -- mesmo motivo do filtro "+" lá em cima (produto 23
-    // "Suporte Cortina C (com parafuso)"): existe uma linha em
-    // sku_placa com esse SKU combinado ("... + ...") ligada à placa
-    // 103. Antes ela ficava escondida só porque o produto 23 (com o
-    // mesmo texto de SKU) já estava em skuJaEmProdutos -- ao tirar o
-    // produto 23 da lista normal (filtro acima), essa linha de
-    // sku_placa passou a gerar uma linha "virtual" com o MESMO
-    // problema (nome/SKU combinado, duplicando "Suporte Cortina C
-    // Branco 1un/2un" e "PAR DE GANCHOS CORTINA COM PARAFUSO
-    // BRANCO/PRETO" que já aparecem certos em linhas próprias). Então
-    // ignora aqui também qualquer linha de sku_placa cujo SKU
-    // combine múltiplos itens com "+".
-    if (/\s\+\s/.test(linha.sku)) continue;
-    const pecasPorPlaca = Number(linha.pecas_por_placa) || 1;
-    const custoUnitarioPlaca = calcularCusto(
-      {
-        pesoPlacaG: Number(linha.peso_placa_gramas ?? 0),
-        tempoPlacaH: Number(linha.tempo_placa_horas),
-        pecasNaPlaca: pecasPorPlaca,
-      },
-      params
-    ).custoUnitario;
-    const pecasPorUnidade = Number(linha.pecas_por_unidade) || 1;
-    const pesoUnitarioPlacaKg =
-      (Number(linha.peso_placa_gramas ?? 0) / pecasPorPlaca) / 1000;
-
-    const acumulado = composicaoPorSku.get(chave) ?? {
-      skuOriginal: linha.sku,
-      custoProducao: 0,
-      pesoEnvioKg: 0,
-    };
-    acumulado.custoProducao += custoUnitarioPlaca * pecasPorUnidade;
-    acumulado.pesoEnvioKg += pesoUnitarioPlacaKg * pecasPorUnidade;
-    composicaoPorSku.set(chave, acumulado);
-  }
 
   if (composicaoPorSku.size > 0) {
     for (const { skuOriginal } of composicaoPorSku.values()) {
@@ -535,10 +565,8 @@ export async function GET() {
   ).map(([chave, calc]) => {
     const override = virtualOverrideMap.get(chave);
     const custoProducaoCalculado = calc.custoProducao;
-    const custoProducao =
-      override?.custo_producao_manual != null
-        ? Number(override.custo_producao_manual)
-        : custoProducaoCalculado;
+    // 16/11/2026 -- custo sempre vem das placas (ver comentário acima).
+    const custoProducao = custoProducaoCalculado;
     const caixaEnvioId = override?.caixa_envio_id ?? null;
     const caixaSelecionada = caixaEnvioId != null ? caixaMap.get(caixaEnvioId) ?? null : null;
     const pesoCaixaKg = caixaSelecionada?.pesoCaixaG != null ? caixaSelecionada.pesoCaixaG / 1000 : 0;
