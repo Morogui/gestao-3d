@@ -1786,7 +1786,7 @@ const LABEL_COR_FILAMENTO: Record<CorFilamento, string> = {
   "preto-petg": "Preto (PETG)",
   branco: "Branco",
   "branco-petg": "Branco (PETG)",
-  prata: "Prata",
+  cinza: "Cinza",
   marrom: "Marrom",
   bege: "Bege",
   vermelho: "Vermelho",
