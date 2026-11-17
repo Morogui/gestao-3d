@@ -14,7 +14,7 @@ export const CORES_FILAMENTO = [
   "preto-petg",
   "branco",
   "branco-petg",
-  "prata",
+  "cinza",
   "marrom",
   "bege",
   "vermelho",
@@ -26,7 +26,6 @@ export const CORES_FILAMENTO_TODAS = [
   "colorido",
   "preto-petg",
   "branco-petg",
-  "prata-petg",
   "marrom-petg",
   "bege-petg",
   "cinza-petg",
@@ -40,7 +39,7 @@ export const CORES_COM_PETG: readonly CorFilamento[] = [
   "preto",
   "branco",
   "vermelho",
-  "prata",
+  "cinza",
   "marrom",
   "bege",
 ];
@@ -89,11 +88,6 @@ const CORES_CONHECIDAS_NO_NOME = [
 ];
 export function corFilamentoDaPlaca(nome: string): CorFilamento | null {
   const tokens = new Set(normalizeCor(nome).split(" "));
-  // 2026-11-16: Suporte Organizador Tampa de Panela (Cinza) é impresso com
-  // filamento PRATA (pedido do Guilherme) -> baixa/trava de estoque na prata.
-  if (tokens.has("cinza") && tokens.has("tampa") && tokens.has("panela")) {
-    return "prata";
-  }
   for (const cor of CORES_CONHECIDAS_NO_NOME) {
     if (tokens.has(cor)) {
       const mapeada =
@@ -103,6 +97,8 @@ export function corFilamentoDaPlaca(nome: string): CorFilamento | null {
           ? "vermelho"
           : cor === "branca"
           ? "branco"
+          : cor === "prata"
+          ? "cinza" // 2026-11-16: filamento prata não existe mais -> tudo usa cinza
           : cor;
       return (CORES_FILAMENTO as readonly string[]).includes(mapeada)
         ? (mapeada as CorFilamento)
