@@ -28,6 +28,7 @@ export async function PATCH(
 
   const body = await request.json();
     const {
+          nome,
           pesoPlacaGramas,
           tempoPlacaHoras,
           saidaExtraPlacaId,
@@ -45,6 +46,7 @@ export async function PATCH(
           pesoPlacaGramasA2l,
           dadosConfirmadosA2l,
     } = body as {
+          nome?: string;
           pesoPlacaGramas?: number | null;
           tempoPlacaHoras?: number;
           saidaExtraPlacaId?: number | null;
@@ -144,6 +146,10 @@ export async function PATCH(
               );
   }
 
+  if (nome !== undefined && (typeof nome !== "string" || nome.trim().length === 0)) {
+        return NextResponse.json({ error: "nome precisa ser uma string nao vazia" }, { status: 400 });
+  }
+  const temNome = nome !== undefined;
   const temPeso = pesoPlacaGramas !== undefined;
     const temTempo = tempoPlacaHoras !== undefined;
     const temSaidaId = saidaExtraPlacaId !== undefined;
@@ -164,6 +170,7 @@ export async function PATCH(
   const rows = (await sql`
       UPDATE placas
           SET
+                nome = CASE WHEN ${temNome} THEN ${nome ?? null} ELSE nome END,
                 peso_placa_gramas = CASE WHEN ${temPeso} THEN ${pesoPlacaGramas ?? null} ELSE peso_placa_gramas END,
                       tempo_placa_horas = CASE WHEN ${temTempo} THEN ${tempoPlacaHoras ?? null} ELSE tempo_placa_horas END,
                       saida_extra_placa_id = CASE WHEN ${temSaidaId} THEN ${saidaExtraPlacaId ?? null} ELSE saida_extra_placa_id END,
@@ -181,7 +188,7 @@ export async function PATCH(
                 peso_placa_gramas_a2l = CASE WHEN ${temPesoPlacaGramasA2l} THEN ${pesoPlacaGramasA2l ?? null} ELSE peso_placa_gramas_a2l END,
                 dados_confirmados_a2l = CASE WHEN ${temDadosConfirmadosA2l} THEN ${dadosConfirmadosA2l ?? false} ELSE dados_confirmados_a2l END
                                                         WHERE id = ${id}
-                                                            RETURNING id, peso_placa_gramas, tempo_placa_horas, saida_extra_placa_id, saida_extra_pecas, papel, pecas_por_placa, descontinuada, frases_correspondencia, dados_confirmados, tipo, grupo_composto, tier
+                                                            RETURNING id, nome, peso_placa_gramas, tempo_placa_horas, saida_extra_placa_id, saida_extra_pecas, papel, pecas_por_placa, descontinuada, frases_correspondencia, dados_confirmados, tipo, grupo_composto, tier
                                                               , pecas_por_placa_a2l, tempo_placa_horas_a2l, peso_placa_gramas_a2l, dados_confirmados_a2l`) as {
         id: number;
         peso_placa_gramas: string | null;
