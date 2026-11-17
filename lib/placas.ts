@@ -89,6 +89,11 @@ const CORES_CONHECIDAS_NO_NOME = [
 ];
 export function corFilamentoDaPlaca(nome: string): CorFilamento | null {
   const tokens = new Set(normalizeCor(nome).split(" "));
+  // 2026-11-16: Suporte Organizador Tampa de Panela (Cinza) é impresso com
+  // filamento PRATA (pedido do Guilherme) -> baixa/trava de estoque na prata.
+  if (tokens.has("cinza") && tokens.has("tampa") && tokens.has("panela")) {
+    return "prata";
+  }
   for (const cor of CORES_CONHECIDAS_NO_NOME) {
     if (tokens.has(cor)) {
       const mapeada =
