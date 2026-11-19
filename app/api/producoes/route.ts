@@ -19,7 +19,7 @@ export async function GET() {
   const rows = await sql`
     SELECT
       pr.id, pr.machine_id, pr.placa_id, pr.quantidade_placas, pr.status,
-      pr.iniciado_em, pr.concluido_em, pr.gramas_desperdicadas, pr.material,
+      pr.iniciado_em, pr.concluido_em, pr.gramas_desperdicadas, pr.material, pr.cor_filamento,
       m.nome AS machine_nome,
       pl.nome AS placa_nome, pl.pecas_por_placa,
       COALESCE(fp.count, 0) AS falhas_peca_count
