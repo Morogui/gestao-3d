@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
     FROM sku_placa sp
     JOIN placas pl ON pl.id = sp.placa_id
     WHERE sp.sku ILIKE ${"%" + q + "%"}
+      AND pl.descontinuada IS NOT TRUE
     ORDER BY sp.sku
     LIMIT 100
   `) as {
