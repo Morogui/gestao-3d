@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import {
   corFilamentoDaPlaca,
+  CORES_FILAMENTO,
+  CorFilamento,
   corPetgDe,
   CORES_COM_PETG,
   labelCorFilamento,
@@ -40,6 +42,7 @@ export async function GET() {
 // nova é gravada como PETG, independente do que a tela enviar.
 async function garantirColunaMaterial() {
   await sql`ALTER TABLE producoes ADD COLUMN IF NOT EXISTS material TEXT`;
+  await sql`ALTER TABLE producoes ADD COLUMN IF NOT EXISTS cor_filamento TEXT`;
 }
 
 // Inicia uma nova produção (carregar uma placa em uma máquina).
@@ -61,6 +64,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Cor de filamento escolhida na hora de carregar (6X3, Regua, Bolo 10/12).
+  // 2026-11-19: pedido do Guilherme - separar estoque de filamento por cor.
+  const corEscolhida: CorFilamento | null =
+    typeof body.corFilamento === "string" &&
+    (CORES_FILAMENTO as readonly string[]).includes(body.corFilamento)
+      ? (body.corFilamento as CorFilamento)
+      : null;
   const materialNormalizado = "PETG";
   // Trava de segurança — bloqueia o carregamento quando o estoque de
   // filamento da cor (PETG) estiver zerado. Cores não identificáveis no
@@ -68,7 +78,7 @@ export async function POST(request: NextRequest) {
   const placaRows = await sql`SELECT nome FROM placas WHERE id = ${placaId}`;
   const nomePlaca = placaRows[0]?.nome as string | undefined;
   if (nomePlaca) {
-    const cor = corFilamentoDaPlaca(nomePlaca);
+    const cor = corEscolhida ?? corFilamentoDaPlaca(nomePlaca);
     if (cor && cor !== "colorido") {
       const corParaChecar = (CORES_COM_PETG as readonly string[]).includes(cor)
         ? corPetgDe(cor)
@@ -89,9 +99,9 @@ export async function POST(request: NextRequest) {
   }
 
   const rows = await sql`
-    INSERT INTO producoes (machine_id, placa_id, quantidade_placas, status, material)
-    VALUES (${machineId}, ${placaId}, ${quantidadePlacas}, 'em_andamento', ${materialNormalizado})
-    RETURNING id, machine_id, placa_id, quantidade_placas, status, iniciado_em, concluido_em, material
+    INSERT INTO producoes (machine_id, placa_id, quantidade_placas, status, material, cor_filamento)
+    VALUES (${machineId}, ${placaId}, ${quantidadePlacas}, 'em_andamento', ${materialNormalizado}, ${corEscolhida})
+    RETURNING id, machine_id, placa_id, quantidade_placas, status, iniciado_em, concluido_em, material, cor_filamento
   `;
 
   return NextResponse.json(rows[0], { status: 201 });
