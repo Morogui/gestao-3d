@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { corFilamentoDaPlaca, corPetgDe, CORES_COM_PETG, CorFilamento } from "@/lib/placas";
+import {
+  corFilamentoDaPlaca,
+  corPetgDe,
+  CORES_COM_PETG,
+  CORES_FILAMENTO,
+  CorFilamento,
+} from "@/lib/placas";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +14,7 @@ export const dynamic = "force-dynamic";
 // /api/producoes/route.ts.
 async function garantirColunaMaterial() {
   await sql`ALTER TABLE producoes ADD COLUMN IF NOT EXISTS material TEXT`;
+  await sql`ALTER TABLE producoes ADD COLUMN IF NOT EXISTS cor_filamento TEXT`;
 }
 
 // Resolve qual entrada de estoque deve ser descontada, a partir da cor
@@ -23,6 +30,24 @@ function corEfetiva(
     return corPetgDe(corBase);
   }
   return corBase;
+}
+
+// Cor escolhida pelo operador ao carregar a placa (6X3, Regua, Bolo 10/12)
+// tem prioridade sobre a cor deduzida do nome da placa. 2026-11-19: pedido do
+// Guilherme - separar o estoque de filamento por cor certinho.
+async function corDaProducao(
+  producaoId: number,
+  corBase: CorFilamento | null
+): Promise<CorFilamento | null> {
+  const r = (await sql`
+    SELECT cor_filamento FROM producoes WHERE id = ${producaoId}
+  `) as { cor_filamento: string | null }[];
+  const escolhida = r[0]?.cor_filamento ?? null;
+  const base =
+    escolhida && (CORES_FILAMENTO as readonly string[]).includes(escolhida)
+      ? (escolhida as CorFilamento)
+      : corBase;
+  return corEfetiva(base, null);
 }
 
 // Desconta gramas do estoque de filamento (por cor) — pedido do
@@ -119,7 +144,7 @@ export async function PATCH(
         SELECT nome FROM placas WHERE id = ${rows[0].placa_id}
       `) as { nome: string }[];
       const corBase = placaRows[0] ? corFilamentoDaPlaca(placaRows[0].nome) : null;
-      const cor = corEfetiva(corBase, rows[0].material);
+      const cor = await corDaProducao(id, corBase);
       await descontarFilamento(cor, gramasDesperdicadas);
     }
 
@@ -193,7 +218,7 @@ export async function PATCH(
     if (pesoPlacaGramas) {
       gramasFilamentoDescontadas = Number(quantidadePlacas) * pesoPlacaGramas;
       const corBase = corFilamentoDaPlaca(placaRows[0].nome);
-      const cor = corEfetiva(corBase, material);
+      const cor = await corDaProducao(id, corBase);
       await descontarFilamento(cor, gramasFilamentoDescontadas);
     }
 
