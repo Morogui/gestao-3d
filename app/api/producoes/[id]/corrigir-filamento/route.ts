@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { corFilamentoDaPlaca, corPetgDe, CORES_COM_PETG, CorFilamento } from "@/lib/placas";
+import {
+  corFilamentoDaPlaca,
+  corPetgDe,
+  CORES_COM_PETG,
+  CORES_FILAMENTO,
+  CorFilamento,
+} from "@/lib/placas";
 
 export const dynamic = "force-dynamic";
 
@@ -62,8 +68,9 @@ export async function POST(
                 );
         }
 
+    await sql`ALTER TABLE producoes ADD COLUMN IF NOT EXISTS cor_filamento TEXT`;
     const producaoRows = (await sql`
-                              SELECT po.placa_id, po.quantidade_placas, po.material, po.status, m.nome AS machine_nome
+                              SELECT po.placa_id, po.quantidade_placas, po.material, po.cor_filamento, po.status, m.nome AS machine_nome
                               FROM producoes po
                               JOIN machines m ON m.id = po.machine_id
                               WHERE po.id = ${id}
@@ -71,6 +78,7 @@ export async function POST(
           placa_id: number;
           quantidade_placas: string;
           material: string | null;
+          cor_filamento: string | null;
           status: string;
           machine_nome: string;
         }[];
@@ -103,7 +111,11 @@ export async function POST(
     const gramasAntigas = quantidadePlacas * pesoAtual;
     const delta = gramasCorretas - gramasAntigas;
 
-    const corBase = corFilamentoDaPlaca(placa.nome);
+    const corBase =
+      producao.cor_filamento &&
+      (CORES_FILAMENTO as readonly string[]).includes(producao.cor_filamento)
+        ? (producao.cor_filamento as CorFilamento)
+        : corFilamentoDaPlaca(placa.nome);
     const cor = corEfetiva(corBase, producao.material);
 
     if (cor && delta !== 0) {
