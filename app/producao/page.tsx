@@ -820,7 +820,8 @@ export default function ProducaoPage() {
     quantidadePlacas: number,
     material: "PLA" | "PETG",
     pecasPorPlacaUsada?: number,
-    ganchosPorPlacaUsada?: number
+    ganchosPorPlacaUsada?: number,
+    corFilamento?: string
   ) {
     setCarregando((prev) => ({ ...prev, [machineId]: true }));
     try {
@@ -834,6 +835,7 @@ export default function ProducaoPage() {
           material,
           pecasPorPlacaUsada: pecasPorPlacaUsada ?? null,
           ganchosPorPlacaUsada: ganchosPorPlacaUsada ?? null,
+          corFilamento: corFilamento ?? null,
         }),
       });
       if (!res.ok) {
@@ -1374,8 +1376,8 @@ async function corrigirTempo() {
               pertoDoFechamento={pertoDoFechamento}
               aberturaHora={janela.aberturaHora}
               carregando={Boolean(carregando[machine.id])}
-              onIniciar={(placaId, qtd, material, pecasPorPlacaUsada, ganchosPorPlacaUsada) =>
-                iniciarProducao(placaId, machine.id, qtd, material, pecasPorPlacaUsada, ganchosPorPlacaUsada)
+              onIniciar={(placaId, qtd, material, pecasPorPlacaUsada, ganchosPorPlacaUsada, corFilamento) =>
+                iniciarProducao(placaId, machine.id, qtd, material, pecasPorPlacaUsada, ganchosPorPlacaUsada, corFilamento)
               }
               onConcluir={(id) => concluirProducao(id, machine.id)}
               onCancelar={(id) => cancelarProducao(id, machine.id)}
@@ -2009,7 +2011,7 @@ function PrinterCard({
   pertoDoFechamento: boolean;
   aberturaHora: number;
   carregando: boolean;
-  onIniciar: (placaId: number, quantidadePlacas: number, material: "PLA" | "PETG", pecasPorPlacaUsada?: number, ganchosPorPlacaUsada?: number) => void;
+  onIniciar: (placaId: number, quantidadePlacas: number, material: "PLA" | "PETG", pecasPorPlacaUsada?: number, ganchosPorPlacaUsada?: number, corFilamento?: string) => void;
   onConcluir: (id: number) => void;
   onCancelar: (id: number) => void;
   onFalhaPlaca: (id: number, gramas: number) => void;
@@ -2323,7 +2325,7 @@ function PrinterCard({
                 <>
                   {ultimaProducao && (
                               <button
-                                              onClick={() => onIniciar(ultimaProducao.placa_id, Number(ultimaProducao.quantidade_placas), (ultimaProducao.material as "PLA" | "PETG") ?? "PLA")}
+                                              onClick={() => onIniciar(ultimaProducao.placa_id, Number(ultimaProducao.quantidade_placas), (ultimaProducao.material as "PLA" | "PETG") ?? "PLA", undefined, undefined, (ultimaProducao as { cor_filamento?: string | null }).cor_filamento ?? undefined)}
                                               className="mb-2 self-start rounded border border-blue-300 bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
                                             >
                                             Imprimir novamente: {placaPorId.get(ultimaProducao.placa_id)?.nome ?? ultimaProducao.placa_nome} ({ultimaProducao.quantidade_placas}x)
@@ -2359,7 +2361,7 @@ function CarregarPlacaForm({
   pertoDoFechamento: boolean;
   aberturaHora: number;
   carregando: boolean;
-  onIniciar: (placaId: number, quantidadePlacas: number, material: "PLA" | "PETG", pecasPorPlacaUsada?: number, ganchosPorPlacaUsada?: number) => void;
+  onIniciar: (placaId: number, quantidadePlacas: number, material: "PLA" | "PETG", pecasPorPlacaUsada?: number, ganchosPorPlacaUsada?: number, corFilamento?: string) => void;
 }) {
   const [placaId, setPlacaId] = useState<number | "">(filaPrioridade[0]?.placa.id ?? "");
   const [quantidade, setQuantidade] = useState(1);
@@ -2368,8 +2370,10 @@ function CarregarPlacaForm({
   const [placaSelecionadaNome, setPlacaSelecionadaNome] = useState<string | null>(null);
   const [buscando, setBuscando] = useState(false);
   const [material, setMaterial] = useState<"PLA" | "PETG">("PLA");
+  const [corFilamento, setCorFilamento] = useState<string>("colorido");
   useEffect(() => {
     setMaterial("PLA");
+    setCorFilamento("colorido");
   }, [placaId]);
 
   // Resincroniza a sugestao automatica com a fila de prioridade sempre que ela
@@ -2434,6 +2438,11 @@ function CarregarPlacaForm({
   const placaSelecionada = placaId ? placaPorId.get(placaId) : undefined;
   const corBase = placaSelecionada ? corFilamentoDaPlaca(placaSelecionada.nome) : null;
   const temOpcaoPetg = false;
+  // 2026-11-19: 6X3, Regua e Bolo 10/12 rodam em cores diferentes; o operador escolhe
+  // a cor na hora de carregar pra baixa de filamento ir pro estoque certo.
+  const permiteEscolherCor =
+    !!placaSelecionada &&
+    /^(6X3|REGUA BOLO|BOLO 1[02])/i.test(placaSelecionada.nome.trim());
   const placaExtraSelecionada = placaSelecionada?.saidaExtraPlacaId
     ? placaPorId.get(placaSelecionada.saidaExtraPlacaId)
     : undefined;
@@ -2564,6 +2573,25 @@ function CarregarPlacaForm({
         </div>
       )}
 
+      {permiteEscolherCor && (
+        <div className="flex flex-wrap items-center gap-2 rounded border border-amber-200 bg-amber-50 px-2 py-1.5">
+          <span className="text-xs font-medium text-amber-800">Cor do filamento:</span>
+          <select
+            value={corFilamento}
+            onChange={(e) => setCorFilamento(e.target.value)}
+            className="rounded border border-amber-300 bg-white px-2 py-1 text-xs"
+          >
+            <option value="colorido">Colorido</option>
+            <option value="preto">Preto</option>
+            <option value="branco">Branco</option>
+            <option value="vermelho">Vermelho</option>
+            <option value="cinza">Cinza</option>
+            <option value="marrom">Marrom</option>
+            <option value="bege">Bege</option>
+          </select>
+        </div>
+      )}
+
       {temOpcaoPetg && (
         <div className="flex items-center gap-2 rounded border border-sky-200 bg-sky-50 px-2 py-1.5">
           <span className="text-xs font-medium text-sky-800">Material:</span>
@@ -2611,7 +2639,7 @@ function CarregarPlacaForm({
               isA2L && placaExtraSelecionada && ganchosOverride.trim() !== ""
                 ? Number(ganchosOverride)
                 : undefined;
-            onIniciar(placaId, quantidade, material, override, ganchosOverrideVal);
+            onIniciar(placaId, quantidade, material, override, ganchosOverrideVal, permiteEscolherCor ? corFilamento : undefined);
           }}
           className="flex-1 rounded bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-40"
         >
