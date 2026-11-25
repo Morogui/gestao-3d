@@ -229,6 +229,18 @@ export default function ProducaoPage() {
   const [valorPecasEditado, setValorPecasEditado] = useState("");
   const [salvandoPecas, setSalvandoPecas] = useState(false);
   const [erroPecas, setErroPecas] = useState<string | null>(null);
+  // Pedido do Guilherme em 2026-11-25: o pop-up de conferencia (pecas,
+  // peso, tempo — todos editaveis) abre quando ele clica pra IMPRIMIR
+  // (carregar a placa), nao na conclusao. Confirmar salva os dados na
+  // placa (dados_confirmados) e so entao inicia a producao.
+  const [confirmarImpressao, setConfirmarImpressao] = useState<{
+    placaId: number; machineId: number; quantidadePlacas: number; material: "PLA" | "PETG";
+    pecasPorPlacaUsada?: number; ganchosPorPlacaUsada?: number;
+    placaNome: string; papel: string | null; isA2L: boolean;
+    pecas: string; gramas: string; horas: string; minutos: string;
+    orig: { pecas: number; gramas: number; horas: number };
+    erro: string | null; salvando: boolean;
+  } | null>(null);
   // Envios planejados do Full ainda pendentes — pedido do Guilherme em
   // 2026-07-25: alimenta o critério nº-2 da fila de prioridade (ver
   // filaPrioridade abaixo).
@@ -848,6 +860,75 @@ export default function ProducaoPage() {
     }
   }
 
+function abrirConfirmacaoImpressao(
+    placaId: number,
+    machineId: number,
+    quantidadePlacas: number,
+    material: "PLA" | "PETG",
+    pecasPorPlacaUsada?: number,
+    ganchosPorPlacaUsada?: number
+  ) {
+    const placa: any = placaPorId.get(placaId);
+    if (!placa) {
+      iniciarProducao(placaId, machineId, quantidadePlacas, material, pecasPorPlacaUsada, ganchosPorPlacaUsada);
+      return;
+    }
+    const maq = machines.find((m) => m.id === machineId);
+    const isA2L = maq ? /a2l/i.test(maq.nome) : false;
+    const pecas = Number((pecasPorPlacaUsada && pecasPorPlacaUsada > 0 ? pecasPorPlacaUsada : (isA2L && placa.pecasPorPlacaA2l ? placa.pecasPorPlacaA2l : placa.pecasPorPlaca)) ?? 0);
+    const gramas = Number((isA2L && placa.pesoPlacaGramasA2l != null ? placa.pesoPlacaGramasA2l : placa.pesoPlacaGramas) ?? 0);
+    const horas = Number((isA2L && placa.tempoPlacaHorasA2l ? placa.tempoPlacaHorasA2l : placa.tempoPlacaHoras) ?? 0);
+    const totalMin = Math.round(horas * 60);
+    setConfirmarImpressao({
+      placaId, machineId, quantidadePlacas, material, pecasPorPlacaUsada, ganchosPorPlacaUsada,
+      placaNome: placa.nome, papel: placa.papel ?? null, isA2L,
+      pecas: String(pecas), gramas: String(Math.round(gramas)),
+      horas: String(Math.floor(totalMin / 60)), minutos: String(totalMin % 60),
+      orig: { pecas, gramas, horas },
+      erro: null, salvando: false,
+    });
+  }
+
+  async function confirmarEImprimir() {
+    const c = confirmarImpressao;
+    if (!c) return;
+    const pecas = Number(c.pecas.replace(",", "."));
+    const gramas = Number(c.gramas.replace(",", "."));
+    const horas = (Number(c.horas.replace(",", ".")) || 0) + (Number(c.minutos.replace(",", ".")) || 0) / 60;
+    if (!Number.isFinite(pecas) || pecas <= 0) { setConfirmarImpressao({ ...c, erro: "Informe as peças por placa (> 0)." }); return; }
+    if (!Number.isFinite(gramas) || gramas < 0) { setConfirmarImpressao({ ...c, erro: "Informe o peso em gramas." }); return; }
+    if (!Number.isFinite(horas) || horas <= 0) { setConfirmarImpressao({ ...c, erro: "Informe o tempo da placa." }); return; }
+    setConfirmarImpressao({ ...c, erro: null, salvando: true });
+    const body: Record<string, unknown> = {};
+    const usaOverride = c.pecasPorPlacaUsada !== undefined && c.pecasPorPlacaUsada > 0;
+    let pecasUsadaFinal = c.pecasPorPlacaUsada;
+    if (usaOverride) {
+      pecasUsadaFinal = pecas;
+    } else if (pecas !== c.orig.pecas) {
+      body[c.isA2L ? "pecasPorPlacaA2l" : "pecasPorPlaca"] = pecas;
+    }
+    if (gramas !== c.orig.gramas) body[c.isA2L ? "pesoPlacaGramasA2l" : "pesoPlacaGramas"] = gramas;
+    if (Math.abs(horas - c.orig.horas) > 1e-6) body[c.isA2L ? "tempoPlacaHorasA2l" : "tempoPlacaHoras"] = horas;
+    body[c.isA2L ? "dadosConfirmadosA2l" : "dadosConfirmados"] = true;
+    try {
+      const res = await fetch(`/api/placas/${c.placaId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        setConfirmarImpressao({ ...c, erro: (d && d.error) || "Erro ao salvar os dados da placa.", salvando: false });
+        return;
+      }
+    } catch {
+      setConfirmarImpressao({ ...c, erro: "Erro de rede ao salvar.", salvando: false });
+      return;
+    }
+    setConfirmarImpressao(null);
+    await iniciarProducao(c.placaId, c.machineId, c.quantidadePlacas, c.material, pecasUsadaFinal, c.ganchosPorPlacaUsada);
+  }
+
 async function concluirProducao(id: number, machineId: number) {
   setCarregando((prev) => ({ ...prev, [machineId]: true }));
   try {
@@ -864,7 +945,7 @@ async function concluirProducao(id: number, machineId: number) {
             const tempoMs = producaoAtual.iniciado_em ? Date.now() - new Date(producaoAtual.iniciado_em).getTime() : 0;
       const maquinaAtual = machines.find((m) => m.id === machineId);
       const isA2LConclusao = maquinaAtual ? /a2l/i.test(maquinaAtual.nome) : false;
-      const dadosJaConfirmados = (void isA2LConclusao, false); // pedido 25/11/2026: pop-up de revisão sempre abre
+      const dadosJaConfirmados = (void isA2LConclusao, true); // pedido 25/11/2026: revisao agora abre ao IMPRIMIR (confirmarImpressao), nao ao concluir
       if (!dadosJaConfirmados) {
             setResumoProducao({
                       producaoId: id,
@@ -1375,7 +1456,7 @@ async function corrigirTempo() {
               aberturaHora={janela.aberturaHora}
               carregando={Boolean(carregando[machine.id])}
               onIniciar={(placaId, qtd, material, pecasPorPlacaUsada, ganchosPorPlacaUsada) =>
-                iniciarProducao(placaId, machine.id, qtd, material, pecasPorPlacaUsada, ganchosPorPlacaUsada)
+                abrirConfirmacaoImpressao(placaId, machine.id, qtd, material, pecasPorPlacaUsada, ganchosPorPlacaUsada)
               }
               onConcluir={(id) => concluirProducao(id, machine.id)}
               onCancelar={(id) => cancelarProducao(id, machine.id)}
@@ -1685,6 +1766,51 @@ async function corrigirTempo() {
           </div>
         )}
       </section>
+      {confirmarImpressao && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !confirmarImpressao.salvando && setConfirmarImpressao(null)}>
+          <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-blue-600">Conferir antes de imprimir</p>
+            <h3 className="mb-1 text-base font-semibold text-gray-900">
+              {confirmarImpressao.placaNome}{confirmarImpressao.papel ? ` (${confirmarImpressao.papel})` : ""}
+            </h3>
+            <p className="mb-3 text-xs text-gray-500">
+              {confirmarImpressao.quantidadePlacas} placa(s) · {confirmarImpressao.material}{confirmarImpressao.isA2L ? " · A2L" : ""}. Corrija se algo estiver errado; ao confirmar, os dados ficam salvos na placa.
+            </p>
+            <label className="mb-2 flex items-center justify-between text-sm text-gray-700">
+              Peças por placa
+              <input type="number" min={0} step="1" value={confirmarImpressao.pecas}
+                onChange={(e) => setConfirmarImpressao({ ...confirmarImpressao, pecas: e.target.value })}
+                className="w-24 rounded border border-gray-300 px-2 py-1 text-right" />
+            </label>
+            <label className="mb-2 flex items-center justify-between text-sm text-gray-700">
+              Filamento por placa (g)
+              <input type="number" min={0} step="1" value={confirmarImpressao.gramas}
+                onChange={(e) => setConfirmarImpressao({ ...confirmarImpressao, gramas: e.target.value })}
+                className="w-24 rounded border border-gray-300 px-2 py-1 text-right" />
+            </label>
+            <div className="mb-2 flex items-center justify-between text-sm text-gray-700">
+              Tempo por placa
+              <span className="inline-flex items-center gap-1">
+                <input type="number" min={0} step="1" value={confirmarImpressao.horas}
+                  onChange={(e) => setConfirmarImpressao({ ...confirmarImpressao, horas: e.target.value })}
+                  className="w-14 rounded border border-gray-300 px-2 py-1 text-right" />h
+                <input type="number" min={0} max={59} step="1" value={confirmarImpressao.minutos}
+                  onChange={(e) => setConfirmarImpressao({ ...confirmarImpressao, minutos: e.target.value })}
+                  className="w-14 rounded border border-gray-300 px-2 py-1 text-right" />min
+              </span>
+            </div>
+            {confirmarImpressao.erro && <p className="mt-1 text-xs text-red-600">{confirmarImpressao.erro}</p>}
+            <div className="mt-4 flex gap-2">
+              <button disabled={confirmarImpressao.salvando} onClick={() => setConfirmarImpressao(null)}
+                className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50">Cancelar</button>
+              <button disabled={confirmarImpressao.salvando} onClick={confirmarEImprimir}
+                className="flex-1 rounded bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">
+                {confirmarImpressao.salvando ? "Salvando..." : "Confirmar e imprimir"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {resumoProducao && createElement("div", {className: "fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4", onClick: () => setResumoProducao(null)}, createElement("div", {className: "w-full max-w-sm rounded-lg bg-white p-5 shadow-xl", onClick: (e: any) => e.stopPropagation()}, createElement("p", {className: "mb-1 text-xs font-medium uppercase tracking-wide text-emerald-600"}, "Produção concluída"), createElement("h3", {className: "mb-3 text-base font-semibold text-gray-900"}, resumoProducao.placaNome + (resumoProducao.papel ? ` (${resumoProducao.papel})` : "")), createElement("p", {className: "text-sm text-gray-700"}, `${resumoProducao.pecasProduzidas} peça(s)${resumoProducao.papel ? ` de ${resumoProducao.papel}` : ""} produzida(s) (${resumoProducao.quantidadePlacas} placa(s) x ${resumoProducao.pecasPorPlaca} peça(s)/placa${resumoProducao.falhas > 0 ? ` - ${resumoProducao.falhas} com falha` : ""})`), resumoProducao.extra && createElement("p", {className: "text-sm text-emerald-700"}, `+ ${resumoProducao.extra.pecas} peça(s) de ${resumoProducao.extra.placaNome} (saída extra da placa mista)`), createElement("p", {className: "text-sm text-gray-500"}, "Tempo: ", editandoTempo ? createElement("span", {className: "inline-flex items-center gap-1"}, createElement("input", {type: "number", min: 0, step: "1", autoFocus: true, value: horasEditadas, onChange: (e: any) => setHorasEditadas(e.target.value), className: "w-12 rounded border border-gray-300 px-1.5 py-0.5 text-right"}), "h", createElement("input", {type: "number", min: 0, max: 59, step: "1", value: minutosEditados, onChange: (e: any) => setMinutosEditados(e.target.value), className: "w-12 rounded border border-gray-300 px-1.5 py-0.5 text-right"}), "min", createElement("button", {onClick: corrigirTempo, disabled: salvandoTempo, className: "ml-1 text-xs text-blue-600 hover:underline"}, salvandoTempo ? "Salvando..." : "Salvar"), createElement("button", {onClick: () => { setEditandoTempo(false); setErroTempo(null); }, className: "ml-1 text-xs text-gray-400 hover:underline"}, "cancelar")) : createElement("span", null, formatDuracaoMs(resumoProducao.tempoMs), createElement("button", {onClick: () => { const totalMin = Math.round(resumoProducao.tempoMs / 60000); setHorasEditadas(String(Math.floor(totalMin / 60))); setMinutosEditados(String(totalMin % 60)); setEditandoTempo(true); setErroTempo(null); }, className: "ml-2 text-xs text-blue-600 hover:underline"}, "editar"))), erroTempo && createElement("p", {className: "mt-1 text-xs text-red-600"}, erroTempo), createElement("p", {className: "mt-2 text-sm text-gray-700"}, "Filamento gasto: ", editandoPeso ? createElement("span", {className: "inline-flex items-center gap-1"}, createElement("input", {type: "number", min: 0, step: "1", autoFocus: true, value: valorPesoEditado, onChange: (e: any) => setValorPesoEditado(e.target.value), className: "w-20 rounded border border-gray-300 px-1.5 py-0.5 text-right"}), "g", createElement("button", {onClick: corrigirPeso, disabled: salvandoCorrecao, className: "ml-1 text-xs text-blue-600 hover:underline"}, salvandoCorrecao ? "Salvando..." : "Salvar"), createElement("button", {onClick: () => { setEditandoPeso(false); setErroCorrecao(null); }, className: "ml-1 text-xs text-gray-400 hover:underline"}, "cancelar")) : createElement("span", null, `${formatGramasEmKg(resumoProducao.gramas)} kg${resumoProducao.cor ? ` (${resumoProducao.cor})` : ""}`, createElement("button", {onClick: () => { setValorPesoEditado(String(Math.round(resumoProducao.gramas))); setEditandoPeso(true); setErroCorrecao(null); }, className: "ml-2 text-xs text-blue-600 hover:underline"}, "editar"))), erroCorrecao && createElement("p", {className: "mt-1 text-xs text-red-600"}, erroCorrecao), createElement("p", {className: "mt-2 text-sm text-gray-700"}, "Quantidade de peças/placa: ", editandoPecas ? createElement("span", {className: "inline-flex items-center gap-1"}, createElement("input", {type: "number", min: 0, step: "1", autoFocus: true, value: valorPecasEditado, onChange: (e: any) => setValorPecasEditado(e.target.value), className: "w-16 rounded border border-gray-300 px-1.5 py-0.5 text-right"}), createElement("button", {onClick: corrigirPecas, disabled: salvandoPecas, className: "ml-1 text-xs text-blue-600 hover:underline"}, salvandoPecas ? "Salvando..." : "Salvar"), createElement("button", {onClick: () => { setEditandoPecas(false); setErroPecas(null); }, className: "ml-1 text-xs text-gray-400 hover:underline"}, "cancelar")) : createElement("span", null, String(resumoProducao.pecasPorPlaca), createElement("button", {onClick: () => { setValorPecasEditado(String(resumoProducao.pecasPorPlaca)); setEditandoPecas(true); setErroPecas(null); }, className: "ml-2 text-xs text-blue-600 hover:underline"}, "editar"))), erroPecas && createElement("p", {className: "mt-1 text-xs text-red-600"}, erroPecas), createElement("button", {onClick: fecharResumo, className: "mt-4 w-full rounded bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700"}, "Fechar")))}
     </div>
   );
