@@ -878,6 +878,10 @@ function abrirConfirmacaoImpressao(
     }
     const maq = machines.find((m) => m.id === machineId);
     const isA2L = maq ? /a2l/i.test(maq.nome) : false;
+    if (isA2L ? placa.dadosConfirmadosA2l : placa.dadosConfirmados) {
+      iniciarProducao(placaId, machineId, quantidadePlacas, material, pecasPorPlacaUsada, ganchosPorPlacaUsada, corFilamento);
+      return;
+    }
     const pecas = Number((pecasPorPlacaUsada && pecasPorPlacaUsada > 0 ? pecasPorPlacaUsada : (isA2L && placa.pecasPorPlacaA2l ? placa.pecasPorPlacaA2l : placa.pecasPorPlaca)) ?? 0);
     const gramas = Number((isA2L && placa.pesoPlacaGramasA2l != null ? placa.pesoPlacaGramasA2l : placa.pesoPlacaGramas) ?? 0);
     const horas = Number((isA2L && placa.tempoPlacaHorasA2l ? placa.tempoPlacaHorasA2l : placa.tempoPlacaHoras) ?? 0);
