@@ -1879,7 +1879,10 @@ async function corrigirTempo() {
             {vinculosPopup && vinculosPopup.placaId === confirmarImpressao.placaId && !vinculosPopup.confirmado && vinculosPopup.itens.length > 0 && (
               <div className="mt-4 border-t border-gray-200 pt-3">
                 <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">
-                  {"Esta placa alimenta " + vinculosPopup.itens.length + " SKU(s) — confirme cada um"}
+                  {"Esta placa alimenta " + vinculosPopup.itens.length + " SKU(s)"}
+                </p>
+                <p className="mb-2 text-xs text-gray-500">
+                  Marque cada SKU e confira quantas peças DESTA placa 1 unidade vendida usa.
                 </p>
                 <div className="max-h-60 space-y-2 overflow-y-auto">
                   {vinculosPopup.itens.map((it) => (
@@ -1889,9 +1892,6 @@ async function corrigirTempo() {
                           <input type="checkbox" checked={!!checkVinculo[it.sku]}
                             onChange={(e) => setCheckVinculo((prev) => ({ ...prev, [it.sku]: e.target.checked }))} />
                           {it.tipo === "anuncio_ml" ? "Anúncio " + it.sku : it.sku}
-                          {it.totalPlacas > 1 && (
-                            <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700">{it.totalPlacas + " placas"}</span>
-                          )}
                         </label>
                         <span className="inline-flex items-center gap-1 text-gray-600">
                           usa
@@ -1901,12 +1901,6 @@ async function corrigirTempo() {
                           peça(s)/un
                         </span>
                       </div>
-                      {it.outrasPlacas.length > 0 && (
-                        <p className="mt-1 text-gray-600">
-                          {"Também usa: " + it.outrasPlacas.map((o) => o.nome + (o.descontinuada ? " [descontinuada]" : "") + " ×" + o.pecasPorUnidade + " (estoque " + o.estoque + ")").join(" + ")}
-                        </p>
-                      )}
-                      <p className="mt-0.5 text-gray-500">{"Vendável agora: " + it.vendavel + " un"}</p>
                     </div>
                   ))}
                 </div>
