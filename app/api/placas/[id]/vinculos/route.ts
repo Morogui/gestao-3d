@@ -71,9 +71,11 @@ export async function GET(
       sku,
       tipo: /^MLB\d+$/i.test(sku.trim()) ? ("anuncio_ml" as const) : ("sku" as const),
       pecasPorUnidade: Number(minha.pecas_por_unidade),
-      totalPlacas: comps.length,
+      // Só placas ativas contam no selo "N placas" e em "Também usa":
+      // vínculo antigo com placa descontinuada é cadastro velho, não consumo.
+      totalPlacas: Math.max(1, ativas.length),
       outrasPlacas: comps
-        .filter((c) => c.placa_id !== placaId)
+        .filter((c) => c.placa_id !== placaId && !c.descontinuada)
         .map((c) => ({
           nome: c.placa_nome,
           descontinuada: c.descontinuada,
