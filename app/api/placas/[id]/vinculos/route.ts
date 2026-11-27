@@ -11,6 +11,10 @@ async function garantirColuna() {
   await sql`ALTER TABLE placas ADD COLUMN IF NOT EXISTS vinculos_confirmados BOOLEAN NOT NULL DEFAULT false`;
 }
 
+function normSku(s: string): string {
+  return s.toLowerCase().replace(/[\s_-]+/g, "");
+}
+
 interface LinhaComponente {
   sku: string;
   placa_id: number;
@@ -86,10 +90,23 @@ export async function GET(
     };
   });
 
+  // Popup limpo: uma linha por SKU (grafias que só diferem em espaço/caixa,
+  // ex. "Guarda Sol" x "GuardaSol", viram uma só) e anúncios MLB só aparecem
+  // se a placa não tiver nenhum SKU.
+  const temSku = itens.some((i) => i.tipo === "sku");
+  const vistos = new Set<string>();
+  const itensLimpos = itens.filter((i) => {
+    if (temSku && i.tipo === "anuncio_ml") return false;
+    const k = normSku(i.sku);
+    if (vistos.has(k)) return false;
+    vistos.add(k);
+    return true;
+  });
+
   return NextResponse.json({
     placaId,
     confirmado: placaRows[0].vinculos_confirmados,
-    itens,
+    itens: itensLimpos,
   });
 }
 
@@ -122,7 +139,9 @@ export async function POST(
   for (const it of itens) {
     await sql`
       UPDATE sku_placa SET pecas_por_unidade = ${Number(it.pecasPorUnidade)}
-      WHERE placa_id = ${placaId} AND sku = ${it.sku}
+      WHERE placa_id = ${placaId}
+        AND (sku = ${it.sku}
+             OR lower(regexp_replace(sku, '[[:space:]_-]+', '', 'g')) = ${normSku(it.sku)})
     `;
   }
   if (body?.confirmar) {
