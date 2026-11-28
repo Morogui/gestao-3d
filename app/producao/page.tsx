@@ -258,6 +258,7 @@ export default function ProducaoPage() {
   } | null>(null);
   const [qtdVinculo, setQtdVinculo] = useState<Record<string, string>>({});
   const [checkVinculo, setCheckVinculo] = useState<Record<string, boolean>>({});
+  const [removerVinculo, setRemoverVinculo] = useState<Record<string, boolean>>({});
   // Envios planejados do Full ainda pendentes — pedido do Guilherme em
   // 2026-07-25: alimenta o critério nº-2 da fila de prioridade (ver
   // filaPrioridade abaixo).
@@ -911,6 +912,7 @@ async function abrirConfirmacaoImpressao(
       for (const it of vinc.itens) { q[it.sku] = String(it.pecasPorUnidade); c[it.sku] = false; }
       setQtdVinculo(q);
       setCheckVinculo(c);
+      setRemoverVinculo({});
     } else {
       setVinculosPopup(null);
     }
@@ -943,8 +945,10 @@ async function abrirConfirmacaoImpressao(
     if (!Number.isFinite(horas) || horas <= 0) { setConfirmarImpressao({ ...c, erro: "Informe o tempo da placa." }); return; }
     const vp = vinculosPopup && vinculosPopup.placaId === c.placaId && !vinculosPopup.confirmado && vinculosPopup.itens.length > 0 ? vinculosPopup : null;
     let itensVinculo: { sku: string; pecasPorUnidade: number }[] = [];
+    let removerSkus: string[] = [];
     if (vp) {
-      itensVinculo = vp.itens.map((it) => ({
+      removerSkus = vp.itens.filter((it) => removerVinculo[it.sku]).map((it) => it.sku);
+      itensVinculo = vp.itens.filter((it) => !removerVinculo[it.sku]).map((it) => ({
         sku: it.sku,
         pecasPorUnidade: Number(String(qtdVinculo[it.sku] ?? it.pecasPorUnidade).replace(",", ".")),
       }));
@@ -952,8 +956,12 @@ async function abrirConfirmacaoImpressao(
         setConfirmarImpressao({ ...c, erro: "Quantidade por SKU precisa ser maior que 0." });
         return;
       }
-      if (vp.itens.some((it) => !checkVinculo[it.sku])) {
-        setConfirmarImpressao({ ...c, erro: "Marque todos os SKUs para confirmar." });
+      if (itensVinculo.length === 0) {
+        setConfirmarImpressao({ ...c, erro: "Pelo menos um SKU precisa usar esta placa." });
+        return;
+      }
+      if (vp.itens.some((it) => !removerVinculo[it.sku] && !checkVinculo[it.sku])) {
+        setConfirmarImpressao({ ...c, erro: "Marque os SKUs que usam esta placa ou clique em 'não usa' nos que não usam." });
         return;
       }
     }
@@ -963,7 +971,7 @@ async function abrirConfirmacaoImpressao(
         const rvp = await fetch("/api/placas/" + c.placaId + "/vinculos", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ itens: itensVinculo, confirmar: true }),
+          body: JSON.stringify({ itens: itensVinculo, remover: removerSkus, confirmar: true }),
         });
         if (!rvp.ok) {
           const dv = await rvp.json().catch(() => null);
@@ -1882,24 +1890,35 @@ async function corrigirTempo() {
                   {"Esta placa alimenta " + vinculosPopup.itens.length + " SKU(s)"}
                 </p>
                 <p className="mb-2 text-xs text-gray-500">
-                  Marque cada SKU e confira quantas peças DESTA placa 1 unidade vendida usa.
+                  Marque cada SKU e confira quantas peças DESTA placa 1 unidade vendida usa. Se um SKU não usa esta placa, clique em "não usa" (o vínculo é removido).
                 </p>
                 <div className="max-h-60 space-y-2 overflow-y-auto">
                   {vinculosPopup.itens.map((it) => (
-                    <div key={it.sku} className="rounded border border-gray-200 p-2 text-xs">
+                    <div key={it.sku} className={"rounded border border-gray-200 p-2 text-xs " + (removerVinculo[it.sku] ? "bg-gray-50 opacity-60" : "")}>
                       <div className="flex items-center justify-between gap-2">
-                        <label className="flex items-center gap-2 font-medium text-gray-900">
-                          <input type="checkbox" checked={!!checkVinculo[it.sku]}
+                        <label className={"flex items-center gap-2 font-medium text-gray-900 " + (removerVinculo[it.sku] ? "line-through" : "")}>
+                          <input type="checkbox" checked={!removerVinculo[it.sku] && !!checkVinculo[it.sku]}
+                            disabled={!!removerVinculo[it.sku]}
                             onChange={(e) => setCheckVinculo((prev) => ({ ...prev, [it.sku]: e.target.checked }))} />
                           {it.tipo === "anuncio_ml" ? "Anúncio " + it.sku : it.sku}
                         </label>
-                        <span className="inline-flex items-center gap-1 text-gray-600">
-                          usa
-                          <input type="number" min={1} step="1" value={qtdVinculo[it.sku] ?? String(it.pecasPorUnidade)}
-                            onChange={(e) => setQtdVinculo((prev) => ({ ...prev, [it.sku]: e.target.value }))}
-                            className="w-12 rounded border border-gray-300 px-1 py-0.5 text-right" />
-                          peça(s)/un
-                        </span>
+                        {removerVinculo[it.sku] ? (
+                          <span className="inline-flex items-center gap-2 text-gray-600">
+                            não usa esta placa
+                            <button type="button" className="text-blue-600 hover:underline"
+                              onClick={() => setRemoverVinculo((prev) => ({ ...prev, [it.sku]: false }))}>desfazer</button>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-gray-600">
+                            usa
+                            <input type="number" min={1} step="1" value={qtdVinculo[it.sku] ?? String(it.pecasPorUnidade)}
+                              onChange={(e) => setQtdVinculo((prev) => ({ ...prev, [it.sku]: e.target.value }))}
+                              className="w-12 rounded border border-gray-300 px-1 py-0.5 text-right" />
+                            peça(s)/un
+                            <button type="button" className="ml-1 text-red-600 hover:underline"
+                              onClick={() => setRemoverVinculo((prev) => ({ ...prev, [it.sku]: true }))}>não usa</button>
+                          </span>
+                        )}
                       </div>
                     </div>
                   ))}
