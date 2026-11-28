@@ -2600,6 +2600,7 @@ function CarregarPlacaForm({
   const [resultados, setResultados] = useState<SkuResult[]>([]);
   const [placaSelecionadaNome, setPlacaSelecionadaNome] = useState<string | null>(null);
   const [buscando, setBuscando] = useState(false);
+  const [filaAberta, setFilaAberta] = useState(false);
   const [material, setMaterial] = useState<"PLA" | "PETG">("PLA");
   const [corFilamento, setCorFilamento] = useState<string>("colorido");
   useEffect(() => {
@@ -2714,6 +2715,9 @@ function CarregarPlacaForm({
                   <span className="text-gray-400">
                     ({r.sku}
                     {r.variacoes > 1 ? ` +${r.variacoes - 1} variação(ões)` : ""})
+                  </span>{" "}
+                  <span className="font-semibold text-gray-700">
+                    {"· Estoque: " + (placaPorId.get(r.placa_id)?.estoque ?? 0)}
                   </span>
                 </button>
               </li>
@@ -2726,23 +2730,67 @@ function CarregarPlacaForm({
         <label className="mb-1 block text-xs font-medium text-gray-500">
           Ou escolha pela fila de prioridade
         </label>
-        <select
-          value={placaId}
-          onChange={(e) => {
-            setPlacaId(Number(e.target.value));
-            setPlacaSelecionadaNome(null);
-            setBuscaSku("");
-          }}
-          className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs"
-        >
-          <option value="">Selecione uma placa</option>
-          {filaPrioridade.map((item) => (
-            <option key={item.placa.id} value={item.placa.id}>
-              {item.placa.nome}{(() => { const c = corFilamentoDaPlaca(item.placa.nome); return c && !item.placa.nome.includes("(") ? " (" + labelCorFilamento(c).replace(" (PLA)", "") + ")" : ""; })()} — a produzir: {item.aProduzirEfetivo}
-              {item.emProducao > 0 ? ` (${item.emProducao} já em produção)` : ""}
-            </option>
-          ))}
-        </select>
+        {(() => {
+          const nomeComCor = (nome: string) => {
+            const c = corFilamentoDaPlaca(nome);
+            return c && !nome.includes("(") ? nome + " (" + labelCorFilamento(c).replace(" (PLA)", "") + ")" : nome;
+          };
+          const atual = filaPrioridade.find((it) => it.placa.id === placaId);
+          const placaAtual = atual?.placa ?? (placaId ? placaPorId.get(placaId) : undefined);
+          return (
+            <div>
+              <button
+                type="button"
+                onClick={() => setFilaAberta((v) => !v)}
+                className="flex w-full items-center justify-between gap-2 rounded border border-gray-300 bg-white px-2 py-1.5 text-left text-xs"
+              >
+                <span className="min-w-0">
+                  {placaAtual ? (
+                    <>
+                      <span className="block truncate font-medium text-gray-900">{nomeComCor(placaAtual.nome)}</span>
+                      <span className="block text-[11px] text-gray-500">
+                        {"Estoque " + placaAtual.estoque + (atual ? " · produzir " + atual.aProduzirEfetivo : "")}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-gray-400">Selecione uma placa</span>
+                  )}
+                </span>
+                <span className="text-gray-400">{filaAberta ? "▲" : "▼"}</span>
+              </button>
+              {filaAberta && (
+                <ul className="mt-1 max-h-72 divide-y divide-gray-100 overflow-y-auto rounded border border-gray-200 bg-white text-xs shadow-sm">
+                  {filaPrioridade.map((item) => (
+                    <li key={item.placa.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPlacaId(item.placa.id);
+                          setPlacaSelecionadaNome(null);
+                          setBuscaSku("");
+                          setFilaAberta(false);
+                        }}
+                        className={
+                          "block w-full px-2 py-1.5 text-left hover:bg-gray-50 " +
+                          (item.placa.id === placaId ? "bg-blue-50" : "")
+                        }
+                      >
+                        <span className="block font-medium text-gray-900">{nomeComCor(item.placa.nome)}</span>
+                        <span className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] text-gray-500">
+                          <span className={item.placa.estoque <= 0 ? "font-semibold text-red-600" : "font-semibold text-gray-700"}>
+                            {"Estoque: " + item.placa.estoque}
+                          </span>
+                          <span>{"Produzir: " + item.aProduzirEfetivo}</span>
+                          {item.emProducao > 0 && <span>{item.emProducao + " em produção"}</span>}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {placaSelecionada && (
