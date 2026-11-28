@@ -124,8 +124,10 @@ export async function POST(
   const body = (await request.json().catch(() => null)) as {
     itens?: { sku: string; pecasPorUnidade: number }[];
     confirmar?: boolean;
+    remover?: string[];
   } | null;
   const itens = body?.itens ?? [];
+  const remover = (body?.remover ?? []).filter((s) => typeof s === "string" && s.length > 0);
 
   for (const it of itens) {
     const q = Number(it.pecasPorUnidade);
@@ -143,6 +145,18 @@ export async function POST(
         AND (sku = ${it.sku}
              OR lower(regexp_replace(sku, '[[:space:]_-]+', '', 'g')) = ${normSku(it.sku)})
     `;
+  }
+  // SKUs que o usuário marcou como "não usa esta placa": remove só o vínculo
+  // (sku_placa) desta placa; a placa e o SKU continuam existindo.
+  if (itens.length > 0) {
+    for (const sku of remover) {
+      await sql`
+        DELETE FROM sku_placa
+        WHERE placa_id = ${placaId}
+          AND (sku = ${sku}
+               OR lower(regexp_replace(sku, '[[:space:]_-]+', '', 'g')) = ${normSku(sku)})
+      `;
+    }
   }
   if (body?.confirmar) {
     await sql`UPDATE placas SET vinculos_confirmados = true WHERE id = ${placaId}`;
