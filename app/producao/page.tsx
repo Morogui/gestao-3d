@@ -2316,8 +2316,21 @@ function PrinterCard({
       ? Number(producao.quantidade_placas) * placa.saidaExtraPecas
       : 0;
 
+  // Progresso da impressão (só visual): tempo decorrido vs tempo previsto
+  // (tempo da placa × nº de placas), com horário previsto de término.
+  const tempoTotalH =
+    producao && placa?.tempoPlacaHoras ? placa.tempoPlacaHoras * Number(producao.quantidade_placas) : 0;
+  const inicioMs = producao ? new Date(producao.iniciado_em).getTime() : 0;
+  const decorridoH = producao ? (Date.now() - inicioMs) / 3600000 : 0;
+  const pctProgresso = tempoTotalH > 0 ? Math.min(100, Math.max(0, Math.round((decorridoH / tempoTotalH) * 100))) : 0;
+  const fimPrevisto = tempoTotalH > 0 ? new Date(inicioMs + tempoTotalH * 3600000) : null;
+  const atrasadoProgresso = tempoTotalH > 0 && decorridoH > tempoTotalH;
+  const corTopo = machine.em_manutencao ? "bg-amber-400" : producao ? "bg-green-500" : "bg-gray-300";
+
   return (
-    <div className="flex flex-col rounded-lg border border-gray-200 bg-white p-4">
+    <div className="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+      <div className={"h-1 w-full " + corTopo} />
+      <div className="flex flex-col p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         {editandoNome ? (
           <div className="flex flex-1 items-center gap-1">
@@ -2358,14 +2371,35 @@ function PrinterCard({
             <span className="text-xs text-gray-400 opacity-0 group-hover:opacity-100">✎</span>
           </button>
         )}
-        <span
-          className={
-            "rounded-full px-2 py-0.5 text-xs font-medium " +
-            (producao ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500")
-          }
-        >
-          {producao ? "Rodando" : "Livre"}
-        </span>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {!machine.em_manutencao && (
+            <button
+              onClick={() => onMarcarManutencao(machine.id)}
+              title="Marcar em manutenção"
+              className="rounded border border-gray-200 px-1.5 py-0.5 text-[11px] text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            >
+              🔧
+            </button>
+          )}
+          <span
+            className={
+              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium " +
+              (machine.em_manutencao
+                ? "bg-amber-100 text-amber-700"
+                : producao
+                ? "bg-green-100 text-green-700"
+                : "bg-gray-100 text-gray-500")
+            }
+          >
+            <span
+              className={
+                "h-1.5 w-1.5 rounded-full " +
+                (machine.em_manutencao ? "bg-amber-500" : producao ? "animate-pulse bg-green-500" : "bg-gray-400")
+              }
+            />
+            {machine.em_manutencao ? "Manutenção" : producao ? "Rodando" : "Livre"}
+          </span>
+        </div>
       </div>
 
             {machine.em_manutencao ? (
@@ -2412,38 +2446,67 @@ function PrinterCard({
              </button>
            )}
          </div>
-      ) : (
-         <button
-          onClick={() => onMarcarManutencao(machine.id)}
-          className="mb-3 self-start rounded border border-gray-300 px-2 py-0.5 text-xs font-medium text-gray-500 hover:bg-gray-100"
-         >
-          Marcar em manutencao
-         </button>
-      )}
+      ) : null}
 
       {producao ? (
         <div className="flex flex-col gap-3">
           <div>
-            <p className="font-medium text-gray-900">
+            <p className="text-sm font-semibold leading-snug text-gray-900">
               {placaNome}
               {producao.material === "PETG" && (
-                <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-semibold text-sky-700">
+                <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-sky-700">
                   PETG
                 </span>
               )}
             </p>
-            <p className="text-xs text-gray-500">
-              {producao.quantidade_placas} placa(s) · {pecasPorPlaca} pç/placa{placa?.tempoPlacaHoras ? ` · ${formatHora(placa.tempoPlacaHoras)}/placa` : ""} ·{" "}
-              {totalPecas} peças no total
-            </p>
+            <div className="mt-2 grid grid-cols-3 gap-1.5 text-center">
+              <div className="rounded bg-gray-50 px-1 py-1">
+                <p className="text-sm font-semibold text-gray-900">{totalPecas}</p>
+                <p className="text-[10px] text-gray-500">peças no total</p>
+              </div>
+              <div className="rounded bg-gray-50 px-1 py-1">
+                <p className="text-sm font-semibold text-gray-900">
+                  {producao.quantidade_placas}×{pecasPorPlaca}
+                </p>
+                <p className="text-[10px] text-gray-500">placas × pç</p>
+              </div>
+              <div className="rounded bg-gray-50 px-1 py-1">
+                <p className="text-sm font-semibold text-gray-900">
+                  {placa?.tempoPlacaHoras ? formatHora(placa.tempoPlacaHoras) : "—"}
+                </p>
+                <p className="text-[10px] text-gray-500">por placa</p>
+              </div>
+            </div>
             {placaExtra && (
-              <p className="text-xs text-amber-700">
+              <p className="mt-1.5 text-xs text-amber-700">
                 + {totalPecasExtra} pç de saída extra → {placaExtra.nome}
               </p>
             )}
-            <p className="text-xs text-gray-400">
-              Carregada em {new Date(producao.iniciado_em).toLocaleString("pt-BR")}
-            </p>
+            {tempoTotalH > 0 && fimPrevisto && (
+              <div className="mt-2.5">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+                  <div
+                    className={"h-full rounded-full " + (atrasadoProgresso ? "bg-amber-400" : "bg-green-500")}
+                    style={{ width: pctProgresso + "%" }}
+                  />
+                </div>
+                <p className="mt-1 flex justify-between text-[11px] text-gray-500">
+                  <span>
+                    {"Iniciada " + new Date(producao.iniciado_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                  <span className={atrasadoProgresso ? "font-medium text-amber-700" : "font-medium text-gray-700"}>
+                    {atrasadoProgresso
+                      ? "Pronta (prevista " + fimPrevisto.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) + ")"
+                      : pctProgresso + "% · termina ~" + fimPrevisto.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </p>
+              </div>
+            )}
+            {!(tempoTotalH > 0) && (
+              <p className="mt-2 text-[11px] text-gray-400">
+                Carregada em {new Date(producao.iniciado_em).toLocaleString("pt-BR")}
+              </p>
+            )}
             {Number(producao.falhas_peca_count) > 0 && (
               <p className="mt-1 text-xs text-amber-700">
                 {producao.falhas_peca_count} peça(s) já perdida(s) nessa placa
@@ -2451,34 +2514,36 @@ function PrinterCard({
             )}
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-1.5">
             <button
               disabled={carregando}
                         onClick={() => { if (window.confirm("Confirmar que essa placa foi impressa com sucesso? Isso vai dar baixa no estoque.")) onConcluir(producao.id); }}
-              className="rounded bg-green-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-40"
+              className="w-full rounded bg-green-600 px-2.5 py-2 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-40"
             >
-              {carregando ? "Salvando..." : "Placa impressa com sucesso"}
+              {carregando ? "Salvando..." : "✓ Placa impressa com sucesso"}
             </button>
-            <button
-              disabled={carregando}
-              onClick={() => setShowFalhaPeca((v) => !v)}
-              className="rounded border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-40"
-            >
-              Falha em peça
-            </button>
-            <button
-              disabled={carregando}
-              onClick={() => setShowFalhaPlaca((v) => !v)}
-              className="rounded border border-red-300 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-40"
-            >
-              Falha na placa
-            </button>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                disabled={carregando}
+                onClick={() => setShowFalhaPeca((v) => !v)}
+                className="rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-40"
+              >
+                Falha em peça
+              </button>
+              <button
+                disabled={carregando}
+                onClick={() => setShowFalhaPlaca((v) => !v)}
+                className="rounded border border-red-300 bg-red-50 px-2 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-40"
+              >
+                Falha na placa
+              </button>
+            </div>
             <button
               disabled={carregando}
                         onClick={() => { if (window.confirm("Cancelar essa produção? Isso vai descartar o que estava sendo impresso nessa placa.")) onCancelar(producao.id); }}
-              className="rounded px-2.5 py-1.5 text-xs text-gray-500 hover:underline disabled:opacity-40"
+              className="self-center px-2 py-1 text-[11px] text-gray-400 hover:text-gray-600 hover:underline disabled:opacity-40"
             >
-              Cancelar
+              Cancelar produção
             </button>
           </div>
 
@@ -2573,6 +2638,7 @@ function PrinterCard({
         />
                 </>
       )}
+      </div>
     </div>
   );
 }
